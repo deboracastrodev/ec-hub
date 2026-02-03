@@ -3,17 +3,10 @@
 declare(strict_types=1);
 
 /**
- * This file is part of Hyperf.
+ * Hyperf Autoload Configuration
  *
- * @link     https://www.hyperf.io
- * @document https://hyperf.wiki
- * @contact  group@hyperf.io
- * @license  https://github.com/hyperf/hyperf/blob/master/LICENSE
+ * This file configures PSR-4 autoloading and annotation scanning for the ec-hub application.
  */
-use Hyperf\Contract\StdoutLoggerInterface;
-use Psr\Log\LogLevel;
-
-$logger = Hyperf\Support\make(StdoutLoggerInterface::class);
 
 return [
     'scan' => [
@@ -25,6 +18,7 @@ return [
         ],
     ],
     'dependencies' => [
+        // Dependency injection container configuration
         // Autoload dependencies
     ],
     'annotations' => [
@@ -33,7 +27,7 @@ return [
                 BASE_PATH . '/app',
             ],
             'collectors' => [
-                // Collectors
+                // Hyperf annotation collectors
             ],
         ],
     ],

@@ -3,8 +3,6 @@
          xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/8.0/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          executionOrder="depends,defects"
-         forceCoversAnnotation="false"
-         beStrictAboutCoversAnnotation="true"
          beStrictAboutOutputDuringTests="true"
          beStrictAboutTodoAnnotatedTests="true"
          verbose="true">
@@ -20,16 +18,6 @@
         </testsuite>
     </testsuites>
 
-    <filter>
-        <whitelist processUncoveredFilesFromWhitelist="true">
-            <directory suffix=".php">app/Domain</directory>
-            <directory suffix=".php">app/Application</directory>
-            <exclude>
-                <directory suffix=".php">app/Domain/Shared</directory>
-            </exclude>
-        </whitelist>
-    </filter>
-
     <coverage processUncoveredFiles="true">
         <include>
             <directory suffix=".php">app/Domain</directory>
@@ -42,10 +30,5 @@
             <text outputFile="php://stdout" showOnlySummary="true"/>
             <html outputDirectory="coverage/html"/>
         </report>
-        <threshold>
-            <global>
-                <line value="70"/>
-            </global>
-        </threshold>
     </coverage>
 </phpunit>

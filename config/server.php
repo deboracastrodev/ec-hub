@@ -7,6 +7,21 @@ declare(strict_types=1);
  */
 use Swoole\Constant;
 use Swoole\Server;
+use Swoole\Http\Server as HttpServer;
+
+if (!function_exists('env')) {
+    /**
+     * Gets the value of an environment variable
+     */
+    function env(string $key, $default = null)
+    {
+        $value = getenv($key);
+        if ($value === false) {
+            return $default;
+        }
+        return $value;
+    }
+}
 
 return [
     'mode' => SWOOLE_PROCESS,
@@ -18,7 +33,8 @@ return [
             'port' => (int) env('SWOOLE_HTTP_SERVER_PORT', 9501),
             'sock_type' => SWOOLE_SOCK_TCP,
             'callbacks' => [
-                Event::ON_REQUEST => [Hyperf\HttpServer\Server::class, 'onRequest'],
+                // Note: Callbacks are registered programmatically in public/index.php
+                // This config provides the server options only
             ],
             'options' => [
                 // Process Configuration
@@ -34,7 +50,7 @@ return [
                 'reload_async' => true,
 
                 // Logging
-                'log_file' => BASE_PATH . '/runtime/logs/swoole.log',
+                'log_file' => (__DIR__ . '/../runtime/logs/swoole.log'),
                 'log_level' => SWOOLE_LOG_INFO,
 
                 // Performance

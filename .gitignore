@@ -29,6 +29,10 @@ composer.lock
 /app/storage/*
 /public/storage
 
+# Runtime files
+/runtime/
+*.log
+
 # Logs
 *.log
 /npm-debug.log
