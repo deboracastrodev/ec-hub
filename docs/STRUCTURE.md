@@ -174,13 +174,9 @@ ec-hub/
 
 ---
 
-## Understanding the Architecture in 15 Minutes
+## Understanding the Architecture
 
-### For Carlos (Recruiter) - Quick Guide
-
-> "Carlos, aqui está como entender a arquitetura do projeto em 15 minutos:"
-
-#### Step 1: Observe as 4 Camadas (2 minutes)
+#### Step 1: Observe as 4 Camadas
 
 ```bash
 cd ec-hub
@@ -193,7 +189,7 @@ You'll see 4 folders representing Clean Architecture layers:
 3. **Domain** - Pure business logic (independent!)
 4. **Infrastructure** - Database, Redis, external APIs
 
-#### Step 2: Explore DDD Bounded Contexts (5 minutes)
+#### Step 2: Explore DDD Bounded Contexts
 
 ```bash
 ls app/Domain/
@@ -211,7 +207,7 @@ Each context has:
 - `Repository/` - Data access interfaces (decoupled from implementation!)
 - `Service/` - Domain logic
 
-#### Step 3: Understand Dependency Direction (3 minutes)
+#### Step 3: Understand Dependency Direction
 
 Open any file in `Controller/`:
 ```bash
@@ -229,7 +225,7 @@ You'll see it depends on `Domain` layer.
 
 **Key Insight:** Dependencies point **inward**. Domain layer has ZERO dependencies on outer layers - making it testable and business-focused.
 
-#### Step 4: Check Repository Interfaces (3 minutes)
+#### Step 4: Check Repository Interfaces
 
 ```bash
 cat app/Domain/Product/Repository/ProductRepositoryInterface.php
@@ -237,7 +233,7 @@ cat app/Domain/Product/Repository/ProductRepositoryInterface.php
 
 Notice it's an **interface**, not implementation! The actual database code lives in `Infrastructure/`. This is **Dependency Inversion Principle** (SOLID).
 
-#### Step 5: Review Code Quality Setup (2 minutes)
+#### Step 5: Review Code Quality Setup
 
 ```bash
 cat .php-cs-fixer.php  # PSR-12 coding standards

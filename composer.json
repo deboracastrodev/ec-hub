@@ -10,12 +10,11 @@
     "hyperf/redis": "^2.2",
     "hyperf/config": "^2.2",
     "hyperf/di": "^2.2",
-    "hyperf/router": "^2.2",
     "psr/container": "^1.0",
     "psr/http-message": "^1.0",
     "vlucas/phpdotenv": "^5.0",
     "monolog/monolog": "^2.0",
-    "rubix/ml": "^3.0"
+    "rubix/ml": "^2.2"
   },
   "require-dev": {
     "phpunit/phpunit": "^8.0",

@@ -16,19 +16,8 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <testsuite name="Docker">
+            <directory>tests/docker</directory>
+        </testsuite>
     </testsuites>
-
-    <coverage processUncoveredFiles="true">
-        <include>
-            <directory suffix=".php">app/Domain</directory>
-            <directory suffix=".php">app/Application</directory>
-        </include>
-        <exclude>
-            <directory suffix=".php">app/Domain/Shared</directory>
-        </exclude>
-        <report>
-            <text outputFile="php://stdout" showOnlySummary="true"/>
-            <html outputDirectory="coverage/html"/>
-        </report>
-    </coverage>
 </phpunit>
