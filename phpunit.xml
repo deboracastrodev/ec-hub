@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/8.0/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         executionOrder="depends,defects"
+         forceCoversAnnotation="false"
+         beStrictAboutCoversAnnotation="true"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTodoAnnotatedTests="true"
+         verbose="true">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+
+    <filter>
+        <whitelist processUncoveredFilesFromWhitelist="true">
+            <directory suffix=".php">app/Domain</directory>
+            <directory suffix=".php">app/Application</directory>
+            <exclude>
+                <directory suffix=".php">app/Domain/Shared</directory>
+            </exclude>
+        </whitelist>
+    </filter>
+
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">app/Domain</directory>
+            <directory suffix=".php">app/Application</directory>
+        </include>
+        <exclude>
+            <directory suffix=".php">app/Domain/Shared</directory>
+        </exclude>
+        <report>
+            <text outputFile="php://stdout" showOnlySummary="true"/>
+            <html outputDirectory="coverage/html"/>
+        </report>
+        <threshold>
+            <global>
+                <line value="70"/>
+            </global>
+        </threshold>
+    </coverage>
+</phpunit>
