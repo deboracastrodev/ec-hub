@@ -1,6 +1,8 @@
 # ec-hub
 
 [![PHP](https://img.shields.io/badge/PHP-7.4-777884?logo=php&logoColor=white)](https://php.net)
+[![Build](https://img.shields.io/badge/Build-WIP-orange)](#)
+[![Tests](https://img.shields.io/badge/Tests-not_run-lightgrey)](#)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > **Machine Learning em PHP 7.4** - Uma POC técnica demonstrando Clean Architecture + DDD + Swoole + Rubix ML
@@ -169,9 +171,8 @@ make db-shell
 
 - [docs/STRUCTURE.md](docs/STRUCTURE.md) - Estrutura completa do projeto
 - [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) - PSR-12 compliance
-- [docs/ARCHITECTURE.md](../_bmad-output/planning-artifacts/architecture.md) - Decisões arquiteturais
+- [docs/ARCHITECTURE.md](docs/architecture.md) - Decisões arquiteturais
 
 ## 📝 License
 
 MIT License - Copyright (c) 2026 Debora
-
