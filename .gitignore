@@ -1,0 +1,39 @@
+_bmad/
+_bmad-output/
+.agent/
+.claude/
+.docs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Composer
+/vendor/
+composer.lock
+
+# Application files
+/app/bootstrap/cache/*
+/app/storage/*
+/public/storage
+
+# Logs
+*.log
+/npm-debug.log
+/yarn-error.log
+
+# Docker volumes (if mounted locally)
+/docker/mysql-data/
+/docker/redis-data/
