@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Application\Product\GetProductDetail;
+use App\Application\Product\GetProductList;
 
 /**
  * Product Controller
@@ -14,47 +15,38 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
  */
 class ProductController
 {
-    private ProductRepositoryInterface $productRepository;
+    private GetProductList $getProductList;
+    private GetProductDetail $getProductDetail;
     private \Twig\Environment $twig;
 
-    public function __construct(ProductRepositoryInterface $productRepository, \Twig\Environment $twig)
-    {
-        $this->productRepository = $productRepository;
+    public function __construct(
+        GetProductList $getProductList,
+        GetProductDetail $getProductDetail,
+        \Twig\Environment $twig
+    ) {
+        $this->getProductList = $getProductList;
+        $this->getProductDetail = $getProductDetail;
         $this->twig = $twig;
     }
 
     /**
-     * Display product listing page with pagination
+     * Display product listing page with pagination and category filtering
      *
-     * @param array $queryParams Query parameters (page, limit)
+     * @param array $queryParams Query parameters (page, limit, category)
      * @return string Rendered HTML
      */
     public function index(array $queryParams = []): string
     {
         $startTime = microtime(true);
-
-        // Paginação
-        $page = max(1, (int) ($queryParams['page'] ?? 1));
-        $limit = max(1, min(100, (int) ($queryParams['limit'] ?? 20)));
-        $offset = ($page - 1) * $limit;
-
-        // Buscar produtos (com paginação)
-        $products = $this->productRepository->findAll($limit, $offset);
-        $totalProducts = $this->productRepository->count();
-        $totalPages = (int) ceil($totalProducts / $limit);
-
-        // Performance tracking
+        $listResult = $this->getProductList->execute($queryParams);
         $renderTime = (microtime(true) - $startTime) * 1000; // ms
 
-        // Renderizar template Twig
-        return $this->twig->render('product/listing.html.twig', [
-            'products' => $products,
-            'currentPage' => $page,
-            'totalPages' => $totalPages,
-            'totalProducts' => $totalProducts,
-            'limit' => $limit,
-            'renderTime' => $renderTime,
-        ]);
+        return $this->twig->render('product/listing.html.twig', array_merge(
+            $listResult,
+            [
+                'renderTime' => $renderTime,
+            ]
+        ));
     }
 
     /**
@@ -65,7 +57,7 @@ class ProductController
      */
     public function show(int $id): string
     {
-        $product = $this->productRepository->findById($id);
+        $product = $this->getProductDetail->execute($id);
 
         if (!$product) {
             http_response_code(404);

@@ -16,6 +16,14 @@ use PDO;
 class ProductRepository implements ProductRepositoryInterface
 {
     private PDO $pdo;
+    /** @var array<string, array<int, array<string, mixed>>> */
+    private array $listCache = [];
+    /** @var array<string, array<int, array<string, mixed>>> */
+    private array $categoryPageCache = [];
+    /** @var array<string, int> */
+    private array $categoryCountCache = [];
+    private ?int $totalCountCache = null;
+    private ?array $categoriesCache = null;
 
     public function __construct(PDO $pdo)
     {
@@ -33,30 +41,96 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function findAll(int $limit = 50, int $offset = 0): array
     {
+        $cacheKey = $this->buildCacheKey([$limit, $offset]);
+        if (isset($this->listCache[$cacheKey])) {
+            return $this->listCache[$cacheKey];
+        }
+
         $stmt = $this->pdo->prepare("SELECT * FROM products ORDER BY name LIMIT :limit OFFSET :offset");
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $this->listCache[$cacheKey] = $results;
+
+        return $results;
     }
 
     public function findByCategory(string $category, int $limit = 50): array
     {
-        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE category = :category ORDER BY name LIMIT :limit");
+        return $this->findByCategoryPaginated($category, $limit, 0);
+    }
+
+    public function findByCategoryPaginated(string $category, int $limit, int $offset): array
+    {
+        $cacheKey = $this->buildCacheKey([$category, $limit, $offset]);
+        if (isset($this->categoryPageCache[$cacheKey])) {
+            return $this->categoryPageCache[$cacheKey];
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM products
+            WHERE category = :category
+            ORDER BY name
+            LIMIT :limit OFFSET :offset
+        ");
         $stmt->bindValue(':category', $category, PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $this->categoryPageCache[$cacheKey] = $results;
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $results;
+    }
+
+    public function countByCategory(string $category): int
+    {
+        if (isset($this->categoryCountCache[$category])) {
+            return $this->categoryCountCache[$category];
+        }
+
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) as count FROM products WHERE category = :category");
+        $stmt->execute(['category' => $category]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $count = (int) $result['count'];
+        $this->categoryCountCache[$category] = $count;
+
+        return $count;
+    }
+
+    public function findCategories(): array
+    {
+        if ($this->categoriesCache !== null) {
+            return $this->categoriesCache;
+        }
+
+        $stmt = $this->pdo->query("
+            SELECT DISTINCT category
+            FROM products
+            WHERE category IS NOT NULL AND category != ''
+            ORDER BY category ASC
+        ");
+
+        $this->categoriesCache = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        return $this->categoriesCache;
     }
 
     public function count(): int
     {
+        if ($this->totalCountCache !== null) {
+            return $this->totalCountCache;
+        }
+
         $stmt = $this->pdo->query("SELECT COUNT(*) as count FROM products");
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return (int) $result['count'];
+        $this->totalCountCache = (int) $result['count'];
+
+        return $this->totalCountCache;
     }
 
     public function create(array $data): int
@@ -79,6 +153,8 @@ class ProductRepository implements ProductRepositoryInterface
             'category' => $data['category'],
             'image_url' => $data['image_url'] ?? null,
         ]);
+
+        $this->resetCache();
 
         return (int) $this->pdo->lastInsertId();
     }
@@ -107,13 +183,42 @@ class ProductRepository implements ProductRepositoryInterface
             $params['price'] = $params['price']->getDecimal();
         }
 
-        return $stmt->execute($params) && $stmt->rowCount() > 0;
+        $executed = $stmt->execute($params) && $stmt->rowCount() > 0;
+
+        if ($executed) {
+            $this->resetCache();
+        }
+
+        return $executed;
     }
 
     public function delete(int $id): bool
     {
         $stmt = $this->pdo->prepare("DELETE FROM products WHERE id = :id");
 
-        return $stmt->execute(['id' => $id]) && $stmt->rowCount() > 0;
+        $executed = $stmt->execute(['id' => $id]) && $stmt->rowCount() > 0;
+
+        if ($executed) {
+            $this->resetCache();
+        }
+
+        return $executed;
+    }
+
+    /**
+     * @param array<int, mixed> $parts
+     */
+    private function buildCacheKey(array $parts): string
+    {
+        return md5(json_encode($parts));
+    }
+
+    private function resetCache(): void
+    {
+        $this->listCache = [];
+        $this->categoryPageCache = [];
+        $this->categoryCountCache = [];
+        $this->totalCountCache = null;
+        $this->categoriesCache = null;
     }
 }

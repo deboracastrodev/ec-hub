@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Application\Product\GetProductDetail;
+use App\Application\Product\GetProductList;
+use App\Controller\ProductController;
+use App\Service\CategoryService;
+
 /**
  * ec-hub Application Entry Point
  *
@@ -16,14 +21,23 @@ $container = require __DIR__ . '/../config/bootstrap.php';
 
 $twig = $container['twig'];
 $productRepository = $container['repositories']['product']($container['pdo']);
+$categoryService = new CategoryService($productRepository);
+$getProductList = new GetProductList($productRepository, $categoryService);
+$getProductDetail = new GetProductDetail($productRepository);
 
 // Simple router
-$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$method = $_SERVER['REQUEST_METHOD'];
+$uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// Static files serving - serve assets before routing
-$staticFile = __DIR__ . $uri;
-if (file_exists($staticFile) && is_file($staticFile)) {
+// Static files serving - serve assets before routing (protect against traversal)
+$publicDir = realpath(__DIR__);
+$staticFile = $publicDir && $uri !== null ? realpath($publicDir . $uri) : false;
+if (
+    $publicDir !== false &&
+    $staticFile !== false &&
+    strpos($staticFile, $publicDir . DIRECTORY_SEPARATOR) === 0 &&
+    is_file($staticFile)
+) {
     // Determine MIME type
     $extension = pathinfo($staticFile, PATHINFO_EXTENSION);
     $mimeTypes = [
@@ -82,10 +96,17 @@ if (!$matchedRoute) {
     exit;
 }
 
-// Create controller with dependencies
+// Create controller with dependencies via lightweight resolver
 $controllerClass = "App\\Controller\\{$matchedRoute['controller']}";
 $action = $matchedRoute['action'];
-$controller = new $controllerClass($productRepository, $twig);
+
+switch ($controllerClass) {
+    case ProductController::class:
+        $controller = new ProductController($getProductList, $getProductDetail, $twig);
+        break;
+    default:
+        throw new RuntimeException("Controller {$controllerClass} não configurado");
+}
 
 // Extract query params for index action
 $queryParams = $_GET;

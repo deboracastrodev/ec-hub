@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Controller;
 
-use PHPUnit\Framework\TestCase;
+use App\Application\Product\GetProductDetail;
+use App\Application\Product\GetProductList;
 use App\Controller\ProductController;
-use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
+use App\Service\CategoryService;
+use PHPUnit\Framework\TestCase;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
@@ -20,6 +22,9 @@ class ProductControllerTest extends TestCase
 {
     private ProductController $controller;
     private ProductRepository $repository;
+    private CategoryService $categoryService;
+    private GetProductList $getProductList;
+    private GetProductDetail $getProductDetail;
     private Environment $twig;
     private \PDO $pdo;
 
@@ -34,6 +39,9 @@ class ProductControllerTest extends TestCase
         );
 
         $this->repository = new ProductRepository($this->pdo);
+        $this->categoryService = new CategoryService($this->repository);
+        $this->getProductList = new GetProductList($this->repository, $this->categoryService);
+        $this->getProductDetail = new GetProductDetail($this->repository);
 
         // Setup Twig
         $loader = new FilesystemLoader(__DIR__ . '/../../../views');
@@ -42,7 +50,7 @@ class ProductControllerTest extends TestCase
             'debug' => true,
         ]);
 
-        $this->controller = new ProductController($this->repository, $this->twig);
+        $this->controller = new ProductController($this->getProductList, $this->getProductDetail, $this->twig);
     }
 
     public function test_listing_page_returns_html_with_products()

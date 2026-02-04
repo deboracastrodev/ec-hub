@@ -41,4 +41,10 @@ return [
             return new App\Infrastructure\Persistence\MySQL\ProductRepository($pdo);
         },
     ],
+
+    'services' => [
+        'category' => function ($container) {
+            return new App\Service\CategoryService($container['repositories']['product']($container['pdo']));
+        },
+    ],
 ];
