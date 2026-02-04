@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell redis-cli ps build clean install test-coverage test-unit test-integration test-feature migrate migrate:fresh seed migrate:seed
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell redis-cli ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset
 
 # Variáveis
 COMPOSE := docker-compose
@@ -56,14 +56,14 @@ setup: ## Execute setup script
 migrate: ## Run database migrations
 	$(COMPOSE) exec app php bin/migrate.php
 
-migrate:fresh: ## Drop all tables and re-run migrations
+migrate-fresh: ## Drop all tables and re-run migrations
 	$(COMPOSE) exec app php bin/migrate-fresh.php
 
 seed: ## Run database seeders
 	$(COMPOSE) exec app php bin/seed.php
 
-migrate:seed: ## Run migrations and seeders
-	$(MAKE) migrate && $(MAKE) seed
+db-reset: ## Run migrations and seeders (fresh start)
+	$(MAKE) migrate-fresh && $(MAKE) seed
 
 # Shell access
 shell: ## Open shell in app container

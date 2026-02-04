@@ -1,0 +1,59 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}{{ product.name }} - ec-hub{% endblock %}
+
+{% block content %}
+<main class="product-detail">
+    <nav class="breadcrumb">
+        <a href="/products" class="breadcrumb__link">&larr; Voltar para produtos</a>
+    </nav>
+
+    <article class="product-detail__card" itemscope itemtype="https://schema.org/Product">
+        <header class="product-detail__header">
+            <span class="product-detail__category" itemprop="category">
+                {{ product.category }}
+            </span>
+        </header>
+
+        <div class="product-detail__content">
+            <figure class="product-detail__image-wrapper">
+                <img
+                    src="{{ product.image_url }}"
+                    alt="{{ product.name }}"
+                    class="product-detail__image"
+                    itemprop="image"
+                    onerror="this.src='https://placehold.co/600x600/FF6B6B/ffffff?text=Sem+imagem'"
+                />
+            </figure>
+
+            <div class="product-detail__info">
+                <h1 class="product-detail__name" itemprop="name">
+                    {{ product.name }}
+                </h1>
+
+                <p class="product-detail__price" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+                    <span class="product-detail__price-value" itemprop="price" content="{{ product.price }}">
+                        R$ {{ product.price|number_format(2, ',', '.') }}
+                    </span>
+                    <meta itemprop="priceCurrency" content="BRL" />
+                </p>
+
+                {% if product.description %}
+                <section class="product-detail__description">
+                    <h2 class="product-detail__section-title">Descrição</h2>
+                    <div class="product-detail__description-text" itemprop="description">
+                        {{ product.description|nl2br }}
+                    </div>
+                </section>
+                {% endif %}
+
+                <footer class="product-detail__meta">
+                    <time class="product-detail__date" datetime="{{ product.created_at|date('c') }}">
+                        Cadastrado em {{ product.created_at|date('d/m/Y') }}
+                    </time>
+                </footer>
+            </div>
+        </div>
+    </article>
+</main>
+{% endblock %}

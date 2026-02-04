@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Domain\Product\Model\Product;
-use App\Domain\Shared\ValueObject\Money;
-use App\Infrastructure\Persistence\MySQL\ProductRepository;
-use Hyperf\Database\Seed\Seeder;
-use Hyperf\DbConnection\Db;
+use Faker\Factory as FakerFactory;
+use PDO;
 
 /**
  * Product Seeder
  *
- * Generates 50-100 realistic fake products using Faker library.
- * Categories: Eletrônicos, Livros, Roupas, Casa, Esportes, Beleza, Tecnologia.
+ * Generates 50-100 realistic fake products using Faker library and PDO.
  */
-class ProductSeeder extends Seeder
+class ProductSeeder
 {
+    private PDO $pdo;
+
     private array $categories = [
         'Eletrônicos',
         'Livros',
@@ -115,61 +113,67 @@ class ProductSeeder extends Seeder
         ],
     ];
 
-    public function run(): void
+    public function __construct(PDO $pdo)
     {
-        $repository = new ProductRepository(Db::connection());
+        $this->pdo = $pdo;
+    }
 
-        // Limpar produtos existentes (idempotência)
-        $this->db->table('products')->delete();
+    /**
+     * Seed database with products and return summary.
+     */
+    public function run(int $minProducts = 50, int $maxProducts = 100): array
+    {
+        $this->pdo->exec('DELETE FROM products');
 
-        // Gerar 50-100 produtos
-        $productCount = rand(50, 100);
-        $faker = \Faker\Factory::create('pt_BR');
+        $productCount = random_int($minProducts, $maxProducts);
+        $faker = FakerFactory::create('pt_BR');
 
-        $this->output->writeln("Gerando {$productCount} produtos...");
+        $stmt = $this->pdo->prepare("
+            INSERT INTO products (name, description, price, category, image_url)
+            VALUES (:name, :description, :price, :category, :image_url)
+        ");
 
         for ($i = 0; $i < $productCount; $i++) {
             $category = $faker->randomElement($this->categories);
+            $productName = $this->fakerNameForCategory($faker, $category);
+            $price = $faker->randomFloat(2, 10, 500);
 
-            // Usar nome específico da categoria ou gerar aleatório
-            $categoryProducts = $this->categoryProducts[$category];
-            $productNames = array_merge($categoryProducts, [
-                $faker->sentence(3),
-                $faker->sentence(2),
+            $stmt->execute([
+                'name' => $productName,
+                'description' => $faker->paragraph(3),
+                'price' => $price,
+                'category' => $category,
+                'image_url' => $this->generateImageUrl($category),
             ]);
-            $productName = $faker->randomElement($productNames);
-
-            // Gerar preço entre R$ 10,00 e R$ 500,00
-            $priceCents = $faker->numberBetween(1000, 50000);
-
-            $product = new Product(
-                name: $productName,
-                description: $faker->paragraph(3),
-                price: new Money($priceCents),
-                category: $category,
-                imageUrl: $this->generateImageUrl($category, $productName)
-            );
-
-            $repository->create([
-                'name' => $product->getName(),
-                'description' => $product->getDescription(),
-                'price' => $product->getPrice()->getDecimal(),
-                'category' => $product->getCategory(),
-                'image_url' => $product->getImageUrl(),
-            ]);
-
-            if (($i + 1) % 10 === 0) {
-                $this->output->writeln("Criados " . ($i + 1) . " produtos...");
-            }
         }
 
-        $this->output->writeln("<info>Total de {$productCount} produtos criados com sucesso!</info>");
+        return $this->summaries();
     }
 
-    private function generateImageUrl(string $category, string $productName): string
+    private function summaries(): array
     {
-        // Usar placehold.co para imagens placeholder mais bonitas
-        $categorySlug = strtolower(str_replace(' ', '-', $category));
+        $total = (int) $this->pdo->query('SELECT COUNT(*) FROM products')->fetchColumn();
+        $categoryStmt = $this->pdo->query('SELECT category, COUNT(*) as count FROM products GROUP BY category ORDER BY count DESC');
+
+        return [
+            'total' => $total,
+            'categories' => $categoryStmt->fetchAll(PDO::FETCH_ASSOC),
+        ];
+    }
+
+    private function fakerNameForCategory($faker, string $category): string
+    {
+        $categoryProducts = $this->categoryProducts[$category] ?? [];
+        $customNames = array_merge($categoryProducts, [
+            $faker->sentence(3),
+            $faker->sentence(2),
+        ]);
+
+        return $faker->randomElement($customNames);
+    }
+
+    private function generateImageUrl(string $category): string
+    {
         return sprintf(
             'https://placehold.co/400x400/FF6B6B/ffffff?text=%s',
             urlencode(substr($category, 0, 15))

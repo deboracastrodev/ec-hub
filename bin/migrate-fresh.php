@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use Database\Seeders\ProductSeeder;
-
 require_once __DIR__ . '/../vendor/autoload.php';
 
 $config = [
@@ -36,20 +34,12 @@ try {
         ]
     );
 
-    echo "✅ Conectado ao banco de dados\n";
+    echo "🧼 Limpando schema existente...\n";
+    $pdo->exec('DROP TABLE IF EXISTS products');
+    echo "✅ Tabela products removida\n\n";
 
-    $seeder = new ProductSeeder($pdo);
-    $summary = $seeder->run();
-
-    echo "📊 Resumo:\n";
-    echo "  Total de produtos: {$summary['total']}\n";
-    echo "\n  Por categoria:\n";
-    foreach ($summary['categories'] as $cat) {
-        echo "    - {$cat['category']}: {$cat['count']}\n";
-    }
+    require __DIR__ . '/migrate.php';
 } catch (PDOException $e) {
     echo "❌ Erro: " . $e->getMessage() . "\n";
     exit(1);
 }
-
-echo "\n✨ Seeder concluído com sucesso!\n";

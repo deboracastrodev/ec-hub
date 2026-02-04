@@ -80,12 +80,12 @@ docker-compose exec -T app composer install --no-interaction
 # Executar migrations
 echo ""
 echo "🗄️  Executando migrations..."
-docker-compose exec -T app php bin/hyperf.php migrate
+docker-compose exec -T app php bin/migrate.php
 
 # Executar seeders
 echo ""
 echo "🌱 Populando banco de dados com produtos fictícios..."
-docker-compose exec -T app php bin/hyperf.php db:seed
+docker-compose exec -T app php bin/seed.php
 
 echo ""
 echo -e "${GREEN}✅ Setup completo!${NC}"

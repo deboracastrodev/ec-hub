@@ -21,6 +21,33 @@ $productRepository = $container['repositories']['product']($container['pdo']);
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
 
+// Static files serving - serve assets before routing
+$staticFile = __DIR__ . $uri;
+if (file_exists($staticFile) && is_file($staticFile)) {
+    // Determine MIME type
+    $extension = pathinfo($staticFile, PATHINFO_EXTENSION);
+    $mimeTypes = [
+        'css' => 'text/css',
+        'js' => 'application/javascript',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'svg' => 'image/svg+xml',
+        'ico' => 'image/x-icon',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf',
+        'eot' => 'application/vnd.ms-fontobject',
+    ];
+
+    $mimeType = $mimeTypes[$extension] ?? 'application/octet-stream';
+    header('Content-Type: ' . $mimeType);
+    header('Cache-Control: public, max-age=31536000'); // 1 year cache
+    readfile($staticFile);
+    exit;
+}
+
 // Route mapping
 $routes = [
     'GET /' => ['controller' => 'ProductController', 'action' => 'index'],

@@ -11,6 +11,8 @@ services:
       - ./config:/var/www/html/config
       - ./bin:/var/www/html/bin
       - ./database:/var/www/html/database
+      - ./public:/var/www/html/public
+      - ./views:/var/www/html/views
       - composer-cache:/root/.composer/cache
     environment:
       - APP_ENV=local
