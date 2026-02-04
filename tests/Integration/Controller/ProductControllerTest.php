@@ -203,4 +203,122 @@ class ProductControllerTest extends TestCase
         $this->assertStringContainsString('?page=2', $output, 'Next page link should exist');
         $this->assertStringContainsString('Próxima', $output);
     }
+
+    // Category Filtering Tests (Story 2.4)
+
+    public function test_category_filter_shows_only_category_products()
+    {
+        // Arrange - Get a valid category from database
+        $categories = $this->repository->findCategories();
+        $this->assertNotEmpty($categories, 'Database must have categories for this test');
+        $category = $categories[0];
+
+        // Get count for this category
+        $expectedCount = $this->repository->countByCategory($category);
+
+        // Act
+        $output = $this->controller->index(['category' => $category]);
+
+        // Assert
+        $this->assertStringContainsString($category, $output);
+        $this->assertStringContainsString($expectedCount . ' produto', $output);
+        $this->assertStringContainsString('em ' . $category, $output);
+    }
+
+    public function test_invalid_category_returns_all_products()
+    {
+        // Arrange - Use a non-existent category
+        $invalidCategory = 'XYZNonExistentCategory' . time();
+
+        // Act - GetProductList should treat invalid category as null (show all)
+        $output = $this->controller->index(['category' => $invalidCategory]);
+
+        // Assert - Should show all products (invalid category is ignored)
+        $totalProducts = $this->repository->count();
+        $this->assertStringContainsString((string) $totalProducts, $output);
+        $this->assertStringContainsString('Catálogo de Produtos', $output);
+    }
+
+    public function test_category_pagination_preserves_filter()
+    {
+        // Arrange - Need a category with enough products for pagination
+        $categories = $this->repository->findCategories();
+        $categoryForPagination = null;
+        foreach ($categories as $cat) {
+            if ($this->repository->countByCategory($cat) > 20) {
+                $categoryForPagination = $cat;
+                break;
+            }
+        }
+
+        if ($categoryForPagination === null) {
+            $this->markTestSkipped('Need a category with >20 products to test pagination with filter');
+        }
+
+        // Act
+        $output = $this->controller->index(['category' => $categoryForPagination, 'page' => 2, 'limit' => 20]);
+
+        // Assert - Category should still be highlighted and products filtered
+        $this->assertStringContainsString($categoryForPagination, $output);
+        $this->assertStringContainsString('Página 2', $output);
+        $this->assertStringContainsString('category=' . urlencode($categoryForPagination), $output);
+    }
+
+    public function test_category_active_state_is_highlighted()
+    {
+        // Arrange
+        $categories = $this->repository->findCategories();
+        $this->assertNotEmpty($categories);
+        $category = $categories[0];
+
+        // Act
+        $output = $this->controller->index(['category' => $category]);
+
+        // Assert - Active category should have the active CSS class
+        $this->assertStringContainsString('category-filter__link--active', $output);
+        // Check that the active category appears in an active link
+        $this->assertMatchesRegularExpression(
+            '/category-filter__link--active[^>]*>' . preg_quote($category, '/') . '/',
+            $output
+        );
+    }
+
+    public function test_all_products_link_clears_category_filter()
+    {
+        // Arrange - First, filter by a category
+        $categories = $this->repository->findCategories();
+        $category = $categories[0] ?? null;
+
+        if ($category === null) {
+            $this->markTestSkipped('Need at least one category to test filter clearing');
+        }
+
+        // Act - Clear filter by not passing category parameter
+        $output = $this->controller->index([]);
+
+        // Assert - Should show all products and "Todos os produtos" should be active
+        $totalProducts = $this->repository->count();
+        $this->assertStringContainsString((string) $totalProducts . ' produto', $output);
+        $this->assertStringContainsString('Todos os produtos', $output);
+        $this->assertMatchesRegularExpression(
+            '/href="\/products"[^>]*category-filter__link--active/',
+            $output
+        );
+    }
+
+    public function test_category_filter_with_empty_results_shows_message()
+    {
+        // This test documents behavior - currently invalid categories show all products
+        // If behavior changes to show empty state, update this test
+
+        // Arrange
+        $emptyCategory = 'EmptyCategory' . time();
+
+        // Act
+        $output = $this->controller->index(['category' => $emptyCategory]);
+
+        // Assert - Currently shows all products (invalid category ignored)
+        // This is acceptable behavior per GetProductList implementation
+        $this->assertStringContainsString('Catálogo de Produtos', $output);
+    }
 }

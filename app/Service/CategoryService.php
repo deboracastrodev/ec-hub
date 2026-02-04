@@ -15,6 +15,7 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 class CategoryService
 {
     private ProductRepositoryInterface $productRepository;
+    private ?array $categoriesCache = null;
 
     public function __construct(ProductRepositoryInterface $productRepository)
     {
@@ -28,7 +29,10 @@ class CategoryService
      */
     public function getAllCategories(): array
     {
-        return $this->productRepository->findCategories();
+        if ($this->categoriesCache === null) {
+            $this->categoriesCache = $this->productRepository->findCategories();
+        }
+        return $this->categoriesCache;
     }
 
     /**
