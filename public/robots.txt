@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://ec-hub.example.com/sitemap.xml
+
+# Disallow admin if exists
+# Disallow: /admin

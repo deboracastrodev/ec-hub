@@ -1,66 +1,116 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="no-js">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script>
+        document.documentElement.classList.remove('no-js');
+        document.documentElement.classList.add('js');
+    </script>
+
+    {# SEO Meta Tags #}
     <title>{% block title %}ec-hub - E-commerce com ML{% endblock %}</title>
-    <meta name="description" content="Catálogo de produtos do ec-hub - E-commerce com Machine Learning em PHP 7.4">
+    <meta name="description" content="{% block description %}Catálogo de produtos do ec-hub - E-commerce com Machine Learning em PHP 7.4{% endblock %}">
+    <meta name="keywords" content="{% block keywords %}e-commerce, produtos, compras, machine learning, php 7.4, recomendações{% endblock %}">
+    <link rel="canonical" href="{% block canonical %}https://ec-hub.example.com/{% endblock %}">
+
+    {# Open Graph Tags #}
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:site_name" content="{% block og_site_name %}ec-hub{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}ec-hub - E-commerce com ML em PHP 7.4{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Catálogo de produtos do ec-hub{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}https://ec-hub.example.com/assets/images/og-default.jpg{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}https://ec-hub.example.com/{% endblock %}">
+    <meta property="og:locale" content="pt_BR">
+
+    {# Twitter Card Tags #}
+    <meta name="twitter:card" content="{% block twitter_card %}summary_large_image{% endblock %}">
+    <meta name="twitter:site" content="{% block twitter_site %}@echub{% endblock %}">
+    <meta name="twitter:title" content="{% block twitter_title %}ec-hub - E-commerce com ML{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}Catálogo de produtos do ec-hub{% endblock %}">
+    <meta name="twitter:image" content="{% block twitter_image %}https://ec-hub.example.com/assets/images/og-default.jpg{% endblock %}">
+
+    {# Structured Data #}
+    {% block structured_data %}{% endblock %}
+
+    {# Stylesheet #}
     <link rel="stylesheet" href="/assets/css/main.css">
 </head>
 <body>
-    <header class="header">
+    <a href="#main-content" class="skip-link">Pular para o conteúdo</a>
+    <a href="#main-menu" class="skip-link">Pular para a navegação</a>
+
+    <header class="header" id="main-nav" role="banner">
         <div class="header__container">
             <a href="/" class="header__logo">ec-hub</a>
-            <button class="header__menu-btn" aria-label="Abrir menu" aria-expanded="false">
+
+            {# Mobile Menu Button #}
+            <button class="header__menu-btn"
+                    aria-label="Abrir menu"
+                    aria-expanded="false"
+                    aria-controls="main-menu">
                 <span class="header__menu-icon"></span>
                 <span class="header__menu-icon"></span>
                 <span class="header__menu-icon"></span>
             </button>
-            <nav class="nav" id="main-nav">
-                <ul class="nav__menu">
-                    <li><a href="/" class="nav__link">Home</a></li>
-                    <li><a href="/products" class="nav__link">Produtos</a></li>
-                    <li><a href="/metrics" class="nav__link">Métricas</a></li>
+
+            <nav class="nav" id="main-menu" role="navigation" aria-label="Navegação principal">
+                <ul class="nav__menu" role="menubar">
+                    <li role="none">
+                        <a href="/" class="nav__link" role="menuitem">Home</a>
+                    </li>
+                    <li role="none">
+                        <a href="/products" class="nav__link" role="menuitem">Produtos</a>
+                    </li>
+                    <li role="none">
+                        <a href="/metrics" class="nav__link" role="menuitem">Métricas</a>
+                    </li>
                 </ul>
             </nav>
         </div>
     </header>
 
-    <main class="main">
+    <main class="main" id="main-content" role="main">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="footer">
+    <footer class="footer" role="contentinfo">
         <div class="footer__container">
             <p>&copy; 2026 ec-hub - E-commerce com ML em PHP 7.4 | Clean Architecture + DDD</p>
         </div>
     </footer>
 
     <script>
-        // Mobile menu toggle
-        const menuBtn = document.querySelector('.header__menu-btn');
-        const nav = document.querySelector('.nav');
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.classList.add('page-loaded');
 
-        menuBtn.addEventListener('click', () => {
-            const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
-            menuBtn.setAttribute('aria-expanded', !isExpanded);
-            nav.classList.toggle('nav--open');
-        });
+            const menuBtn = document.querySelector('.header__menu-btn');
+            const nav = document.querySelector('#main-menu');
 
-        // Close menu when clicking a link
-        document.querySelectorAll('.nav__link').forEach(link => {
-            link.addEventListener('click', () => {
-                menuBtn.setAttribute('aria-expanded', 'false');
-                nav.classList.remove('nav--open');
-            });
-        });
-
-        // Close menu when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!nav.contains(e.target) && !menuBtn.contains(e.target)) {
-                menuBtn.setAttribute('aria-expanded', 'false');
-                nav.classList.remove('nav--open');
+            if (!menuBtn || !nav) {
+                return;
             }
+
+            menuBtn.addEventListener('click', () => {
+                const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                menuBtn.setAttribute('aria-expanded', String(!isExpanded));
+                nav.classList.toggle('nav--open');
+            });
+
+            document.querySelectorAll('.nav__link').forEach(link => {
+                link.addEventListener('click', () => {
+                    menuBtn.setAttribute('aria-expanded', 'false');
+                    nav.classList.remove('nav--open');
+                });
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!nav.contains(e.target) && !menuBtn.contains(e.target)) {
+                    menuBtn.setAttribute('aria-expanded', 'false');
+                    nav.classList.remove('nav--open');
+                }
+            });
         });
     </script>
 </body>

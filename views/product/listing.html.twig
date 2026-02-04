@@ -11,13 +11,23 @@
         </p>
     </header>
 
+    <div class="product-listing__skeleton" aria-hidden="true">
+        {% for i in 1..4 %}
+        <article class="product-listing__skeleton-card">
+            <div class="skeleton skeleton--image"></div>
+            <div class="skeleton skeleton--text"></div>
+            <div class="skeleton skeleton--text-sm"></div>
+        </article>
+        {% endfor %}
+    </div>
+
     {% if categories is defined and categories is not empty %}
     <aside class="category-filter" aria-label="Filtro de categoria">
         <h2 class="category-filter__title">Categorias</h2>
         <nav class="category-filter__nav">
-            <a href="/products" class="category-filter__link {{ currentCategory is null ? 'category-filter__link--active' : '' }}">Todos os produtos <span class="category-filter__count">{{ totalAllProducts }}</span></a>
+            <a href="/products" class="category-filter__link {{ currentCategory is null ? 'category-filter__link--active' : '' }}" {{ currentCategory is null ? 'aria-current="page"' : '' }}>Todos os produtos <span class="category-filter__count">{{ totalAllProducts }}</span></a>
             {% for category, count in categories %}
-            <a href="?category={{ category|url_encode }}" class="category-filter__link {{ currentCategory == category ? 'category-filter__link--active' : '' }}">{{ category }} <span class="category-filter__count">{{ count }}</span></a>
+            <a href="?category={{ category|url_encode }}" class="category-filter__link {{ currentCategory == category ? 'category-filter__link--active' : '' }}" {% if currentCategory == category %}aria-current="page"{% endif %}>{{ category }} <span class="category-filter__count">{{ count }}</span></a>
             {% endfor %}
         </nav>
     </aside>
@@ -26,16 +36,19 @@
     {% if products is not empty %}
     <div class="product-grid">
         {% for product in products %}
+            {% set imageUrl = product.image_url %}
+            {% set separator = ('?' in imageUrl) ? '&' : '?' %}
+            {% set srcsetList = [
+                imageUrl ~ separator ~ 'w=400 400w',
+                imageUrl ~ separator ~ 'w=600 600w',
+                imageUrl ~ separator ~ 'w=800 800w'
+            ] %}
             {% set productIdentifier = (product.slug ?? product.id)|url_encode %}
             <article class="product-card">
                 <a href="/products/{{ productIdentifier }}" class="product-card__link">
                     <img
-                        src="{{ product.image_url }}"
-                        srcset="
-                            {{ product.image_url }}?w=400 400w,
-                            {{ product.image_url }}?w=600 600w,
-                            {{ product.image_url }}?w=800 800w
-                        "
+                        src="{{ imageUrl }}"
+                        srcset="{{ srcsetList|join(', ') }}"
                         sizes="
                             (max-width: 767px) 100vw,
                             (max-width: 1023px) 50vw,
@@ -49,7 +62,7 @@
                         onerror="this.src='https://placehold.co/400x300/FF6B6B/ffffff?text=Sem+imagem'"
                     />
                     <div class="product-card__content">
-                        <h2 class="product-card__name">{{ product.name }}</h2>
+                        <h3 class="product-card__name">{{ product.name }}</h3>
                         <span class="product-card__category">{{ product.category }}</span>
                         <span class="product-card__price">
                             R$ {{ product.price|number_format(2, ',', '.') }}
