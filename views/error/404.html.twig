@@ -1,0 +1,15 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}404 - Não encontrado | ec-hub{% endblock %}
+
+{% block content %}
+<main class="error-page">
+    <div class="error-page__content">
+        <h1 class="error-page__code">404</h1>
+        <p class="error-page__message">{{ message ?? 'Página não encontrada' }}</p>
+        <a href="/products" class="error-page__link">
+            &larr; Ver todos os produtos
+        </a>
+    </div>
+</main>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}Produtos - ec-hub{% endblock %}
+
+{% block content %}
+<main class="product-listing">
+    <header class="product-listing__header">
+        <h1 class="product-listing__title">Catálogo de Produtos</h1>
+        <p class="product-listing__count">
+            {{ totalProducts }} produtos encontrados
+        </p>
+    </header>
+
+    <div class="product-grid">
+        {% for product in products %}
+            <article class="product-card">
+                <a href="/products/{{ product.id }}" class="product-card__link">
+                    <img
+                        src="{{ product.image_url }}"
+                        alt="{{ product.name }}"
+                        class="product-card__image"
+                        loading="lazy"
+                        onerror="this.src='https://placehold.co/400x300/FF6B6B/ffffff?text=Sem+imagem'"
+                    />
+                    <div class="product-card__content">
+                        <h2 class="product-card__name">{{ product.name }}</h2>
+                        <span class="product-card__category">{{ product.category }}</span>
+                        <span class="product-card__price">
+                            R$ {{ product.price|number_format(2, ',', '.') }}
+                        </span>
+                    </div>
+                </a>
+            </article>
+        {% endfor %}
+    </div>
+
+    {% if totalPages > 1 %}
+        <nav class="pagination" aria-label="Paginação">
+            {% if currentPage > 1 %}
+                <a href="?page={{ currentPage - 1 }}&limit={{ limit }}" class="pagination__prev">
+                    &larr; Anterior
+                </a>
+            {% endif %}
+
+            <span class="pagination__info">
+                Página {{ currentPage }} de {{ totalPages }}
+            </span>
+
+            {% if currentPage < totalPages %}
+                <a href="?page={{ currentPage + 1 }}&limit={{ limit }}" class="pagination__next">
+                    Próxima &rarr;
+                </a>
+            {% endif %}
+        </nav>
+    {% endif %}
+
+    {% if renderTime is defined %}
+        <p class="product-listing__debug">
+            Renderizado em {{ renderTime|number_format(2) }}ms
+        </p>
+    {% endif %}
+</main>
+{% endblock %}

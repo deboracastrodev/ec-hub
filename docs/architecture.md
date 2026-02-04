@@ -167,7 +167,7 @@ Não usaremos starter template. Construiremos do zero seguindo:
 **Styling Solution (Frontend):**
 
 - MPA (Multi-Page Application) com Server-Side Rendering
-- Twig templates (integrado ao Hyperf)
+- **Twig standalone** (twig/twig via Composer) - **Simplificação**: Não Hyperf View Integration
 - CSS vanilla com BEM methodology (simples, manutenível)
 - Progressive enhancement (mobile-first)
 - WCAG AA compliance (contrast 4.5:1, ARIA)
@@ -248,14 +248,34 @@ app/
 
 | Decisão | Tecnologia | Versão | Rationale |
 |---------|-----------|--------|-----------|
-| **Database** | MySQL 8.x | 8.x | Padrão, bem documentado, Hyperf compatibility |
-| **Schema Mgmt** | Hyperf Database Migrations | - | Versionamento de schema, rollback capability |
-| **Query Layer** | Hyperf Database (Query Builder) | - | Mais controle que ORM, demonstra SQL knowledge |
+| **Database** | MySQL 8.x | 8.x | Padrão, bem documentado, compatível com PDO nativo |
+| **Schema Mgmt** | PHP puro + PDO | - | **Simplificação**: Removido Hyperf Database devido a conflitos de dependência (73 pacotes → ~20 pacotes). Scripts PHP nativos em `bin/migrate.php` e `bin/seed.php`. |
+| **Query Layer** | PDO nativo | - | **Simplificação**: PDO direto (vem no PHP 7.4) em vez de Hyperf Database. Menos dependências, mais controle, melhor performance. |
 | **Model Pattern** | Data Mapper | - | Domain models independentes de DB (Clean Architecture) |
 | **Seeding** | Faker + Golden Dataset | - | Dados realistas + casos específicos para testar ML |
-| **Caching** | Hyperf Redis wrapper | 7.x | Abstração sobre Redis, fácil de testar |
+| **Caching** | PHP Redis (predis/redis) | 7.x | Abstração sobre Redis, fácil de testar |
 
 **Affects:** FR1-FR6 (Product Browsing), FR15-FR20 (Behavior Tracking), FR86-FR94 (Shopping Cart)
+
+> **⚠️ ADR-001: Remoção do Hyperf Database** (2026-02-03)
+>
+> **Contexto:** Durante a Story 2.1, conflitos de dependência ocorreram:
+> - `hyperf/router` não encontrado no composer
+> - `rubix/ml` com issues de estabilidade (minimum-stability)
+> - 73 pacotes instalados vs ~20 pacotes necessários
+>
+> **Decisão:** Simplificar usando PHP puro + PDO nativo
+> - Migrations via `bin/migrate.php` (script PHP com PDO)
+> - Seed via `bin/seed.php` (script PHP com Faker)
+> - Repository implementations usando PDO diretamente
+>
+> **Benefícios:**
+> - Redução de ~53 pacotes de dependência
+> - Setup mais simples (sem framework dependencies)
+> - Melhor performance (sem indireções do framework)
+> - Clean Architecture mantida (Domain independente)
+>
+> **Trade-off:** Perde-se features "batteries-included" do Hyperf (ORM, Query Builder avançado), mas ganha-se simplicidade e controle total.
 
 ---
 
@@ -291,11 +311,13 @@ app/
 
 | Decisão | Tecnologia | Versão | Rationale |
 |---------|-----------|--------|-----------|
+| **Template Engine** | Twig standalone | 3.x | **Simplificação**: `twig/twig` via Composer ao invés de Hyperf View Integration. Leve, simples, manutenível. |
 | **Template Approach** | Component-based (Twig macros) | - | Reutilizável, `{% component %}` patterns |
 | **CSS Organization** | BEM + Component-scoped | - | `product-list.css`, `dashboard.css` - manutenível |
-| **State Management** | Server-only (Swoole session) | - | MPA puro, sem JS complexo no frontend |
+| **State Management** | Server-only (PHP sessions) | - | MPA puro, sem JS complexo no frontend |
 | **Form Handling** | Multipart + Server Validation | - | Padrão HTML, fácil de debugar |
 | **JavaScript** | Vanilla ES6+ | - | Para dashboard `/metrics` (gráficos simples), sem framework |
+| **Routing** | PHP puro (roteamento simples) | - | **Simplificação**: Router baseado em query params ou roteador leve (ex: nikic/fast-route) ao invés de Hyperf Router |
 
 **Affects:** FR1-FR28 (All user-facing features), WCAG AA compliance (NFR-A11Y-01 to NFR-A11Y-10)
 
@@ -334,6 +356,56 @@ app/
 - Swoole workers → Event-driven architecture → ML recommendation engine
 - Clean Architecture → All layers → Domain independence from infrastructure
 - Docker Compose → All services → Local development parity
+
+---
+
+## Architecture Decision Records (ADRs)
+
+### ADR-001: Remoção do Hyperf Database/Router em favor de PHP puro + PDO
+
+**Status:** Aceito
+**Data:** 2026-02-03
+**Contexto:** Story 2.1 - Product Database & Seed Data
+
+**Problema:**
+Durante a implementação da Story 2.1, conflitos de dependência ocorreram ao tentar usar Hyperf:
+
+```
+Problem 1: Root composer.json requires hyperf/router, it could not be found
+Problem 2: Root composer.json requires rubix/ml ^3.0, found rubix/ml[3.0.x-dev] but it does not match your minimum-stability
+```
+
+- Hyperf Database + Router + View adiciona ~53 pacotes extras
+- Complexidade desnecessária para um projeto iniciante/POC
+- Conflitos de versão entre dependências
+
+**Decisão:**
+Simplificar para PHP puro + PDO + Twig standalone:
+
+| Componente | Antes (Hyperf) | Depois (PHP puro) |
+|-----------|----------------|-------------------|
+| Migrations | Hyperf Database | `bin/migrate.php` com PDO |
+| Seed | Hyperf Seed | `bin/seed.php` com Faker |
+| Database | Hyperf Database (Query Builder) | PDO nativo |
+| Templates | Hyperf View Integration | Twig standalone (`twig/twig`) |
+| Routing | Hyperf Router | PHP puro ou `nikic/fast-route` |
+
+**Benefícios:**
+- ✅ **~53 pacotes removidos** (73 → ~20 pacotes)
+- ✅ **Setup mais simples** (sem framework dependencies)
+- ✅ **Melhor performance** (sem indireções do framework)
+- ✅ **Clean Architecture mantida** (Domain independente de infraestrutura)
+- ✅ **Mais controle** sobre o código
+
+**Trade-offs:**
+- ❌ Perda de features "batteries-included" do Hyperf
+- ❌ Mais código boilerplate (ex: roteamento manual)
+- ❌ Sem ferramentas de developer experience do Hyperf
+
+**Consequências:**
+- Todas as referências a `Hyperf\Database`, `Hyperf\HttpServer\Router`, e `Hyperf\View` devem ser removidas
+- Stories subsequentes devem usar PDO nativo, Twig standalone, e roteamento simples
+- Migration paths futuras: Evoluir gradualmente ou adotar Hyperf apenas quando necessário
 
 ---
 

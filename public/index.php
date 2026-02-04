@@ -5,71 +5,72 @@ declare(strict_types=1);
 /**
  * ec-hub Application Entry Point
  *
- * Clean Architecture 4-Layer PHP Application
- * Layer 1 (Controller) -> Layer 2 (Application) -> Layer 3 (Domain) -> Layer 4 (Infrastructure)
+ * Minimal web-facing entry point.
+ * Sensitive logic is in config/bootstrap.php (outside web root).
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-// Load environment variables
-if (file_exists(__DIR__ . '/../.env')) {
-    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-    $dotenv->load();
+// Bootstrap application - sensitive logic is outside web root
+$container = require __DIR__ . '/../config/bootstrap.php';
+
+$twig = $container['twig'];
+$productRepository = $container['repositories']['product']($container['pdo']);
+
+// Simple router
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$method = $_SERVER['REQUEST_METHOD'];
+
+// Route mapping
+$routes = [
+    'GET /' => ['controller' => 'ProductController', 'action' => 'index'],
+    'GET /products' => ['controller' => 'ProductController', 'action' => 'index'],
+];
+
+// Pattern routes (with parameters)
+$patternRoutes = [
+    'GET /products/(\d+)' => ['controller' => 'ProductController', 'action' => 'show'],
+];
+
+// Match exact routes first
+$routeKey = "$method $uri";
+$matchedRoute = $routes[$routeKey] ?? null;
+$params = [];
+
+// If no exact match, try pattern routes
+if (!$matchedRoute) {
+    foreach ($patternRoutes as $pattern => $route) {
+        if (preg_match('#^' . $pattern . '$#', $uri, $matches)) {
+            $matchedRoute = $route;
+            $params = array_slice($matches, 1);
+            break;
+        }
+    }
 }
 
-// Define application constants
-define('BASE_PATH', __DIR__ . '/..');
-define('APP_START_TIME', microtime(true));
+// 404 if no route matched
+if (!$matchedRoute) {
+    http_response_code(404);
+    echo $twig->render('error/404.html.twig', ['message' => 'Página não encontrada']);
+    exit;
+}
 
-// Initialize Swoole HTTP Server
-$server = new Swoole\Http\Server(
-    getenv('SWOOLE_HTTP_SERVER_HOST') ?: '0.0.0.0',
-    (int) (getenv('SWOOLE_HTTP_SERVER_PORT') ?: 9501)
-);
+// Create controller with dependencies
+$controllerClass = "App\\Controller\\{$matchedRoute['controller']}";
+$action = $matchedRoute['action'];
+$controller = new $controllerClass($productRepository, $twig);
 
-$server->set([
-    'worker_num' => (int) (getenv('SWOOLE_WORKER_NUM') ?: 4),
-    'task_worker_num' => (int) (getenv('SWOOLE_TASK_WORKER_NUM') ?: 2),
-    'enable_coroutine' => true,
-    'max_request' => (int) (getenv('SWOOLE_MAX_REQUEST') ?: 5000),
-    'hook_flags' => SWOOLE_HOOK_ALL,
-]);
+// Extract query params for index action
+$queryParams = $_GET;
 
-// Request handler
-$server->on('request', function (Swoole\Http\Request $request, Swoole\Http\Response $response) {
-    try {
-        // Create PSR-7 request from Swoole request
-        $psrRequest = App\Shared\Helper\RequestFactory::createFromSwoole($request);
+// Call controller action
+if ($action === 'show') {
+    $id = (int) $params[0];
+    $output = $controller->$action($id);
+} else {
+    $output = $controller->$action($queryParams);
+}
 
-        // Route to appropriate controller
-        $router = new App\Shared\Router\SimpleRouter();
-        $controllerResponse = $router->dispatch($psrRequest);
-
-        // Send response
-        $response->status($controllerResponse->getStatusCode());
-        $response->end($controllerResponse->getBody());
-
-    } catch (Throwable $e) {
-        // Error handling
-        $errorResponse = App\Shared\Helper\ErrorBuilder::fromException($e);
-
-        $response->status($errorResponse['status']);
-        $response->header('Content-Type', 'application/problem+json');
-        $response->end(json_encode($errorResponse));
-    }
-});
-
-// Server start callback
-$server->on('start', function (Swoole\Http\Server $server) {
-    echo "🚀 ec-hub server started on http://{$server->host}:{$server->port}\n";
-    echo "📁 Clean Architecture 4-Layer Application\n";
-    echo "✨ Ready to serve requests\n";
-});
-
-// Worker start callback
-$server->on('workerStart', function () {
-    echo "✅ Worker started\n";
-});
-
-// Start the server
-$server->start();
+// Send response
+header('Content-Type: text/html; charset=utf-8');
+echo $output;
