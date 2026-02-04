@@ -277,7 +277,7 @@ class ProductControllerTest extends TestCase
         // Assert - Active category should have the active CSS class
         $this->assertStringContainsString('category-filter__link--active', $output);
         // Check that the active category appears in an active link
-        $this->assertMatchesRegularExpression(
+        $this->assertRegExp(
             '/category-filter__link--active[^>]*>' . preg_quote($category, '/') . '/',
             $output
         );
@@ -300,7 +300,7 @@ class ProductControllerTest extends TestCase
         $totalProducts = $this->repository->count();
         $this->assertStringContainsString((string) $totalProducts . ' produto', $output);
         $this->assertStringContainsString('Todos os produtos', $output);
-        $this->assertMatchesRegularExpression(
+        $this->assertRegExp(
             '/href="\/products"[^>]*category-filter__link--active/',
             $output
         );

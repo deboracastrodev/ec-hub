@@ -35,9 +35,21 @@
                 <a href="/products/{{ productIdentifier }}" class="product-card__link">
                     <img
                         src="{{ product.image_url }}"
+                        srcset="
+                            {{ product.image_url }}?w=400 400w,
+                            {{ product.image_url }}?w=600 600w,
+                            {{ product.image_url }}?w=800 800w
+                        "
+                        sizes="
+                            (max-width: 767px) 100vw,
+                            (max-width: 1023px) 50vw,
+                            33vw
+                        "
                         alt="{{ product.name }}"
                         class="product-card__image"
                         loading="lazy"
+                        width="400"
+                        height="300"
                         onerror="this.src='https://placehold.co/400x300/FF6B6B/ffffff?text=Sem+imagem'"
                     />
                     <div class="product-card__content">

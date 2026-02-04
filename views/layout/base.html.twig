@@ -11,7 +11,12 @@
     <header class="header">
         <div class="header__container">
             <a href="/" class="header__logo">ec-hub</a>
-            <nav class="nav">
+            <button class="header__menu-btn" aria-label="Abrir menu" aria-expanded="false">
+                <span class="header__menu-icon"></span>
+                <span class="header__menu-icon"></span>
+                <span class="header__menu-icon"></span>
+            </button>
+            <nav class="nav" id="main-nav">
                 <ul class="nav__menu">
                     <li><a href="/" class="nav__link">Home</a></li>
                     <li><a href="/products" class="nav__link">Produtos</a></li>
@@ -30,5 +35,33 @@
             <p>&copy; 2026 ec-hub - E-commerce com ML em PHP 7.4 | Clean Architecture + DDD</p>
         </div>
     </footer>
+
+    <script>
+        // Mobile menu toggle
+        const menuBtn = document.querySelector('.header__menu-btn');
+        const nav = document.querySelector('.nav');
+
+        menuBtn.addEventListener('click', () => {
+            const isExpanded = menuBtn.getAttribute('aria-expanded') === 'true';
+            menuBtn.setAttribute('aria-expanded', !isExpanded);
+            nav.classList.toggle('nav--open');
+        });
+
+        // Close menu when clicking a link
+        document.querySelectorAll('.nav__link').forEach(link => {
+            link.addEventListener('click', () => {
+                menuBtn.setAttribute('aria-expanded', 'false');
+                nav.classList.remove('nav--open');
+            });
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!nav.contains(e.target) && !menuBtn.contains(e.target)) {
+                menuBtn.setAttribute('aria-expanded', 'false');
+                nav.classList.remove('nav--open');
+            }
+        });
+    </script>
 </body>
 </html>
