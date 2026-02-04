@@ -54,9 +54,9 @@ $routes = [
     'GET /products' => ['controller' => 'ProductController', 'action' => 'index'],
 ];
 
-// Pattern routes (with parameters)
+// Pattern routes (with parameters) - pattern is URI only, method is checked separately
 $patternRoutes = [
-    'GET /products/(\d+)' => ['controller' => 'ProductController', 'action' => 'show'],
+    '/products/(\d+)' => ['method' => 'GET', 'controller' => 'ProductController', 'action' => 'show'],
 ];
 
 // Match exact routes first
@@ -67,7 +67,7 @@ $params = [];
 // If no exact match, try pattern routes
 if (!$matchedRoute) {
     foreach ($patternRoutes as $pattern => $route) {
-        if (preg_match('#^' . $pattern . '$#', $uri, $matches)) {
+        if ($route['method'] === $method && preg_match('#^' . $pattern . '$#', $uri, $matches)) {
             $matchedRoute = $route;
             $params = array_slice($matches, 1);
             break;

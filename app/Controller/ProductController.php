@@ -68,6 +68,7 @@ class ProductController
         $product = $this->productRepository->findById($id);
 
         if (!$product) {
+            http_response_code(404);
             return $this->twig->render('error/404.html.twig', [
                 'message' => 'Produto não encontrado'
             ]);
