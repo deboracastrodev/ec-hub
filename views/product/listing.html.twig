@@ -1,13 +1,13 @@
 {% extends 'layout/base.html.twig' %}
 
-{% block title %}{{ currentCategory ? currentCategory ~ ' - ' : '' }}Produtos - ec-hub{% endblock %}
+{% block title %}{{ currentCategoryLabel ? currentCategoryLabel ~ ' - ' : '' }}Produtos - ec-hub{% endblock %}
 
 {% block content %}
 <main class="product-listing">
     <header class="product-listing__header">
-        <h1 class="product-listing__title">{{ currentCategory ? currentCategory : 'Catálogo de Produtos' }}</h1>
+        <h1 class="product-listing__title">{{ currentCategoryLabel ? currentCategoryLabel : 'Catálogo de Produtos' }}</h1>
         <p class="product-listing__count">
-            {{ totalProducts }} {{ currentCategory ? 'produto' ~ (totalProducts > 1 ? 's' : '') ~ ' em ' ~ currentCategory : 'produto' ~ (totalProducts > 1 ? 's' : '') ~ ' encontrado' ~ (totalProducts > 1 ? 's' : '') }}
+            {{ totalProducts }} {{ currentCategoryLabel ? 'produto' ~ (totalProducts > 1 ? 's' : '') ~ ' em ' ~ currentCategoryLabel : 'produto' ~ (totalProducts > 1 ? 's' : '') ~ ' encontrado' ~ (totalProducts > 1 ? 's' : '') }}
         </p>
     </header>
 
@@ -27,6 +27,7 @@
     </aside>
     {% endif %}
 
+    {% if products is not empty %}
     <div class="product-grid">
         {% for product in products %}
             {% set productIdentifier = (product.slug ?? product.id)|url_encode %}
@@ -50,6 +51,13 @@
             </article>
         {% endfor %}
     </div>
+    {% else %}
+    <div class="product-listing__empty">
+        <p class="product-listing__empty-title">Nenhum produto encontrado{% if currentCategoryLabel %} para "{{ currentCategoryLabel }}"{% endif %}.</p>
+        <p class="product-listing__empty-subtitle">Tente outra categoria ou veja todos os produtos.</p>
+        <a href="/products" class="product-listing__empty-link">&larr; Ver todos os produtos</a>
+    </div>
+    {% endif %}
 
     {% set paginationBase = paginationBaseQuery ?? '' %}
     {% set queryPrefix = paginationBase ? paginationBase ~ '&' : '' %}

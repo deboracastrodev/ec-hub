@@ -36,16 +36,17 @@ class GetProductList
         $offset = ($page - 1) * $limit;
 
         $requestedCategory = $queryParams['category'] ?? null;
-        $category = is_string($requestedCategory) ? trim($requestedCategory) : null;
-        if ($category !== null && !$this->categoryService->categoryExists($category)) {
-            $category = null;
-        }
+        $categoryInput = is_string($requestedCategory) ? trim($requestedCategory) : null;
+        $resolvedCategory = $categoryInput !== null && $categoryInput !== ''
+            ? $this->categoryService->resolveCategory($categoryInput)
+            : null;
 
         $totalAllProducts = $this->productRepository->count();
 
-        if ($category) {
-            $products = $this->productRepository->findByCategoryPaginated($category, $limit, $offset);
-            $totalProducts = $this->productRepository->countByCategory($category);
+        if ($categoryInput !== null && $categoryInput !== '') {
+            $categoryToQuery = $resolvedCategory ?? $categoryInput;
+            $products = $this->productRepository->findByCategoryPaginated($categoryToQuery, $limit, $offset);
+            $totalProducts = $this->productRepository->countByCategory($categoryToQuery);
         } else {
             $products = $this->productRepository->findAll($limit, $offset);
             $totalProducts = $totalAllProducts;
@@ -57,8 +58,10 @@ class GetProductList
         $baseParams = $queryParams;
         unset($baseParams['page']);
         $baseParams['limit'] = $limit;
-        if ($category) {
-            $baseParams['category'] = $category;
+        if ($resolvedCategory) {
+            $baseParams['category'] = $resolvedCategory;
+        } elseif ($categoryInput) {
+            $baseParams['category'] = $categoryInput;
         } else {
             unset($baseParams['category']);
         }
@@ -74,7 +77,11 @@ class GetProductList
             'totalAllProducts' => $totalAllProducts,
             'queryParams' => $queryParams,
             'categories' => $categoriesWithCounts,
-            'currentCategory' => $category,
+            'currentCategory' => $resolvedCategory,
+            'currentCategoryLabel' => $resolvedCategory ?? $categoryInput,
+            'categoryIsValid' => $resolvedCategory !== null,
+            'requestedCategory' => $categoryInput,
+            'hasNoProducts' => $totalProducts === 0,
             'paginationBaseQuery' => $paginationBaseQuery,
         ];
     }

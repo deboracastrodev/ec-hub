@@ -225,18 +225,18 @@ class ProductControllerTest extends TestCase
         $this->assertStringContainsString('em ' . $category, $output);
     }
 
-    public function test_invalid_category_returns_all_products()
+    public function test_invalid_category_shows_empty_state()
     {
         // Arrange - Use a non-existent category
         $invalidCategory = 'XYZNonExistentCategory' . time();
 
-        // Act - GetProductList should treat invalid category as null (show all)
+        // Act
         $output = $this->controller->index(['category' => $invalidCategory]);
 
-        // Assert - Should show all products (invalid category is ignored)
-        $totalProducts = $this->repository->count();
-        $this->assertStringContainsString((string) $totalProducts, $output);
-        $this->assertStringContainsString('Catálogo de Produtos', $output);
+        // Assert - Should show empty state message
+        $this->assertStringContainsString('Nenhum produto encontrado', $output);
+        $this->assertStringContainsString($invalidCategory, $output);
+        $this->assertStringContainsString('Ver todos os produtos', $output);
     }
 
     public function test_category_pagination_preserves_filter()
@@ -306,19 +306,22 @@ class ProductControllerTest extends TestCase
         );
     }
 
-    public function test_category_filter_with_empty_results_shows_message()
+    public function test_category_filter_accepts_category_without_accents()
     {
-        // This test documents behavior - currently invalid categories show all products
-        // If behavior changes to show empty state, update this test
+        // Arrange - find a category containing special characters (e.g., Eletrônicos)
+        $categories = $this->repository->findCategories();
+        if (!in_array('Eletrônicos', $categories, true)) {
+            $this->markTestSkipped('Category Eletrônicos not available in dataset');
+        }
 
-        // Arrange
-        $emptyCategory = 'EmptyCategory' . time();
+        $requestedCategory = 'Eletronicos'; // without accent
 
         // Act
-        $output = $this->controller->index(['category' => $emptyCategory]);
+        $output = $this->controller->index(['category' => $requestedCategory]);
 
-        // Assert - Currently shows all products (invalid category ignored)
-        // This is acceptable behavior per GetProductList implementation
-        $this->assertStringContainsString('Catálogo de Produtos', $output);
+        // Assert - Active link should reflect canonical category
+        $this->assertStringContainsString('Eletrônicos', $output);
+        $this->assertStringContainsString('category-filter__link--active', $output);
+        $this->assertStringContainsString('produto', $output);
     }
 }

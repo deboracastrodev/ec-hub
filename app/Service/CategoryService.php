@@ -16,6 +16,10 @@ class CategoryService
 {
     private ProductRepositoryInterface $productRepository;
     private ?array $categoriesCache = null;
+    /**
+     * @var array<string, string>
+     */
+    private array $normalizedCategoryMap = [];
 
     public function __construct(ProductRepositoryInterface $productRepository)
     {
@@ -29,10 +33,9 @@ class CategoryService
      */
     public function getAllCategories(): array
     {
-        if ($this->categoriesCache === null) {
-            $this->categoriesCache = $this->productRepository->findCategories();
-        }
-        return $this->categoriesCache;
+        $this->ensureCategoriesCache();
+
+        return $this->categoriesCache ?? [];
     }
 
     /**
@@ -43,8 +46,7 @@ class CategoryService
      */
     public function categoryExists(string $category): bool
     {
-        $categories = $this->getAllCategories();
-        return in_array($category, $categories, true);
+        return $this->resolveCategory($category) !== null;
     }
 
     /**
@@ -73,5 +75,46 @@ class CategoryService
         }
 
         return $result;
+    }
+
+    public function resolveCategory(string $category): ?string
+    {
+        $this->ensureCategoriesCache();
+
+        if ($category === '') {
+            return null;
+        }
+
+        $normalized = $this->normalizeCategory($category);
+
+        return $this->normalizedCategoryMap[$normalized] ?? null;
+    }
+
+    private function ensureCategoriesCache(): void
+    {
+        if ($this->categoriesCache !== null) {
+            return;
+        }
+
+        $this->categoriesCache = $this->productRepository->findCategories();
+        $this->normalizedCategoryMap = [];
+
+        foreach ($this->categoriesCache as $category) {
+            $normalized = $this->normalizeCategory($category);
+            $this->normalizedCategoryMap[$normalized] = $category;
+        }
+    }
+
+    private function normalizeCategory(string $category): string
+    {
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $category);
+        if ($transliterated === false) {
+            $transliterated = $category;
+        }
+
+        $normalized = strtolower((string) $transliterated);
+        $normalized = preg_replace('/[^a-z0-9]+/', '-', $normalized ?? '');
+
+        return trim((string) $normalized, '-');
     }
 }
