@@ -22,6 +22,8 @@ class ProductRepository implements ProductRepositoryInterface
     private array $categoryPageCache = [];
     /** @var array<string, int> */
     private array $categoryCountCache = [];
+    /** @var array<string, array<string, mixed>> */
+    private array $slugCache = [];
     private ?int $totalCountCache = null;
     private ?array $categoriesCache = null;
 
@@ -35,6 +37,27 @@ class ProductRepository implements ProductRepositoryInterface
         $stmt = $this->pdo->prepare("SELECT * FROM products WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row && isset($row['slug'])) {
+            $this->slugCache[$row['slug']] = $row;
+        }
+
+        return $row ?: null;
+    }
+
+    public function findBySlug(string $slug): ?array
+    {
+        if (isset($this->slugCache[$slug])) {
+            return $this->slugCache[$slug];
+        }
+
+        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE slug = :slug LIMIT 1");
+        $stmt->execute(['slug' => $slug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            $this->slugCache[$slug] = $row;
+        }
 
         return $row ?: null;
     }
@@ -136,8 +159,8 @@ class ProductRepository implements ProductRepositoryInterface
     public function create(array $data): int
     {
         $stmt = $this->pdo->prepare("
-            INSERT INTO products (name, description, price, category, image_url)
-            VALUES (:name, :description, :price, :category, :image_url)
+            INSERT INTO products (name, description, price, category, slug, image_url)
+            VALUES (:name, :description, :price, :category, :slug, :image_url)
         ");
 
         // Convert price to decimal if Money object was passed
@@ -146,11 +169,16 @@ class ProductRepository implements ProductRepositoryInterface
             $price = $price->getDecimal();
         }
 
+        $slugFromPayload = isset($data['slug']) && is_string($data['slug']) ? $data['slug'] : null;
+        $baseSlug = $slugFromPayload ?: $this->slugify((string) $data['name']);
+        $slug = $this->ensureUniqueSlug($baseSlug);
+
         $stmt->execute([
             'name' => $data['name'],
             'description' => $data['description'] ?? '',
             'price' => $price,
             'category' => $data['category'],
+            'slug' => $slug,
             'image_url' => $data['image_url'] ?? null,
         ]);
 
@@ -164,7 +192,7 @@ class ProductRepository implements ProductRepositoryInterface
         $fields = [];
         $params = ['id' => $id];
 
-        foreach (['name', 'description', 'price', 'category', 'image_url'] as $field) {
+        foreach (['name', 'description', 'price', 'category', 'slug', 'image_url'] as $field) {
             if (isset($data[$field])) {
                 $fields[] = "{$field} = :{$field}";
                 $params[$field] = $data[$field];
@@ -173,6 +201,10 @@ class ProductRepository implements ProductRepositoryInterface
 
         if (empty($fields)) {
             return false;
+        }
+
+        if (array_key_exists('slug', $params) && is_string($params['slug'])) {
+            $params['slug'] = $this->ensureUniqueSlug($this->slugify($params['slug']), $id);
         }
 
         $sql = "UPDATE products SET " . implode(', ', $fields) . " WHERE id = :id";
@@ -220,5 +252,48 @@ class ProductRepository implements ProductRepositoryInterface
         $this->categoryCountCache = [];
         $this->totalCountCache = null;
         $this->categoriesCache = null;
+        $this->slugCache = [];
+    }
+
+    private function slugify(string $value): string
+    {
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if ($transliterated === false) {
+            $transliterated = $value;
+        }
+        $slug = strtolower((string) $transliterated);
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug ?? '');
+        $slug = trim((string) $slug, '-');
+
+        return $slug !== '' ? $slug : 'produto';
+    }
+
+    private function ensureUniqueSlug(string $baseSlug, ?int $ignoreId = null): string
+    {
+        $slug = $baseSlug;
+        $suffix = 1;
+
+        while ($this->slugExists($slug, $ignoreId)) {
+            $slug = $baseSlug . '-' . $suffix;
+            ++$suffix;
+        }
+
+        return $slug;
+    }
+
+    private function slugExists(string $slug, ?int $ignoreId = null): bool
+    {
+        $sql = "SELECT id FROM products WHERE slug = :slug";
+        $params = ['slug' => $slug];
+
+        if ($ignoreId !== null) {
+            $sql .= " AND id != :id";
+            $params['id'] = $ignoreId;
+        }
+
+        $stmt = $this->pdo->prepare($sql . " LIMIT 1");
+        $stmt->execute($params);
+
+        return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
     }
 }

@@ -70,7 +70,7 @@ $routes = [
 
 // Pattern routes (with parameters) - pattern is URI only, method is checked separately
 $patternRoutes = [
-    '/products/(\d+)' => ['method' => 'GET', 'controller' => 'ProductController', 'action' => 'show'],
+    '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => 'ProductController', 'action' => 'show'],
 ];
 
 // Match exact routes first
@@ -113,8 +113,8 @@ $queryParams = $_GET;
 
 // Call controller action
 if ($action === 'show') {
-    $id = (int) $params[0];
-    $output = $controller->$action($id);
+    $identifier = (string) $params[0];
+    $output = $controller->$action($identifier);
 } else {
     $output = $controller->$action($queryParams);
 }

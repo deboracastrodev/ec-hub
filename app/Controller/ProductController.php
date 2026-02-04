@@ -52,14 +52,15 @@ class ProductController
     /**
      * Display single product details
      *
-     * @param int $id Product ID
+     * @param string $productIdentifier Product slug or numeric ID
      * @return string Rendered HTML
      */
-    public function show(int $id): string
+    public function show(string $productIdentifier): string
     {
-        $product = $this->getProductDetail->execute($id);
+        $product = $this->getProductDetail->executeByIdentifier($productIdentifier);
 
         if (!$product) {
+            error_log(sprintf('[ProductController] Produto não encontrado: %s', $productIdentifier));
             http_response_code(404);
             return $this->twig->render('error/404.html.twig', [
                 'message' => 'Produto não encontrado'

@@ -20,6 +20,14 @@ interface ProductRepositoryInterface
     public function findById(int $id): ?array;
 
     /**
+     * Find product by slug
+     *
+     * @param string $slug Product slug
+     * @return array|null Product data or null if not found
+     */
+    public function findBySlug(string $slug): ?array;
+
+    /**
      * Find all products
      *
      * @param int $limit Limit results

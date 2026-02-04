@@ -22,4 +22,23 @@ class GetProductDetail
     {
         return $this->productRepository->findById($productId);
     }
+
+    public function executeBySlug(string $slug): ?array
+    {
+        return $this->productRepository->findBySlug($slug);
+    }
+
+    public function executeByIdentifier(string $identifier): ?array
+    {
+        if ($this->looksLikeNumericId($identifier)) {
+            return $this->execute((int) $identifier);
+        }
+
+        return $this->executeBySlug($identifier);
+    }
+
+    private function looksLikeNumericId(string $identifier): bool
+    {
+        return ctype_digit($identifier);
+    }
 }

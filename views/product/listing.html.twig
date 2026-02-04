@@ -29,8 +29,9 @@
 
     <div class="product-grid">
         {% for product in products %}
+            {% set productIdentifier = (product.slug ?? product.id)|url_encode %}
             <article class="product-card">
-                <a href="/products/{{ product.id }}" class="product-card__link">
+                <a href="/products/{{ productIdentifier }}" class="product-card__link">
                     <img
                         src="{{ product.image_url }}"
                         alt="{{ product.name }}"

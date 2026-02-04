@@ -129,20 +129,25 @@ class ProductSeeder
         $faker = FakerFactory::create('pt_BR');
 
         $stmt = $this->pdo->prepare("
-            INSERT INTO products (name, description, price, category, image_url)
-            VALUES (:name, :description, :price, :category, :image_url)
+            INSERT INTO products (name, description, price, category, slug, image_url)
+            VALUES (:name, :description, :price, :category, :slug, :image_url)
         ");
+
+        $usedSlugs = [];
 
         for ($i = 0; $i < $productCount; $i++) {
             $category = $faker->randomElement($this->categories);
             $productName = $this->fakerNameForCategory($faker, $category);
             $price = $faker->randomFloat(2, 10, 500);
+            $slug = $this->uniqueSlug($productName, $usedSlugs);
+            $usedSlugs[] = $slug;
 
             $stmt->execute([
                 'name' => $productName,
                 'description' => $faker->paragraph(3),
                 'price' => $price,
                 'category' => $category,
+                'slug' => $slug,
                 'image_url' => $this->generateImageUrl($category),
             ]);
         }
@@ -178,5 +183,35 @@ class ProductSeeder
             'https://placehold.co/400x400/FF6B6B/ffffff?text=%s',
             urlencode(substr($category, 0, 15))
         );
+    }
+
+    /**
+     * @param array<int, string> $usedSlugs
+     */
+    private function uniqueSlug(string $name, array $usedSlugs): string
+    {
+        $base = $this->slugify($name);
+        $candidate = $base;
+        $suffix = 1;
+
+        while (in_array($candidate, $usedSlugs, true)) {
+            $candidate = $base . '-' . $suffix;
+            ++$suffix;
+        }
+
+        return $candidate;
+    }
+
+    private function slugify(string $value): string
+    {
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if ($transliterated === false) {
+            $transliterated = $value;
+        }
+        $slug = strtolower((string) $transliterated);
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug ?? '');
+        $slug = trim((string) $slug, '-');
+
+        return $slug !== '' ? $slug : 'produto';
     }
 }
