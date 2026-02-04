@@ -15,13 +15,9 @@
     <aside class="category-filter" aria-label="Filtro de categoria">
         <h2 class="category-filter__title">Categorias</h2>
         <nav class="category-filter__nav">
-            <a href="/products" class="category-filter__link {{ currentCategory is null ? 'category-filter__link--active' : '' }}">
-                Todos os produtos <span class="category-filter__count">{{ totalAllProducts }}</span>
-            </a>
+            <a href="/products" class="category-filter__link {{ currentCategory is null ? 'category-filter__link--active' : '' }}">Todos os produtos <span class="category-filter__count">{{ totalAllProducts }}</span></a>
             {% for category, count in categories %}
-            <a href="?category={{ category|url_encode }}" class="category-filter__link {{ currentCategory == category ? 'category-filter__link--active' : '' }}">
-                {{ category }} <span class="category-filter__count">{{ count }}</span>
-            </a>
+            <a href="?category={{ category|url_encode }}" class="category-filter__link {{ currentCategory == category ? 'category-filter__link--active' : '' }}">{{ category }} <span class="category-filter__count">{{ count }}</span></a>
             {% endfor %}
         </nav>
     </aside>
@@ -71,13 +67,13 @@
     </div>
     {% endif %}
 
-    {% set paginationBase = paginationBaseQuery ?? '' %}
-    {% set queryPrefix = paginationBase ? paginationBase ~ '&' : '' %}
+{% set paginationBase = paginationBaseQuery ?? '' %}
+{% set querySuffix = paginationBase ? '&' ~ paginationBase : '' %}
 
     {% if totalPages >= 1 %}
         <nav class="pagination" aria-label="Paginação">
             {% if currentPage > 1 %}
-                <a href="?{{ queryPrefix }}page={{ currentPage - 1 }}" class="pagination__prev">
+                <a href="?page={{ currentPage - 1 }}{{ querySuffix }}" class="pagination__prev">
                     &larr; Anterior
                 </a>
             {% endif %}
@@ -87,7 +83,7 @@
             </span>
 
             {% if currentPage < totalPages %}
-                <a href="?{{ queryPrefix }}page={{ currentPage + 1 }}" class="pagination__next">
+                <a href="?page={{ currentPage + 1 }}{{ querySuffix }}" class="pagination__next">
                     Próxima &rarr;
                 </a>
             {% endif %}

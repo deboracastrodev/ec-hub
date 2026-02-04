@@ -113,7 +113,7 @@ class ProductControllerTest extends TestCase
         $nonexistentId = 999999;
 
         // Act
-        $output = $this->controller->show($nonexistentId);
+        $output = $this->controller->show((string) $nonexistentId);
 
         // Assert
         $this->assertIsString($output);
@@ -130,7 +130,7 @@ class ProductControllerTest extends TestCase
         // Act & Assert - The detail template doesn't exist yet (Story 2.3)
         // For now, just verify the controller method is callable and handles valid ID
         try {
-            $output = $this->controller->show((int) $firstProduct['id']);
+            $output = $this->controller->show((string) $firstProduct['id']);
             // If detail.html.twig exists, verify HTML structure
             $this->assertIsString($output);
         } catch (\Twig\Error\LoaderError $e) {
