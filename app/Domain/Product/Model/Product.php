@@ -122,11 +122,11 @@ class Product
     public static function fromArray(array $data): self
     {
         $product = new self(
-            name: $data['name'],
-            description: $data['description'] ?? '',
-            price: Money::fromDecimal((float) $data['price']),
-            category: $data['category'],
-            imageUrl: $data['image_url'] ?? ''
+            $data['name'],
+            $data['description'] ?? '',
+            Money::fromDecimal((float) $data['price']),
+            $data['category'],
+            $data['image_url'] ?? ''
         );
 
         if (isset($data['id'])) {
