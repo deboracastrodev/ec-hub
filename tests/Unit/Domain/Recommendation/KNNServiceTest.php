@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Recommendation;
 
 use App\Domain\Product\Model\Product;
+use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Shared\ValueObject\Money;
 use PHPUnit\Framework\TestCase;
@@ -18,12 +20,14 @@ class KNNServiceTest extends TestCase
 {
     private KNNService $knnService;
     private array $testProducts;
+    private ProductRepositoryInterface $productRepository;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->knnService = new KNNService();
+        $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
+        $this->knnService = new KNNService($this->productRepository);
 
         // Create test products
         $this->testProducts = [
@@ -64,13 +68,12 @@ class KNNServiceTest extends TestCase
             ),
         ];
 
-        // Set IDs for testing
         foreach ($this->testProducts as $index => $product) {
             $product->setId($index + 1);
         }
     }
 
-    public function test_train_creates_trained_model()
+    public function test_train_creates_trained_model(): void
     {
         $this->knnService->train($this->testProducts, 3);
 
@@ -78,36 +81,36 @@ class KNNServiceTest extends TestCase
         $this->assertEquals(3, $this->knnService->getK());
     }
 
-    public function test_recommend_returns_similar_products()
+    public function test_recommend_returns_similar_products(): void
     {
         $this->knnService->train($this->testProducts, 3);
 
-        $targetProduct = $this->testProducts[0]; // Smartphone Galaxy X
+        $targetProduct = $this->testProducts[0];
         $recommendations = $this->knnService->recommend($targetProduct, 3);
 
         $this->assertIsArray($recommendations);
         $this->assertGreaterThanOrEqual(1, count($recommendations));
+        $this->assertContainsOnlyInstancesOf(RecommendationResult::class, $recommendations);
     }
 
-    public function test_recommend_includes_score_and_explanation()
+    public function test_recommend_includes_score_and_explanation(): void
     {
         $this->knnService->train($this->testProducts, 3);
 
         $targetProduct = $this->testProducts[0];
         $recommendations = $this->knnService->recommend($targetProduct, 2);
 
-        if (count($recommendations) > 0) {
-            $firstRec = $recommendations[0];
-
+        if ($recommendations !== []) {
+            $firstRec = $recommendations[0]->toArray();
             $this->assertArrayHasKey('score', $firstRec);
-            $this->assertArrayHasKey('explanation', $firstRec);
             $this->assertArrayHasKey('rank', $firstRec);
+            $this->assertArrayHasKey('explanation', $firstRec);
             $this->assertGreaterThanOrEqual(0, $firstRec['score']);
             $this->assertLessThanOrEqual(100, $firstRec['score']);
         }
     }
 
-    public function test_recommend_excludes_target_product()
+    public function test_recommend_excludes_target_product(): void
     {
         $this->knnService->train($this->testProducts, 3);
 
@@ -115,41 +118,59 @@ class KNNServiceTest extends TestCase
         $recommendations = $this->knnService->recommend($targetProduct, 10);
 
         foreach ($recommendations as $rec) {
-            $this->assertNotEquals($targetProduct->getId(), $rec['product_id']);
+            $this->assertNotEquals($targetProduct->getId(), $rec->getProductId());
         }
     }
 
-    public function test_k_is_configurable()
+    public function test_k_is_configurable(): void
     {
         $this->knnService->train($this->testProducts, 7);
 
         $this->assertEquals(7, $this->knnService->getK());
     }
 
-    public function test_recommend_without_training_throws_exception()
+    public function test_recommend_without_training_trains_using_repository(): void
     {
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('trained');
+        $this->productRepository->expects($this->once())
+            ->method('findAll')
+            ->willReturn($this->convertProductsToArray($this->testProducts));
 
-        $knnService = new KNNService();
         $targetProduct = $this->testProducts[0];
+        $recommendations = $this->knnService->recommend($targetProduct, 2);
 
-        $knnService->recommend($targetProduct);
+        $this->assertNotEmpty($recommendations);
+        $this->assertContainsOnlyInstancesOf(RecommendationResult::class, $recommendations);
     }
 
-    public function test_explanation_mentions_category_similarity()
+    public function test_explanation_mentions_category_similarity(): void
     {
         $this->knnService->train($this->testProducts, 3);
 
-        $targetProduct = $this->testProducts[0]; // Eletrônicos
+        $targetProduct = $this->testProducts[0];
         $recommendations = $this->knnService->recommend($targetProduct);
 
-        if (count($recommendations) > 0) {
-            $firstRec = $recommendations[0];
-
-            // Explanation should mention category or similarity
-            $explanation = $firstRec['explanation'];
-            $this->assertNotEmpty($explanation);
+        if ($recommendations !== []) {
+            $firstRec = $recommendations[0]->toArray();
+            $this->assertNotEmpty($firstRec['explanation'] ?? null);
         }
+    }
+
+    /**
+     * @param Product[] $products
+     * @return array<int, array<string, mixed>>
+     */
+    private function convertProductsToArray(array $products): array
+    {
+        return array_map(static function (Product $product): array {
+            return [
+                'id' => $product->getId(),
+                'name' => $product->getName(),
+                'description' => $product->getDescription(),
+                'price' => (string) $product->getPrice()->getDecimal(),
+                'category' => $product->getCategory(),
+                'image_url' => $product->getImageUrl(),
+                'created_at' => $product->getCreatedAt()->format('Y-m-d H:i:s'),
+            ];
+        }, $products);
     }
 }

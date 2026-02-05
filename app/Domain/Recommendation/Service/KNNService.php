@@ -4,6 +4,9 @@ declare(strict_types=1);
 namespace App\Domain\Recommendation\Service;
 
 use App\Domain\Product\Model\Product;
+use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Recommendation\Model\RecommendationResult;
+use Rubix\ML\Kernels\Distance\Euclidean;
 
 /**
  * K-Nearest Neighbors Recommendation Service
@@ -19,36 +22,58 @@ class KNNService
     private array $featureRanges = [];
     private array $trainingSamples = [];
     private array $categories = [];
+    private array $productCache = [];
+    private ProductRepositoryInterface $productRepository;
+    private Euclidean $distanceKernel;
+
+    public function __construct(
+        ProductRepositoryInterface $productRepository,
+        ?Euclidean $distanceKernel = null
+    ) {
+        $this->productRepository = $productRepository;
+        $this->distanceKernel = $distanceKernel ?? new Euclidean();
+    }
 
     /**
      * Train KNN model with product dataset
      *
-     * @param array $products Array of Product entities
+     * @param array|null $products Array of Product entities
      * @param int $k Number of neighbors (default: 5)
      * @return void
      */
-    public function train(array $products, int $k = 5): void
+    public function train(?array $products = null, int $k = 5): void
     {
         $this->k = $k;
+        $products = $products ?? $this->loadProductsFromRepository();
 
-        // Get unique categories for one-hot encoding
-        $this->categories = array_unique(array_map(function($p) {
-            return $p->getCategory();
+        if (empty($products)) {
+            throw new \RuntimeException('Nenhum produto disponível para treinar o KNN.');
+        }
+
+        $this->productCache = $products;
+        $products = array_values($products);
+
+        $this->categories = array_unique(array_map(static function (Product $product) {
+            return $product->getCategory();
         }, $products));
         sort($this->categories);
 
-        // Extract features from products
+        $this->productsIndex = [];
         $this->trainingSamples = [];
-        foreach ($products as $index => $product) {
+
+        foreach ($products as $product) {
             $featureVector = $this->extractSingleProductFeatures($product);
             $this->trainingSamples[] = $featureVector;
-            $this->productsIndex[$index] = $product;
+            $this->productsIndex[] = $product;
         }
 
-        // Normalize features (manual min-max scaling)
         $this->trainingSamples = $this->normalizeFeatures($this->trainingSamples);
-
         $this->isTrained = true;
+    }
+
+    public function trainFromRepository(int $k = 5): void
+    {
+        $this->train(null, $k);
     }
 
     /**
@@ -60,9 +85,7 @@ class KNNService
      */
     public function recommend(Product $targetProduct, int $limit = 10): array
     {
-        if (!$this->isTrained) {
-            throw new \RuntimeException('KNN model must be trained before making recommendations');
-        }
+        $this->ensureModelIsTrained();
 
         // Extract and normalize target product features
         $targetFeatures = $this->extractSingleProductFeatures($targetProduct);
@@ -114,27 +137,10 @@ class KNNService
         $distances = [];
 
         foreach ($this->trainingSamples as $index => $sample) {
-            $distance = $this->euclideanDistance($targetFeatures, $sample);
-            $distances[$index] = $distance;
+            $distances[$index] = $this->distanceKernel->compute($targetFeatures, $sample);
         }
 
         return $distances;
-    }
-
-    /**
-     * Calculate Euclidean distance between two feature vectors
-     */
-    private function euclideanDistance(array $a, array $b): float
-    {
-        $sum = 0.0;
-        $count = min(count($a), count($b));
-
-        for ($i = 0; $i < $count; $i++) {
-            $diff = (float) $a[$i] - (float) $b[$i];
-            $sum += $diff * $diff;
-        }
-
-        return sqrt($sum);
     }
 
     /**
@@ -213,28 +219,22 @@ class KNNService
 
             $neighborProduct = $this->productsIndex[$index];
 
-            // Skip if same product
             if ($neighborProduct->getId() === $excludedId) {
                 continue;
             }
 
             $distance = (float) $distances[$index];
-
-            // Calculate similarity score (inverse of distance, normalized 0-100)
-            // Closer distance = higher score
             $score = max(0, min(100, 100 * (1 / (1 + $distance))));
 
-            $recommendations[] = [
-                'product_id' => $neighborProduct->getId(),
-                'product_name' => $neighborProduct->getName(),
-                'category' => $neighborProduct->getCategory(),
-                'price' => $neighborProduct->getPrice()->getFormatted(),
-                'score' => $score,
-                'rank' => $rank + 1,
-                'explanation' => $this->generateExplanation($targetProduct, $neighborProduct),
-            ];
-
-            $rank++;
+            $recommendations[] = new RecommendationResult(
+                (int) $neighborProduct->getId(),
+                $neighborProduct->getName(),
+                $neighborProduct->getCategory(),
+                $neighborProduct->getPrice()->getFormatted(),
+                $score,
+                ++$rank,
+                $this->generateExplanation($targetProduct, $neighborProduct)
+            );
         }
 
         return $recommendations;
@@ -271,11 +271,31 @@ class KNNService
         return $this->isTrained;
     }
 
-    /**
-     * Get the number of neighbors used
-     */
     public function getK(): int
     {
         return $this->k;
+    }
+
+    private function ensureModelIsTrained(): void
+    {
+        if ($this->isTrained) {
+            return;
+        }
+
+        $products = $this->productCache ?: $this->loadProductsFromRepository();
+        $this->train($products, $this->k);
+    }
+    /**
+     * Load and convert products from repository.
+     *
+     * @return Product[]
+     */
+    private function loadProductsFromRepository(): array
+    {
+        $rawProducts = $this->productRepository->findAll(1000, 0);
+
+        return array_map(static function (array $item): Product {
+            return Product::fromArray($item);
+        }, $rawProducts);
     }
 }
