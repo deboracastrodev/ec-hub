@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell redis-cli ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell redis-cli ps build clean install test-coverage test-unit test-integration test-feature test-recommendation migrate migrate-fresh seed db-reset
 
 # Variáveis
 COMPOSE := docker-compose
@@ -12,6 +12,7 @@ help: ## Show this help message
 	@echo "  make restart   - Reinicia os containers"
 	@echo "  make logs      - Mostra logs da aplicação"
 	@echo "  make test      - Executa testes PHPUnit"
+	@echo "  make test-recommendation - Executa testes de recomendacao (Story 3.2)"
 	@echo "  make cs-fix    - Executa PHP-CS-Fixer"
 	@echo "  make shell     - Acessa bash do container app"
 	@echo "  make setup     - Executa script de setup"
@@ -96,6 +97,11 @@ test-integration: ## Run integration tests only
 
 test-feature: ## Run feature tests only
 	$(COMPOSE) exec app vendor/bin/phpunit --testsuite=Feature
+
+test-recommendation: ## Run recommendation unit + integration tests
+	$(COMPOSE) exec app vendor/bin/phpunit \
+		tests/Unit/Application/Recommendation/GenerateRecommendationsTest.php \
+		tests/Integration/Application/Recommendation/GenerateRecommendationsIntegrationTest.php
 
 # Maintenance
 clean: ## Clean generated files

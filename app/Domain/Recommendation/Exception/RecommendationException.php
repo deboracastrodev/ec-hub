@@ -3,11 +3,11 @@ declare(strict_types=1);
 
 namespace App\Domain\Recommendation\Exception;
 
-use RuntimeException;
+use DomainException;
 
 /**
  * Exception thrown when recommendation generation fails
  */
-class RecommendationException extends RuntimeException
+class RecommendationException extends DomainException
 {
 }

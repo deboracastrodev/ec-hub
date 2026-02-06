@@ -4,12 +4,10 @@ declare(strict_types=1);
 namespace Tests\Unit\Application\Recommendation;
 
 use App\Application\Recommendation\GenerateRecommendations;
-use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
-use App\Domain\Shared\ValueObject\Money;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -42,17 +40,22 @@ class GenerateRecommendationsTest extends TestCase
         $targetProductId = 1;
 
         $this->mockRepository->expects($this->once())
-            ->method('findById')
-            ->with($targetProductId)
-            ->willReturn($this->getMockProductsData()[0]);
+            ->method('findAll')
+            ->with(1000, 0)
+            ->willReturn($this->getMockProductsData());
 
         $this->mockKNNService->expects($this->once())
             ->method('isTrained')
             ->willReturn(false);
 
+        $this->mockRepository->expects($this->once())
+            ->method('findById')
+            ->with($targetProductId)
+            ->willReturn($this->getMockProductsData()[0]);
+
         $this->mockKNNService->expects($this->once())
-            ->method('trainFromRepository')
-            ->with(5);
+            ->method('train')
+            ->with($this->callback(fn($products) => count($products) >= 2), 5);
 
         $this->mockKNNService->expects($this->once())
             ->method('recommend')
@@ -65,6 +68,7 @@ class GenerateRecommendationsTest extends TestCase
         $this->assertIsArray($result);
         $this->assertGreaterThan(0, count($result));
         $this->assertArrayHasKey('product_id', $result[0]);
+        $this->assertArrayHasKey('name', $result[0]);
         $this->assertArrayHasKey('score', $result[0]);
         $this->assertArrayHasKey('explanation', $result[0]);
     }
@@ -75,16 +79,21 @@ class GenerateRecommendationsTest extends TestCase
         $nonExistentId = 999;
 
         $this->mockRepository->expects($this->once())
-            ->method('findById')
-            ->with($nonExistentId)
-            ->willReturn(null);
+            ->method('findAll')
+            ->with(1000, 0)
+            ->willReturn($this->getMockProductsData());
 
         $this->mockKNNService->expects($this->once())
             ->method('isTrained')
             ->willReturn(false);
 
+        $this->mockRepository->expects($this->once())
+            ->method('findById')
+            ->with($nonExistentId)
+            ->willReturn(null);
+
         $this->mockKNNService->expects($this->once())
-            ->method('trainFromRepository');
+            ->method('train');
 
         // Assert/Act
         $this->expectException(RecommendationException::class);
@@ -98,6 +107,11 @@ class GenerateRecommendationsTest extends TestCase
         // Arrange
         $targetProductId = 1;
 
+        $this->mockRepository->expects($this->once())
+            ->method('findAll')
+            ->with(1000, 0)
+            ->willReturn($this->getMockProductsData());
+
         $this->mockRepository->expects($this->exactly(2))
             ->method('findById')
             ->willReturn($this->getMockProductsData()[0]);
@@ -106,9 +120,9 @@ class GenerateRecommendationsTest extends TestCase
             ->method('isTrained')
             ->willReturnOnConsecutiveCalls(false, true);
 
-        // trainFromRepository should only be called once
+        // train should only be called once
         $this->mockKNNService->expects($this->once())
-            ->method('trainFromRepository');
+            ->method('train');
 
         $this->mockKNNService->expects($this->exactly(2))
             ->method('recommend')
@@ -126,11 +140,9 @@ class GenerateRecommendationsTest extends TestCase
         // Arrange
         $targetProductId = 1;
 
-        // isTrained throws exception, so execute() should catch it and return empty array
-        // findById is never called because exception happens first
-        $this->mockKNNService->expects($this->once())
-            ->method('isTrained')
-            ->willThrowException(new \Exception('ML error'));
+        $this->mockRepository->expects($this->once())
+            ->method('findAll')
+            ->willThrowException(new \Exception('Database error'));
 
         $this->mockLogger->expects($this->once())
             ->method('error');
@@ -146,12 +158,17 @@ class GenerateRecommendationsTest extends TestCase
     public function testClearCacheResetsTrainedState(): void
     {
         // Arrange
-        $this->mockKNNService->expects($this->exactly(2))
-            ->method('isTrained')
-            ->willReturnOnConsecutiveCalls(false, false);
+        $this->mockRepository->expects($this->exactly(2))
+            ->method('findAll')
+            ->with(1000, 0)
+            ->willReturn($this->getMockProductsData());
 
         $this->mockKNNService->expects($this->exactly(2))
-            ->method('trainFromRepository');
+            ->method('isTrained')
+            ->willReturn(false);
+
+        $this->mockKNNService->expects($this->exactly(2))
+            ->method('train');
 
         $this->mockRepository->expects($this->exactly(2))
             ->method('findById')

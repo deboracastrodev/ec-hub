@@ -10,7 +10,6 @@ use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 /**
@@ -28,13 +27,11 @@ class GenerateRecommendationsIntegrationTest extends TestCase
 
     protected function setUp(): void
     {
-        // Setup database connection
-        $this->pdo = new \PDO(
-            'mysql:host=' . (getenv('DB_HOST') ?: '127.0.0.1') . ';dbname=' . (getenv('DB_DATABASE') ?: 'ec_hub'),
-            getenv('DB_USERNAME') ?: 'root',
-            getenv('DB_PASSWORD') ?: 'secret',
-            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
-        );
+        // Setup in-memory SQLite database for isolated integration tests
+        $this->pdo = new \PDO('sqlite::memory:');
+        $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createSchema();
+        $this->seedProducts();
 
         $this->repository = new ProductRepository($this->pdo);
         $this->knnService = new KNNService($this->repository);
@@ -45,6 +42,55 @@ class GenerateRecommendationsIntegrationTest extends TestCase
             $this->knnService,
             $logger
         );
+    }
+
+    private function createSchema(): void
+    {
+        $this->pdo->exec('
+            CREATE TABLE products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                price REAL NOT NULL,
+                category TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                image_url TEXT,
+                created_at TEXT NOT NULL
+            )
+        ');
+    }
+
+    private function seedProducts(): void
+    {
+        $stmt = $this->pdo->prepare('
+            INSERT INTO products (name, description, price, category, slug, image_url, created_at)
+            VALUES (:name, :description, :price, :category, :slug, :image_url, :created_at)
+        ');
+
+        $rows = [
+            [
+                'name' => 'Laptop Gamer',
+                'description' => 'High performance laptop',
+                'price' => 4500.00,
+                'category' => 'Eletrônicos',
+                'slug' => 'laptop-gamer',
+                'image_url' => 'https://example.com/laptop.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'name' => 'Mouse Gamer',
+                'description' => 'RGB mouse',
+                'price' => 150.00,
+                'category' => 'Eletrônicos',
+                'slug' => 'mouse-gamer',
+                'image_url' => 'https://example.com/mouse.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+        ];
+
+        foreach ($rows as $row) {
+            $stmt->execute($row);
+        }
     }
 
     public function test_full_flow_repository_to_knn_to_result(): void
@@ -66,7 +112,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         // May return empty if products are too similar or only 1 product exists
         if (!empty($recommendations)) {
             $this->assertArrayHasKey('product_id', $recommendations[0]);
-            $this->assertArrayHasKey('product_name', $recommendations[0]);
+            $this->assertArrayHasKey('name', $recommendations[0]);
             $this->assertArrayHasKey('category', $recommendations[0]);
             $this->assertArrayHasKey('price', $recommendations[0]);
             $this->assertArrayHasKey('score', $recommendations[0]);
@@ -95,7 +141,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->assertEquals($productData['id'], $product->getId());
         $this->assertEquals($productData['name'], $product->getName());
         $this->assertEquals($productData['category'], $product->getCategory());
-        $this->assertEquals($productData['price'], (string) $product->getPrice()->getDecimal());
+        $this->assertEquals((string) $productData['price'], (string) $product->getPrice()->getDecimal());
     }
 
     public function test_knn_training_with_real_repository_data(): void

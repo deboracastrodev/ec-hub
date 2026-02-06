@@ -22,6 +22,9 @@ class GenerateRecommendations
     private KNNService $knnService;
     private LoggerInterface $logger;
 
+    /** @var array<int, Product>|null */
+    private ?array $productsCache = null;
+
     /** @var bool Whether KNN model has been trained */
     private bool $modelTrained = false;
 
@@ -59,7 +62,7 @@ class GenerateRecommendations
             }
 
             // Convert array to Product entity
-            $targetProduct = Product::fromArray($targetProductData);
+            $targetProduct = $this->arrayToProduct($targetProductData);
 
             // Generate recommendations using KNN
             $recommendations = $this->knnService->recommend($targetProduct, $limit);
@@ -86,24 +89,56 @@ class GenerateRecommendations
      */
     private function ensureModelTrained(): void
     {
-        // Check if KNN service is already trained
         if ($this->knnService->isTrained()) {
             $this->modelTrained = true;
             return;
         }
 
-        // Check if we already trained in this instance
         if ($this->modelTrained) {
             return;
         }
 
-        // Train KNN model with products from repository
-        $this->knnService->trainFromRepository(k: 5);
+        $products = $this->loadProducts();
+
+        if (count($products) < 2) {
+            throw new \RuntimeException('At least 2 products required for recommendations');
+        }
+
+        $this->knnService->train($products, k: 5);
         $this->modelTrained = true;
 
         $this->logger->info('KNN model trained', [
             'k' => 5,
         ]);
+    }
+
+    /**
+     * Load and cache products from repository.
+     *
+     * @return array<int, Product>
+     */
+    private function loadProducts(): array
+    {
+        if ($this->productsCache !== null) {
+            return $this->productsCache;
+        }
+
+        $productData = $this->productRepository->findAll(limit: 1000, offset: 0);
+
+        $this->productsCache = array_map(
+            fn(array $data) => $this->arrayToProduct($data),
+            $productData
+        );
+
+        return $this->productsCache;
+    }
+
+    /**
+     * Convert repository array to Product entity.
+     */
+    private function arrayToProduct(array $data): Product
+    {
+        return Product::fromArray($data);
     }
 
     /**
@@ -115,7 +150,7 @@ class GenerateRecommendations
     private function formatRecommendations(array $knnResults): array
     {
         return array_map(
-            fn(RecommendationResult $result) => $result->toArray(),
+            fn(RecommendationResult $result) => RecommendationDTO::fromRecommendationResult($result)->toArray(),
             $knnResults
         );
     }
@@ -125,6 +160,7 @@ class GenerateRecommendations
      */
     public function clearCache(): void
     {
+        $this->productsCache = null;
         $this->modelTrained = false;
     }
 }
