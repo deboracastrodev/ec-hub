@@ -3,7 +3,7 @@
   "description": "E-commerce com ML em PHP 7.4 + Clean Architecture",
   "type": "project",
   "require": {
-    "php": "^7.4",
+    "php": "^7.4|^8.0",
     "psr/container": "^1.0",
     "vlucas/phpdotenv": "^5.0",
     "rubix/ml": "^2.2",
