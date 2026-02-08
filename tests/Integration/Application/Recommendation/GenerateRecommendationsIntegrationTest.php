@@ -8,6 +8,7 @@ use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -23,6 +24,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
     private GenerateRecommendations $service;
     private ProductRepositoryInterface $repository;
     private KNNService $knnService;
+    private RuleBasedFallback $fallbackService;
     private \PDO $pdo;
 
     protected function setUp(): void
@@ -36,10 +38,12 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->repository = new ProductRepository($this->pdo);
         $this->knnService = new KNNService($this->repository);
         $logger = new NullLogger();
+        $this->fallbackService = new RuleBasedFallback($this->repository, $logger);
 
         $this->service = new GenerateRecommendations(
             $this->repository,
             $this->knnService,
+            $this->fallbackService,
             $logger
         );
     }
@@ -86,6 +90,33 @@ class GenerateRecommendationsIntegrationTest extends TestCase
                 'image_url' => 'https://example.com/mouse.jpg',
                 'created_at' => '2024-01-01 00:00:00',
             ],
+            [
+                'name' => 'Teclado Mecanico',
+                'description' => 'Switch blue',
+                'price' => 350.00,
+                'category' => 'Eletrônicos',
+                'slug' => 'teclado-mecanico',
+                'image_url' => 'https://example.com/keyboard.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'name' => 'Cadeira Gamer',
+                'description' => 'Ergonomica',
+                'price' => 1200.00,
+                'category' => 'Moveis',
+                'slug' => 'cadeira-gamer',
+                'image_url' => 'https://example.com/chair.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'name' => 'Monitor 27',
+                'description' => '144Hz',
+                'price' => 1800.00,
+                'category' => 'Eletrônicos',
+                'slug' => 'monitor-27',
+                'image_url' => 'https://example.com/monitor.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
         ];
 
         foreach ($rows as $row) {
@@ -101,7 +132,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
 
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products, 'Database must have at least one product');
-        $targetProductId = $products[0]['id'];
+        $targetProductId = (int) $products[0]['id'];
 
         // Act - Execute recommendation flow
         $recommendations = $this->service->execute($targetProductId, 5);
@@ -141,7 +172,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->assertEquals($productData['id'], $product->getId());
         $this->assertEquals($productData['name'], $product->getName());
         $this->assertEquals($productData['category'], $product->getCategory());
-        $this->assertEquals((string) $productData['price'], (string) $product->getPrice()->getDecimal());
+        $this->assertEquals((float) $productData['price'], (float) $product->getPrice()->getDecimal());
     }
 
     public function test_knn_training_with_real_repository_data(): void
@@ -178,7 +209,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         // Arrange - Get first product
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $targetProductId = $products[0]['id'];
+        $targetProductId = (int) $products[0]['id'];
 
         // Act - Call execute twice
         $result1 = $this->service->execute($targetProductId);
@@ -195,7 +226,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         // Arrange - Get first product and train model
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $targetProductId = $products[0]['id'];
+        $targetProductId = (int) $products[0]['id'];
 
         // Act - Train, clear cache, and train again
         $this->service->execute($targetProductId);
@@ -222,7 +253,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
             $this->markTestSkipped('Need at least 2 products for this test');
         }
 
-        $targetProductId = $products[0]['id'];
+        $targetProductId = (int) $products[0]['id'];
 
         // Act
         $recommendations = $this->service->execute($targetProductId, 3);
