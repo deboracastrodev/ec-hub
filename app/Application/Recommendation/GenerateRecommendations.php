@@ -147,7 +147,7 @@ class GenerateRecommendations
             throw new \RuntimeException('At least 2 products required for recommendations');
         }
 
-        $this->knnService->train($products, k: 5);
+        $this->knnService->train($products, 5);
         $this->modelTrained = true;
 
         $this->logger->info('KNN model trained', [
@@ -166,7 +166,7 @@ class GenerateRecommendations
             return $this->productsCache;
         }
 
-        $productData = $this->productRepository->findAll(limit: 1000, offset: 0);
+        $productData = $this->productRepository->findAll(1000, 0);
 
         $this->productsCache = array_map(
             fn(array $data) => $this->arrayToProduct($data),

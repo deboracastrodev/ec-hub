@@ -123,7 +123,7 @@ class RuleBasedFallback
     {
         // For now, random order (until we have view tracking)
         // In Epic 4, this will use actual view counts
-        $productsData = $this->productRepository->findAll(limit: $limit);
+        $productsData = $this->productRepository->findAll($limit, 0);
 
         shuffle($productsData); // Random for variety
 

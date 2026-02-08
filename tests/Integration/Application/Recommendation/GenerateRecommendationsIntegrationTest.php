@@ -99,12 +99,12 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $totalProducts = $this->repository->count();
         $this->assertGreaterThanOrEqual(2, $totalProducts, 'Need at least 2 products for KNN recommendations');
 
-        $products = $this->repository->findAll(limit: 1, offset: 0);
+        $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products, 'Database must have at least one product');
         $targetProductId = $products[0]['id'];
 
         // Act - Execute recommendation flow
-        $recommendations = $this->service->execute($targetProductId, limit: 5);
+        $recommendations = $this->service->execute($targetProductId, 5);
 
         // Assert - Verify complete flow
         $this->assertIsArray($recommendations);
@@ -128,7 +128,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
     public function test_repository_array_to_product_entity_conversion(): void
     {
         // Arrange - Get raw product data from repository
-        $products = $this->repository->findAll(limit: 1, offset: 0);
+        $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
 
         $productData = $products[0];
@@ -151,10 +151,10 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->assertGreaterThanOrEqual(2, $totalProducts, 'Need at least 2 products for KNN training');
 
         // Act - Train KNN with repository products
-        $products = $this->repository->findAll(limit: 1000, offset: 0);
+        $products = $this->repository->findAll(1000, 0);
         $productEntities = array_map(fn($data) => Product::fromArray($data), $products);
 
-        $this->knnService->train($productEntities, k: 3);
+        $this->knnService->train($productEntities, 3);
 
         // Assert - Model is trained
         $this->assertTrue($this->knnService->isTrained());
@@ -176,7 +176,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
     public function test_model_is_cached_on_second_call(): void
     {
         // Arrange - Get first product
-        $products = $this->repository->findAll(limit: 1, offset: 0);
+        $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
         $targetProductId = $products[0]['id'];
 
@@ -193,7 +193,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
     public function test_clear_cache_allows_retraining(): void
     {
         // Arrange - Get first product and train model
-        $products = $this->repository->findAll(limit: 1, offset: 0);
+        $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
         $targetProductId = $products[0]['id'];
 
@@ -213,7 +213,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
     public function test_recommendations_include_score_and_explanation(): void
     {
         // Arrange - Get first product
-        $products = $this->repository->findAll(limit: 1, offset: 0);
+        $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
 
         // Need at least 2 products with different IDs for meaningful recommendations
@@ -225,7 +225,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $targetProductId = $products[0]['id'];
 
         // Act
-        $recommendations = $this->service->execute($targetProductId, limit: 3);
+        $recommendations = $this->service->execute($targetProductId, 3);
 
         // Assert - Check if recommendations exist and have required fields
         if (!empty($recommendations)) {
