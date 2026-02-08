@@ -8,6 +8,7 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\Service\RuleBasedFallback;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -19,17 +20,20 @@ class GenerateRecommendationsTest extends TestCase
     private GenerateRecommendations $service;
     private ProductRepositoryInterface $mockRepository;
     private KNNService $mockKNNService;
+    private RuleBasedFallback $mockFallback;
     private LoggerInterface $mockLogger;
 
     protected function setUp(): void
     {
         $this->mockRepository = $this->createMock(ProductRepositoryInterface::class);
         $this->mockKNNService = $this->createMock(KNNService::class);
+        $this->mockFallback = $this->createMock(RuleBasedFallback::class);
         $this->mockLogger = $this->createMock(LoggerInterface::class);
 
         $this->service = new GenerateRecommendations(
             $this->mockRepository,
             $this->mockKNNService,
+            $this->mockFallback,
             $this->mockLogger
         );
     }
@@ -83,16 +87,17 @@ class GenerateRecommendationsTest extends TestCase
             ->with(1000, 0)
             ->willReturn($this->getMockProductsData());
 
-        $this->mockKNNService->expects($this->once())
-            ->method('isTrained')
-            ->willReturn(false);
+        // Note: isTrained is NOT called because exception is thrown earlier
+        $this->mockKNNService->expects($this->never())
+            ->method('isTrained');
 
         $this->mockRepository->expects($this->once())
             ->method('findById')
             ->with($nonExistentId)
             ->willReturn(null);
 
-        $this->mockKNNService->expects($this->once())
+        // train should never be called
+        $this->mockKNNService->expects($this->never())
             ->method('train');
 
         // Assert/Act
@@ -208,6 +213,33 @@ class GenerateRecommendationsTest extends TestCase
                 'price' => '150.00',
                 'category' => 'Eletrônicos',
                 'image_url' => 'https://example.com/mouse.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'id' => 3,
+                'name' => 'Teclado Mecânico',
+                'description' => 'Mechanical keyboard',
+                'price' => '300.00',
+                'category' => 'Eletrônicos',
+                'image_url' => 'https://example.com/keyboard.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'id' => 4,
+                'name' => 'Monitor 24"',
+                'description' => '24 inch monitor',
+                'price' => '800.00',
+                'category' => 'Eletrônicos',
+                'image_url' => 'https://example.com/monitor.jpg',
+                'created_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'id' => 5,
+                'name' => 'Headset Gamer',
+                'description' => 'Gaming headset',
+                'price' => '250.00',
+                'category' => 'Eletrônicos',
+                'image_url' => 'https://example.com/headset.jpg',
                 'created_at' => '2024-01-01 00:00:00',
             ],
         ];

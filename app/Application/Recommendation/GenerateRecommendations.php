@@ -8,18 +8,21 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\Service\RuleBasedFallback;
 use Psr\Log\LoggerInterface;
 
 /**
  * Generate Recommendations Use Case
  *
- * Orchestrates product recommendation generation using KNN ML service.
+ * Orchestrates product recommendation generation using KNN ML service
+ * with rule-based fallback when ML has insufficient data.
  * Handles data preparation, caching, and graceful degradation.
  */
 class GenerateRecommendations
 {
     private ProductRepositoryInterface $productRepository;
     private KNNService $knnService;
+    private RuleBasedFallback $fallbackService;
     private LoggerInterface $logger;
 
     /** @var array<int, Product>|null */
@@ -28,13 +31,18 @@ class GenerateRecommendations
     /** @var bool Whether KNN model has been trained */
     private bool $modelTrained = false;
 
+    /** @var int Minimum products needed for ML recommendations */
+    private const MIN_PRODUCTS_FOR_ML = 5;
+
     public function __construct(
         ProductRepositoryInterface $productRepository,
         KNNService $knnService,
+        RuleBasedFallback $fallbackService,
         LoggerInterface $logger
     ) {
         $this->productRepository = $productRepository;
         $this->knnService = $knnService;
+        $this->fallbackService = $fallbackService;
         $this->logger = $logger;
     }
 
@@ -49,8 +57,8 @@ class GenerateRecommendations
     public function execute(int $targetProductId, int $limit = 10): array
     {
         try {
-            // Ensure KNN model is trained
-            $this->ensureModelTrained();
+            // Load products to check if we have enough for ML
+            $products = $this->loadProducts();
 
             // Get target product
             $targetProductData = $this->productRepository->findById($targetProductId);
@@ -64,6 +72,23 @@ class GenerateRecommendations
             // Convert array to Product entity
             $targetProduct = $this->arrayToProduct($targetProductData);
 
+            // Check if we should use fallback
+            if ($this->shouldUseFallback()) {
+                $this->logger->info('Using rule-based fallback', [
+                    'reason' => 'insufficient_session_data',
+                    'product_count' => count($this->productsCache),
+                ]);
+
+                return $this->fallbackService->getRecommendations(
+                    $targetProduct,
+                    $limit,
+                    'hybrid'
+                );
+            }
+
+            // Ensure KNN model is trained
+            $this->ensureModelTrained();
+
             // Generate recommendations using KNN
             $recommendations = $this->knnService->recommend($targetProduct, $limit);
 
@@ -73,15 +98,33 @@ class GenerateRecommendations
         } catch (RecommendationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            $this->logger->error('Failed to generate recommendations', [
-                'target_product_id' => $targetProductId,
+            $this->logger->error('ML failed, using fallback', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
-            // Graceful degradation - return empty recommendations
-            return [];
+            // Fallback to rule-based on error
+            $targetProductData = $this->productRepository->findById($targetProductId);
+            if ($targetProductData === null) {
+                return [];
+            }
+
+            $targetProduct = $this->arrayToProduct($targetProductData);
+
+            return $this->fallbackService->getRecommendations(
+                $targetProduct,
+                $limit,
+                'hybrid'
+            );
         }
+    }
+
+    /**
+     * Determine if fallback should be used
+     */
+    private function shouldUseFallback(): bool
+    {
+        // Use fallback if we have too few products for ML
+        return count($this->productsCache ?? []) < self::MIN_PRODUCTS_FOR_ML;
     }
 
     /**
