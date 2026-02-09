@@ -24,6 +24,8 @@ class GenerateRecommendations
     private KNNService $knnService;
     private RuleBasedFallback $fallbackService;
     private LoggerInterface $logger;
+    private string $fallbackStrategy;
+    private int $minProductsForMl;
 
     /** @var array<int, Product>|null */
     private ?array $productsCache = null;
@@ -44,6 +46,8 @@ class GenerateRecommendations
         $this->knnService = $knnService;
         $this->fallbackService = $fallbackService;
         $this->logger = $logger;
+        $this->fallbackStrategy = $this->resolveFallbackStrategy();
+        $this->minProductsForMl = $this->resolveMinProductsForMl();
     }
 
     /**
@@ -54,8 +58,15 @@ class GenerateRecommendations
      * @return array<array<string, mixed>> Array of recommendation DTOs
      * @throws RecommendationException If target product not found
      */
-    public function execute(int $targetProductId, int $limit = 10): array
+    public function execute(
+        int $targetProductId,
+        int $limit = 10,
+        bool $insufficientData = false,
+        ?string $fallbackStrategy = null
+    ): array
     {
+        $strategy = $fallbackStrategy ?? $this->fallbackStrategy;
+
         try {
             // Load products to check if we have enough for ML
             $products = $this->loadProducts();
@@ -73,17 +84,18 @@ class GenerateRecommendations
             $targetProduct = $this->arrayToProduct($targetProductData);
 
             // Check if we should use fallback
-            if ($this->shouldUseFallback()) {
-                $this->logger->info('Using rule-based fallback', [
-                    'reason' => 'insufficient_session_data',
-                    'product_count' => count($this->productsCache),
-                ]);
+            if ($insufficientData || $this->shouldUseFallback()) {
+                $reason = $insufficientData ? 'insufficient_session_data' : 'insufficient_catalog_data';
+                $this->logFallbackActivated($reason, $targetProductId, $strategy);
 
-                return $this->fallbackService->getRecommendations(
+                $fallbackResults = $this->fallbackService->getRecommendations(
                     $targetProduct,
                     $limit,
-                    'hybrid'
+                    $strategy
                 );
+                $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
+                $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
+                return $fallbackResults;
             }
 
             // Ensure KNN model is trained
@@ -93,7 +105,22 @@ class GenerateRecommendations
             $recommendations = $this->knnService->recommend($targetProduct, $limit);
 
             // Convert to DTO format
-            return $this->formatRecommendations($recommendations);
+            $formatted = $this->formatRecommendations($recommendations);
+
+            // Fill with fallback if ML returns fewer than requested
+            if (count($formatted) < $limit) {
+                $needed = $limit - count($formatted);
+                $fallbackResults = $this->fallbackService->getRecommendations(
+                    $targetProduct,
+                    $needed,
+                    $strategy
+                );
+                $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
+                $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
+                $formatted = $this->mergeRecommendations($formatted, $fallbackResults, $limit);
+            }
+
+            return $formatted;
 
         } catch (RecommendationException $e) {
             throw $e;
@@ -110,11 +137,15 @@ class GenerateRecommendations
 
             $targetProduct = $this->arrayToProduct($targetProductData);
 
-            return $this->fallbackService->getRecommendations(
+            $this->logFallbackActivated('ml_error', $targetProductId, $strategy);
+            $fallbackResults = $this->fallbackService->getRecommendations(
                 $targetProduct,
                 $limit,
-                'hybrid'
+                $strategy
             );
+            $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
+            $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
+            return $fallbackResults;
         }
     }
 
@@ -124,7 +155,7 @@ class GenerateRecommendations
     private function shouldUseFallback(): bool
     {
         // Use fallback if we have too few products for ML
-        return count($this->productsCache ?? []) < self::MIN_PRODUCTS_FOR_ML;
+        return count($this->productsCache ?? []) < $this->minProductsForMl;
     }
 
     /**
@@ -196,6 +227,112 @@ class GenerateRecommendations
             fn(RecommendationResult $result) => RecommendationDTO::fromRecommendationResult($result)->toArray(),
             $knnResults
         );
+    }
+
+    /**
+     * Normalize fallback results to match API response shape.
+     *
+     * @param array<array<string, mixed>> $fallbackResults
+     * @return array<array<string, mixed>>
+     */
+    private function normalizeFallbackResults(array $fallbackResults): array
+    {
+        return array_map(function (array $rec): array {
+            if (!isset($rec['name']) && isset($rec['product_name'])) {
+                $rec['name'] = $rec['product_name'];
+            }
+            if (!isset($rec['fallback_reason'])) {
+                $rec['fallback_reason'] = 'rule_based';
+            }
+            if (!isset($rec['explanation'])) {
+                $rec['explanation'] = 'Fallback (rule-based): recommendation';
+            }
+            return $rec;
+        }, $fallbackResults);
+    }
+
+    /**
+     * @param array<array<string, mixed>> $recommendations
+     * @return array<array<string, mixed>>
+     */
+    private function filterOutTargetProduct(array $recommendations, int $targetProductId): array
+    {
+        return array_values(array_filter($recommendations, function (array $rec) use ($targetProductId): bool {
+            if (!isset($rec['product_id'])) {
+                return true;
+            }
+            return (int) $rec['product_id'] !== $targetProductId;
+        }));
+    }
+
+    /**
+     * Merge ML and fallback recommendations without duplicates.
+     *
+     * @param array<array<string, mixed>> $primary
+     * @param array<array<string, mixed>> $secondary
+     * @return array<array<string, mixed>>
+     */
+    private function mergeRecommendations(array $primary, array $secondary, int $limit): array
+    {
+        $seen = [];
+        foreach ($primary as $rec) {
+            if (isset($rec['product_id'])) {
+                $seen[(string) $rec['product_id']] = true;
+            }
+        }
+
+        foreach ($secondary as $rec) {
+            $id = isset($rec['product_id']) ? (string) $rec['product_id'] : null;
+            if ($id !== null && isset($seen[$id])) {
+                continue;
+            }
+            $primary[] = $rec;
+            if ($id !== null) {
+                $seen[$id] = true;
+            }
+            if (count($primary) >= $limit) {
+                break;
+            }
+        }
+
+        return $primary;
+    }
+
+    private function logFallbackActivated(string $reason, int $targetProductId, string $strategy): void
+    {
+        $this->logger->info('Fallback activated: ' . $reason, [
+            'strategy_used' => $strategy,
+            'products_count' => count($this->productsCache ?? []),
+            'target_product_id' => $targetProductId,
+        ]);
+    }
+
+    private function resolveFallbackStrategy(): string
+    {
+        $configPath = dirname(__DIR__, 3) . '/config/recommendation.php';
+        if (is_file($configPath)) {
+            $config = require $configPath;
+            if (is_array($config) && isset($config['fallback']['strategy'])) {
+                return (string) $config['fallback']['strategy'];
+            }
+        }
+
+        $env = getenv('RECOMMENDATION_FALLBACK_STRATEGY');
+        return $env !== false ? (string) $env : 'hybrid';
+    }
+
+    private function resolveMinProductsForMl(): int
+    {
+        $configPath = dirname(__DIR__, 3) . '/config/recommendation.php';
+        if (is_file($configPath)) {
+            $config = require $configPath;
+            if (is_array($config) && isset($config['fallback']['min_products_for_ml'])) {
+                return (int) $config['fallback']['min_products_for_ml'];
+            }
+        }
+
+        $env = getenv('RECOMMENDATION_MIN_PRODUCTS_FOR_ML');
+        return $env !== false ? (int) $env : self::MIN_PRODUCTS_FOR_ML;
     }
 
     /**

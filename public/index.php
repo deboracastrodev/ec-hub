@@ -130,7 +130,8 @@ try {
         $identifier = (string) $params[0];
         $output = $controller->$action($identifier);
     } else {
-        $output = $controller->$action($queryParams);
+        $headers = function_exists('getallheaders') ? (array) getallheaders() : [];
+        $output = $controller->$action($queryParams, $headers);
     }
 
     // Send response

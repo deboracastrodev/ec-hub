@@ -151,7 +151,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
 
             // Verify target product is not in recommendations
             foreach ($recommendations as $rec) {
-                $this->assertNotEquals($targetProductId, $rec['product_id']);
+                $this->assertNotEquals((int) $targetProductId, (int) $rec['product_id']);
             }
         }
     }

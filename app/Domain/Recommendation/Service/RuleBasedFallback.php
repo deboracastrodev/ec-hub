@@ -17,6 +17,7 @@ class RuleBasedFallback
 {
     private ProductRepositoryInterface $productRepository;
     private LoggerInterface $logger;
+    private int $fallbackActivatedTotal = 0;
 
     // Fallback strategies
     private const STRATEGY_CATEGORY = 'category_only';
@@ -53,18 +54,18 @@ class RuleBasedFallback
         switch ($strategy) {
             case self::STRATEGY_CATEGORY:
                 $recommendations = $this->getByCategory($contextProduct, $limit);
-                $this->logFallbackActivated('category', count($recommendations));
+                $this->logFallbackActivated('category', count($recommendations), 'category_only');
                 break;
 
             case self::STRATEGY_POPULARITY:
                 $recommendations = $this->getByPopularity($limit);
-                $this->logFallbackActivated('popularity', count($recommendations));
+                $this->logFallbackActivated('popularity', count($recommendations), 'popularity_only');
                 break;
 
             case self::STRATEGY_HYBRID:
             default:
                 $recommendations = $this->getHybridRecommendations($contextProduct, $limit);
-                $this->logFallbackActivated('hybrid', count($recommendations));
+                $this->logFallbackActivated('hybrid', count($recommendations), 'hybrid');
                 break;
         }
 
@@ -177,9 +178,10 @@ class RuleBasedFallback
 
         // Log if we had to fallback to popularity
         if (count($categoryRecs) < $categoryCount) {
-            $this->logger->info('Fallback category insufficient, using popularity', [
+            $this->logger->info('Fallback activated: category_insufficient', [
                 'category_products' => count($categoryRecs),
                 'popularity_products' => count($popularityRecs),
+                'strategy_used' => 'popularity',
             ]);
         }
 
@@ -208,7 +210,7 @@ class RuleBasedFallback
     private function generateCategoryExplanation(string $category): string
     {
         return sprintf(
-            "Recomendado por ser da categoria %s",
+            "Fallback (rule-based): recomendado por ser da categoria %s",
             $category
         );
     }
@@ -218,18 +220,20 @@ class RuleBasedFallback
      */
     private function generatePopularityExplanation(): string
     {
-        return "Recomendado por ser um produto popular";
+        return "Fallback (rule-based): recomendado por ser um produto popular";
     }
 
     /**
      * Log when fallback is activated
      */
-    private function logFallbackActivated(string $strategy, int $productsCount): void
+    private function logFallbackActivated(string $strategy, int $productsCount, string $reason): void
     {
-        $this->logger->info('Rule-based fallback activated', [
-            'strategy' => $strategy,
+        $this->fallbackActivatedTotal++;
+        $this->logger->info('Fallback activated: ' . $reason, [
+            'strategy_used' => $strategy,
             'products_count' => $productsCount,
-            'reason' => 'ml_insufficient_data_or_error',
+            'reason' => $reason,
+            'fallback_activated_total' => $this->fallbackActivatedTotal,
         ]);
     }
 }

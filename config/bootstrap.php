@@ -48,12 +48,13 @@ return [
         },
         'knn' => function ($container) {
             return new App\Domain\Recommendation\Service\KNNService(
-                new \Psr\Log\NullLogger()
+                $container['repositories']['product']($container['pdo'])
             );
         },
         'rule_based_fallback' => function ($container) {
             return new App\Domain\Recommendation\Service\RuleBasedFallback(
-                $container['repositories']['product']($container['pdo'])
+                $container['repositories']['product']($container['pdo']),
+                $container['services']['logger']($container)
             );
         },
         'generate_recommendations' => function ($container) {
@@ -61,7 +62,7 @@ return [
                 $container['repositories']['product']($container['pdo']),
                 $container['services']['knn']($container),
                 $container['services']['rule_based_fallback']($container),
-                new \Psr\Log\NullLogger()
+                $container['services']['logger']($container)
             );
         },
         'logger' => function ($container) {

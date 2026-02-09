@@ -36,7 +36,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsReturnsJsonResponse(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '1'];
+        $queryParams = ['user_id' => '1'];
         $expectedRecommendations = [
             [
                 'product_id' => 2,
@@ -61,7 +61,7 @@ class RecommendationControllerTest extends TestCase
         $this->assertArrayHasKey('data', $response);
         $this->assertArrayHasKey('meta', $response);
         $this->assertCount(1, $response['data']);
-        $this->assertEquals(2, $response['data'][0]['product_id']);
+        $this->assertEquals(2, $response['data'][0]['id']);
     }
 
     public function testGetRecommendationsThrowsExceptionWithoutProductId(): void
@@ -71,7 +71,7 @@ class RecommendationControllerTest extends TestCase
 
         // Assert/Act
         $this->expectException(InvalidRequestException::class);
-        $this->expectExceptionMessage('product_id is required');
+        $this->expectExceptionMessage('user_id is required');
 
         $this->controller->getRecommendations($queryParams);
     }
@@ -79,7 +79,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsThrowsExceptionWithInvalidProductId(): void
     {
         // Arrange - Invalid product_id
-        $queryParams = ['product_id' => 'invalid'];
+        $queryParams = ['user_id' => 'invalid'];
 
         // Assert/Act
         $this->expectException(InvalidRequestException::class);
@@ -91,7 +91,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsThrowsExceptionWithNegativeProductId(): void
     {
         // Arrange - Negative product_id
-        $queryParams = ['product_id' => '-1'];
+        $queryParams = ['user_id' => '-1'];
 
         // Assert/Act
         $this->expectException(InvalidRequestException::class);
@@ -103,7 +103,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsIncludesMetadata(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '1'];
+        $queryParams = ['user_id' => '1'];
         $expectedRecommendations = [
             [
                 'product_id' => 2,
@@ -134,7 +134,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsRespectsLimitParameter(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '1', 'limit' => '5'];
+        $queryParams = ['user_id' => '1', 'limit' => '5'];
         $expectedRecommendations = [];
 
         $this->mockGenerateRecommendations->expects($this->once())
@@ -149,7 +149,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsUsesDefaultLimit(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '1']; // No limit specified
+        $queryParams = ['user_id' => '1']; // No limit specified
         $expectedRecommendations = [];
 
         $this->mockGenerateRecommendations->expects($this->once())
@@ -164,7 +164,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsEnforcesMaximumLimit(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '1', 'limit' => '999']; // Over max
+        $queryParams = ['user_id' => '1', 'limit' => '999']; // Over max
         $expectedRecommendations = [];
 
         $this->mockGenerateRecommendations->expects($this->once())
@@ -179,7 +179,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsLogsSlowRequests(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '1'];
+        $queryParams = ['user_id' => '1'];
         $expectedRecommendations = [
             ['product_id' => 2, 'name' => 'Test', 'price' => 'R$ 100', 'category' => 'Test', 'score' => 0.5, 'explanation' => 'Test']
         ];
@@ -206,7 +206,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsHandlesServiceException(): void
     {
         // Arrange
-        $queryParams = ['product_id' => '999']; // Non-existent product
+        $queryParams = ['user_id' => '999']; // Non-existent product
 
         $this->mockGenerateRecommendations->expects($this->once())
             ->method('execute')
@@ -222,7 +222,7 @@ class RecommendationControllerTest extends TestCase
     public function testGetRecommendationsFormatMatchesAcSpec(): void
     {
         // Arrange - AC1: Response format
-        $queryParams = ['product_id' => '1'];
+        $queryParams = ['user_id' => '1'];
         $expectedRecommendations = [
             [
                 'product_id' => 2,
@@ -244,10 +244,24 @@ class RecommendationControllerTest extends TestCase
         // Assert - AC1 format
         $this->assertArrayHasKey('data', $response);
         $firstRec = $response['data'][0];
-        $this->assertArrayHasKey('product_id', $firstRec, 'AC1: id field required');
+        $this->assertArrayHasKey('id', $firstRec, 'AC1: id field required');
         $this->assertArrayHasKey('name', $firstRec, 'AC1: name field required');
         $this->assertArrayHasKey('price', $firstRec, 'AC1: price field required');
         $this->assertArrayHasKey('score', $firstRec, 'AC1: score field required');
         $this->assertArrayHasKey('explanation', $firstRec, 'AC1: explanation field required');
+    }
+
+    public function testGetRecommendationsThrowsUnauthorizedWhenAuthRequired(): void
+    {
+        putenv('AUTH_REQUIRED=true');
+        $queryParams = ['user_id' => '1'];
+
+        try {
+            $this->expectException(InvalidRequestException::class);
+            $this->expectExceptionMessage('Authentication required');
+            $this->controller->getRecommendations($queryParams, []);
+        } finally {
+            putenv('AUTH_REQUIRED'); // cleanup
+        }
     }
 }

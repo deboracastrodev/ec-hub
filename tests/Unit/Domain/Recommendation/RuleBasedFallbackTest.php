@@ -64,7 +64,7 @@ class RuleBasedFallbackTest extends TestCase
             ->method('info')
             ->with(
                 $this->stringContains('Fallback activated'),
-                $this->arrayHasKey('strategy')
+                $this->arrayHasKey('strategy_used')
             );
 
         // Act
@@ -116,7 +116,7 @@ class RuleBasedFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findAll')
-            ->with(2)
+            ->with(2, 0)
             ->willReturn($allProducts);
 
         // Act
@@ -128,7 +128,7 @@ class RuleBasedFallbackTest extends TestCase
 
         // Assert
         $this->assertCount(2, $recommendations);
-        $this->assertStringContainsString('popular', $recommendations[0]['explanation']);
+        $this->assertStringContainsString('Fallback', $recommendations[0]['explanation']);
         $this->assertEquals('popular_product', $recommendations[0]['fallback_reason']);
     }
 

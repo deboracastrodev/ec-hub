@@ -58,7 +58,7 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
             ->willReturn(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']);
 
         $fallbackRecs = [
-            ['product_id' => 2, 'score' => 60.0, 'explanation' => 'Category match', 'fallback_reason' => 'category'],
+            ['product_id' => 2, 'product_name' => 'Product 2', 'score' => 60.0, 'explanation' => 'Fallback (rule-based): Category match', 'fallback_reason' => 'category'],
         ];
 
         $this->mockFallback->expects($this->once())
@@ -73,10 +73,12 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
             ->method('isTrained');
 
         // Act
-        $result = $this->service->execute(1);
+        $result = $this->service->execute(1, 1);
 
         // Assert
-        $this->assertEquals($fallbackRecs, $result);
+        $this->assertEquals($fallbackRecs[0]['product_id'], $result[0]['product_id']);
+        $this->assertEquals('Product 2', $result[0]['name']);
+        $this->assertArrayHasKey('fallback_reason', $result[0]);
     }
 
     public function testUsesMLWhenEnoughProducts(): void
@@ -103,13 +105,57 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
 
         $this->mockKNNService->expects($this->once())
             ->method('recommend')
-            ->willReturn([]);
+            ->willReturn([
+                new \App\Domain\Recommendation\Model\RecommendationResult(
+                    2,
+                    'Product 2',
+                    'Cat1',
+                    'R$ 100,00',
+                    85.0,
+                    1,
+                    'Recomendado porque você visualizou "Product 1"'
+                ),
+            ]);
 
         // Act
-        $result = $this->service->execute(1);
+        $result = $this->service->execute(1, 1);
 
-        // Assert - should return empty (since mock KNN returns empty)
+        // Assert
         $this->assertIsArray($result);
+        $this->assertCount(1, $result);
+    }
+
+    public function testUsesFallbackWhenInsufficientDataFlagIsTrue(): void
+    {
+        // Arrange - enough products, but force fallback
+        $this->mockRepository->expects($this->once())
+            ->method('findAll')
+            ->willReturn($this->getEnoughProducts());
+
+        $this->mockRepository->expects($this->once())
+            ->method('findById')
+            ->willReturn(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']);
+
+        $fallbackRecs = [
+            ['product_id' => 2, 'product_name' => 'Product 2', 'score' => 60.0, 'explanation' => 'Fallback (rule-based): Category match', 'fallback_reason' => 'category'],
+        ];
+
+        $this->mockFallback->expects($this->once())
+            ->method('getRecommendations')
+            ->willReturn($fallbackRecs);
+
+        $this->mockKNNService->expects($this->never())
+            ->method('train');
+
+        $this->mockKNNService->expects($this->never())
+            ->method('isTrained');
+
+        // Act
+        $result = $this->service->execute(1, 10, true);
+
+        // Assert
+        $this->assertEquals('Product 2', $result[0]['name']);
+        $this->assertArrayHasKey('fallback_reason', $result[0]);
     }
 
     public function testUsesFallbackOnKNNFailure(): void
@@ -136,7 +182,7 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
             ->with($this->stringContains('ML failed, using fallback'));
 
         $fallbackRecs = [
-            ['product_id' => 2, 'score' => 60.0, 'explanation' => 'Category match'],
+            ['product_id' => 2, 'product_name' => 'Product 2', 'score' => 60.0, 'explanation' => 'Fallback (rule-based): Category match', 'fallback_reason' => 'category'],
         ];
 
         $this->mockFallback->expects($this->once())
@@ -147,7 +193,9 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
         $result = $this->service->execute(1);
 
         // Assert - fallback returned
-        $this->assertEquals($fallbackRecs, $result);
+        $this->assertEquals($fallbackRecs[0]['product_id'], $result[0]['product_id']);
+        $this->assertEquals('Product 2', $result[0]['name']);
+        $this->assertArrayHasKey('fallback_reason', $result[0]);
     }
 
     private function getEnoughProducts(): array

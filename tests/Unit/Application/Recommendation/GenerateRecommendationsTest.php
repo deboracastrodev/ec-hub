@@ -59,7 +59,7 @@ class GenerateRecommendationsTest extends TestCase
 
         $this->mockKNNService->expects($this->once())
             ->method('train')
-            ->with($this->callback(fn($products) => count($products) >= 2), 5);
+            ->with($this->callback(fn($products) => count($products) >= 5), 5);
 
         $this->mockKNNService->expects($this->once())
             ->method('recommend')

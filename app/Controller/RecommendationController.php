@@ -56,11 +56,12 @@ class RecommendationController
      * @throws InvalidRequestException If request validation fails
      * @throws RecommendationException If recommendation generation fails
      */
-    public function getRecommendations(array $queryParams): array
+    public function getRecommendations(array $queryParams, ?array $headers = null): array
     {
         $startTime = microtime(true);
 
         // Validate request
+        $this->validateAuth($headers);
         $productId = $this->validateProductId($queryParams);
         $limit = $this->validateAndParseLimit($queryParams);
 
@@ -79,7 +80,7 @@ class RecommendationController
             }
 
             // Format response (AC1, AC8)
-            return $this->formatResponse($recommendations, 'ml', $responseTime);
+            return $this->formatResponse($recommendations, $responseTime);
 
         } catch (\App\Domain\Recommendation\Exception\RecommendationException $e) {
             // Domain exception - wrap in controller exception
@@ -100,11 +101,12 @@ class RecommendationController
      */
     private function validateProductId(array $queryParams): int
     {
-        if (!isset($queryParams['product_id'])) {
-            throw new InvalidRequestException('product_id is required');
+        $rawId = $queryParams['product_id'] ?? $queryParams['user_id'] ?? null;
+        if ($rawId === null) {
+            throw new InvalidRequestException('user_id is required', 400);
         }
 
-        $productId = $queryParams['product_id'];
+        $productId = $rawId;
 
         // First check if it's a valid integer (including negative numbers)
         if (!is_numeric($productId) || (int) $productId != $productId) {
@@ -119,6 +121,21 @@ class RecommendationController
         }
 
         return $productIdInt;
+    }
+
+    private function validateAuth(?array $headers = null): void
+    {
+        $authRequired = getenv('AUTH_REQUIRED');
+        if ($authRequired === false || strtolower((string) $authRequired) !== 'true') {
+            return;
+        }
+
+        $headers = $headers ?? $this->getRequestHeaders();
+        $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? null;
+
+        if ($authHeader === null || trim((string) $authHeader) === '') {
+            throw new InvalidRequestException('Authentication required', 401);
+        }
     }
 
     /**
@@ -163,16 +180,66 @@ class RecommendationController
      * @param float $responseTime Response time in milliseconds
      * @return array<string, mixed> Formatted response
      */
-    private function formatResponse(array $recommendations, string $source, float $responseTime): array
+    private function formatResponse(array $recommendations, float $responseTime): array
     {
+        $source = $this->detectSource($recommendations);
+        $data = array_map(function (array $rec): array {
+            return [
+                'id' => $rec['product_id'] ?? $rec['id'] ?? null,
+                'name' => $rec['name'] ?? $rec['product_name'] ?? null,
+                'price' => $rec['price'] ?? null,
+                'score' => $rec['score'] ?? null,
+                'explanation' => $rec['explanation'] ?? null,
+            ];
+        }, $recommendations);
+
         return [
-            'data' => $recommendations,
+            'data' => $data,
             'meta' => [
                 'source' => $source,
-                'count' => count($recommendations),
+                'count' => count($data),
                 'response_time_ms' => round($responseTime, 2),
                 'generated_at' => date('c'),
             ],
         ];
+    }
+
+    /**
+     * @param array<array<string, mixed>> $recommendations
+     */
+    private function detectSource(array $recommendations): string
+    {
+        foreach ($recommendations as $rec) {
+            if (!isset($rec['fallback_reason'])) {
+                continue;
+            }
+            if ($rec['fallback_reason'] === 'popular_product') {
+                return 'popular';
+            }
+            return 'rules';
+        }
+
+        return 'ml';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getRequestHeaders(): array
+    {
+        if (function_exists('getallheaders')) {
+            $headers = getallheaders();
+            return is_array($headers) ? $headers : [];
+        }
+
+        $headers = [];
+        foreach ($_SERVER as $key => $value) {
+            if (strpos($key, 'HTTP_') === 0) {
+                $name = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($key, 5)))));
+                $headers[$name] = (string) $value;
+            }
+        }
+
+        return $headers;
     }
 }
