@@ -46,5 +46,26 @@ return [
         'category' => function ($container) {
             return new App\Service\CategoryService($container['repositories']['product']($container['pdo']));
         },
+        'knn' => function ($container) {
+            return new App\Domain\Recommendation\Service\KNNService(
+                new \Psr\Log\NullLogger()
+            );
+        },
+        'rule_based_fallback' => function ($container) {
+            return new App\Domain\Recommendation\Service\RuleBasedFallback(
+                $container['repositories']['product']($container['pdo'])
+            );
+        },
+        'generate_recommendations' => function ($container) {
+            return new App\Application\Recommendation\GenerateRecommendations(
+                $container['repositories']['product']($container['pdo']),
+                $container['services']['knn']($container),
+                $container['services']['rule_based_fallback']($container),
+                new \Psr\Log\NullLogger()
+            );
+        },
+        'logger' => function ($container) {
+            return new \Psr\Log\NullLogger();
+        },
     ],
 ];

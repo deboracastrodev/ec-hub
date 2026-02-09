@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Database\Seeders\ProductSeeder;
 
 require_once __DIR__ . '/../vendor/autoload.php';
+if (!class_exists(ProductSeeder::class)) {
+    require_once __DIR__ . '/../database/seeders/ProductSeeder.php';
+}
 
 $config = [
     'driver' => 'mysql',

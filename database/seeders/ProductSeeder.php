@@ -126,6 +126,11 @@ class ProductSeeder
         $this->pdo->exec('DELETE FROM products');
 
         $productCount = random_int($minProducts, $maxProducts);
+        $minCategory = 'Eletrônicos';
+        $minCategoryCount = 25;
+        if ($productCount < $minCategoryCount) {
+            $productCount = $minCategoryCount;
+        }
         $faker = FakerFactory::create('pt_BR');
 
         $stmt = $this->pdo->prepare("
@@ -136,7 +141,7 @@ class ProductSeeder
         $usedSlugs = [];
 
         for ($i = 0; $i < $productCount; $i++) {
-            $category = $faker->randomElement($this->categories);
+            $category = $i < $minCategoryCount ? $minCategory : $faker->randomElement($this->categories);
             $productName = $this->fakerNameForCategory($faker, $category);
             $price = $faker->randomFloat(2, 10, 500);
             $slug = $this->uniqueSlug($productName, $usedSlugs);

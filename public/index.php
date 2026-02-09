@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
+use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\ProductController;
+use App\Controller\RecommendationController;
+use App\Controller\Exceptions\InvalidRequestException;
+use App\Controller\Exceptions\RecommendationException;
 use App\Service\CategoryService;
 
 /**
@@ -24,6 +28,8 @@ $productRepository = $container['repositories']['product']($container['pdo']);
 $categoryService = new CategoryService($productRepository);
 $getProductList = new GetProductList($productRepository, $categoryService);
 $getProductDetail = new GetProductDetail($productRepository);
+$logger = $container['services']['logger']($container);
+$generateRecommendations = $container['services']['generate_recommendations']($container);
 
 // Simple router
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -66,6 +72,7 @@ if (
 $routes = [
     'GET /' => ['controller' => 'ProductController', 'action' => 'index'],
     'GET /products' => ['controller' => 'ProductController', 'action' => 'index'],
+    'GET /api/recommendations' => ['controller' => 'RecommendationController', 'action' => 'getRecommendations', 'type' => 'api'],
 ];
 
 // Pattern routes (with parameters) - pattern is URI only, method is checked separately
@@ -104,6 +111,9 @@ switch ($controllerClass) {
     case ProductController::class:
         $controller = new ProductController($getProductList, $getProductDetail, $twig);
         break;
+    case RecommendationController::class:
+        $controller = new RecommendationController($generateRecommendations, $logger);
+        break;
     default:
         throw new RuntimeException("Controller {$controllerClass} não configurado");
 }
@@ -111,14 +121,68 @@ switch ($controllerClass) {
 // Extract query params for index action
 $queryParams = $_GET;
 
-// Call controller action
-if ($action === 'show') {
-    $identifier = (string) $params[0];
-    $output = $controller->$action($identifier);
-} else {
-    $output = $controller->$action($queryParams);
-}
+// Determine if this is an API route
+$isApiRoute = isset($matchedRoute['type']) && $matchedRoute['type'] === 'api';
 
-// Send response
-header('Content-Type: text/html; charset=utf-8');
-echo $output;
+// Call controller action with exception handling for API
+try {
+    if ($action === 'show') {
+        $identifier = (string) $params[0];
+        $output = $controller->$action($identifier);
+    } else {
+        $output = $controller->$action($queryParams);
+    }
+
+    // Send response
+    if ($isApiRoute) {
+        // API endpoints return JSON
+        $responseTimeMs = $output['meta']['response_time_ms'] ?? 0;
+        $source = $output['meta']['source'] ?? 'unknown';
+
+        header('Content-Type: application/json');
+        header('X-Recommendation-Source: ' . $source);
+        header('X-Response-Time: ' . round($responseTimeMs, 2) . 'ms');
+        echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    } else {
+        // HTML endpoints
+        header('Content-Type: text/html; charset=utf-8');
+        echo $output;
+    }
+} catch (InvalidRequestException $e) {
+    // AC4: 400 Bad Request for validation errors
+    http_response_code($e->getHttpCode());
+    if ($isApiRoute) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'error' => $e->getMessage(),
+            'code' => $e->getHttpCode(),
+        ], JSON_PRETTY_PRINT);
+    } else {
+        echo $twig->render('error/400.html.twig', ['message' => $e->getMessage()]);
+    }
+} catch (RecommendationException $e) {
+    // Internal service error
+    http_response_code($e->getHttpCode());
+    if ($isApiRoute) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'error' => $e->getMessage(),
+            'code' => $e->getHttpCode(),
+        ], JSON_PRETTY_PRINT);
+    } else {
+        http_response_code(500);
+        echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
+    }
+} catch (\Exception $e) {
+    // Generic error handler
+    http_response_code(500);
+    if ($isApiRoute) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'error' => 'Internal server error',
+            'code' => 500,
+        ], JSON_PRETTY_PRINT);
+    } else {
+        echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
+    }
+}
