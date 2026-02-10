@@ -264,6 +264,22 @@ class RecommendationControllerTest extends TestCase
         $this->controller->getRecommendations($queryParams);
     }
 
+    public function testGetRecommendationsKeepsFastRequestsUnderSlaThreshold(): void
+    {
+        $queryParams = ['user_id' => '1'];
+        $this->mockGenerateRecommendations->expects($this->once())
+            ->method('execute')
+            ->with(1, 10)
+            ->willReturn([
+                ['product_id' => 2, 'name' => 'Test', 'price' => 'R$ 100', 'score' => 0.8, 'explanation' => 'Test'],
+            ]);
+
+        $response = $this->controller->getRecommendations($queryParams);
+
+        $this->assertArrayHasKey('meta', $response);
+        $this->assertLessThan(200.0, (float) $response['meta']['response_time_ms']);
+    }
+
     public function testGetRecommendationsThrowsUnauthorizedWhenAuthRequired(): void
     {
         putenv('AUTH_REQUIRED=true');
