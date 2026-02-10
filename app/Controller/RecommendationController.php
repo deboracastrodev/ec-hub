@@ -28,6 +28,9 @@ class RecommendationController
     /** @var int Default number of recommendations to return */
     private const DEFAULT_LIMIT = 10;
 
+    /** @var int Minimum number of recommendations allowed */
+    private const MIN_LIMIT = 5;
+
     /** @var int Maximum number of recommendations allowed */
     private const MAX_LIMIT = 50;
 
@@ -47,11 +50,11 @@ class RecommendationController
      *
      * AC1: Returns JSON response with product recommendations
      * AC2: Response time < 200ms
-     * AC4: 400 Bad Request if product_id missing
+     * AC4: 400 Bad Request if user_id missing
      * AC5: Uses fallback automatically when ML fails
      * AC8: Includes response headers
      *
-     * @param array<string, string|int> $queryParams Query parameters (product_id, limit)
+     * @param array<string, string|int> $queryParams Query parameters (user_id, limit)
      * @return array<string, mixed> JSON-serializable response array
      * @throws InvalidRequestException If request validation fails
      * @throws RecommendationException If recommendation generation fails
@@ -62,19 +65,19 @@ class RecommendationController
 
         // Validate request
         $this->validateAuth($headers);
-        $productId = $this->validateProductId($queryParams);
+        $userId = $this->validateUserId($queryParams);
         $limit = $this->validateAndParseLimit($queryParams);
 
         try {
             // Generate recommendations
-            $recommendations = $this->generateRecommendations->execute($productId, $limit);
+            $recommendations = $this->generateRecommendations->execute($userId, $limit);
 
             $responseTime = (microtime(true) - $startTime) * 1000;
 
             // Log slow requests (AC2: performance monitoring)
             if ($responseTime > self::SLOW_REQUEST_THRESHOLD_MS) {
                 $this->logger->warning('Slow recommendation', [
-                    'product_id' => $productId,
+                    'user_id' => $userId,
                     'time_ms' => round($responseTime, 2),
                 ]);
             }
@@ -93,34 +96,34 @@ class RecommendationController
     }
 
     /**
-     * Validate product_id from query parameters
+     * Validate user_id from query parameters
      *
      * @param array<string, string|int> $queryParams
-     * @return int Validated product ID
+     * @return int Validated user ID
      * @throws InvalidRequestException If validation fails
      */
-    private function validateProductId(array $queryParams): int
+    private function validateUserId(array $queryParams): int
     {
-        $rawId = $queryParams['product_id'] ?? $queryParams['user_id'] ?? null;
+        $rawId = $queryParams['user_id'] ?? null;
         if ($rawId === null) {
             throw new InvalidRequestException('user_id is required', 400);
         }
 
-        $productId = $rawId;
+        $userId = $rawId;
 
         // First check if it's a valid integer (including negative numbers)
-        if (!is_numeric($productId) || (int) $productId != $productId) {
-            throw new InvalidRequestException('product_id must be a valid integer');
+        if (!is_numeric($userId) || (int) $userId != $userId) {
+            throw new InvalidRequestException('user_id must be a valid integer');
         }
 
-        $productIdInt = (int) $productId;
+        $userIdInt = (int) $userId;
 
         // Validate it's positive
-        if ($productIdInt <= 0) {
-            throw new InvalidRequestException('product_id must be a positive integer');
+        if ($userIdInt <= 0) {
+            throw new InvalidRequestException('user_id must be a positive integer');
         }
 
-        return $productIdInt;
+        return $userIdInt;
     }
 
     private function validateAuth(?array $headers = null): void
@@ -164,9 +167,9 @@ class RecommendationController
             return self::MAX_LIMIT;
         }
 
-        // Ensure minimum of 1
-        if ($limitInt < 1) {
-            return 1;
+        // Enforce AC lower bound
+        if ($limitInt < self::MIN_LIMIT) {
+            return self::MIN_LIMIT;
         }
 
         return $limitInt;
@@ -187,7 +190,7 @@ class RecommendationController
             return [
                 'id' => $rec['product_id'] ?? $rec['id'] ?? null,
                 'name' => $rec['name'] ?? $rec['product_name'] ?? null,
-                'price' => $rec['price'] ?? null,
+                'price' => $this->normalizePrice($rec['price'] ?? null),
                 'score' => $rec['score'] ?? null,
                 'explanation' => $rec['explanation'] ?? null,
             ];
@@ -241,5 +244,39 @@ class RecommendationController
         }
 
         return $headers;
+    }
+
+    /**
+     * Normalize price to numeric value when possible.
+     *
+     * @param mixed $price
+     */
+    private function normalizePrice($price): ?float
+    {
+        if ($price === null) {
+            return null;
+        }
+
+        if (is_int($price) || is_float($price)) {
+            return (float) $price;
+        }
+
+        if (is_string($price)) {
+            $normalized = preg_replace('/[^\d,.\-]/', '', $price);
+            if ($normalized === null || $normalized === '') {
+                return null;
+            }
+
+            if (strpos($normalized, ',') !== false && strpos($normalized, '.') !== false) {
+                $normalized = str_replace('.', '', $normalized);
+                $normalized = str_replace(',', '.', $normalized);
+            } elseif (strpos($normalized, ',') !== false) {
+                $normalized = str_replace(',', '.', $normalized);
+            }
+
+            return is_numeric($normalized) ? (float) $normalized : null;
+        }
+
+        return null;
     }
 }

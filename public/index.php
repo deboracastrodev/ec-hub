@@ -20,16 +20,12 @@ use App\Service\CategoryService;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-// Bootstrap application - sensitive logic is outside web root
-$container = require __DIR__ . '/../config/bootstrap.php';
+// Allow test harness to inject a container and bypass infrastructure bootstrapping.
+$container = isset($GLOBALS['EC_HUB_TEST_CONTAINER']) && is_array($GLOBALS['EC_HUB_TEST_CONTAINER'])
+    ? $GLOBALS['EC_HUB_TEST_CONTAINER']
+    : (require __DIR__ . '/../config/bootstrap.php');
 
 $twig = $container['twig'];
-$productRepository = $container['repositories']['product']($container['pdo']);
-$categoryService = new CategoryService($productRepository);
-$getProductList = new GetProductList($productRepository, $categoryService);
-$getProductDetail = new GetProductDetail($productRepository);
-$logger = $container['services']['logger']($container);
-$generateRecommendations = $container['services']['generate_recommendations']($container);
 
 // Simple router
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -109,9 +105,15 @@ $action = $matchedRoute['action'];
 
 switch ($controllerClass) {
     case ProductController::class:
+        $productRepository = $container['repositories']['product']($container['pdo']);
+        $categoryService = new CategoryService($productRepository);
+        $getProductList = new GetProductList($productRepository, $categoryService);
+        $getProductDetail = new GetProductDetail($productRepository);
         $controller = new ProductController($getProductList, $getProductDetail, $twig);
         break;
     case RecommendationController::class:
+        $logger = $container['services']['logger']($container);
+        $generateRecommendations = $container['services']['generate_recommendations']($container);
         $controller = new RecommendationController($generateRecommendations, $logger);
         break;
     default:

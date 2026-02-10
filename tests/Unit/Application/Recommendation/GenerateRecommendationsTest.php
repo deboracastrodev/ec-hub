@@ -5,7 +5,6 @@ namespace Tests\Unit\Application\Recommendation;
 
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
-use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
@@ -77,7 +76,7 @@ class GenerateRecommendationsTest extends TestCase
         $this->assertArrayHasKey('explanation', $result[0]);
     }
 
-    public function testExecuteThrowsExceptionWhenProductNotFound(): void
+    public function testExecuteReturnsPopularFallbackWhenUserContextNotFound(): void
     {
         // Arrange
         $nonExistentId = 999;
@@ -87,7 +86,7 @@ class GenerateRecommendationsTest extends TestCase
             ->with(1000, 0)
             ->willReturn($this->getMockProductsData());
 
-        // Note: isTrained is NOT called because exception is thrown earlier
+        // isTrained is NOT called because fallback is returned before ML path
         $this->mockKNNService->expects($this->never())
             ->method('isTrained');
 
@@ -100,11 +99,26 @@ class GenerateRecommendationsTest extends TestCase
         $this->mockKNNService->expects($this->never())
             ->method('train');
 
-        // Assert/Act
-        $this->expectException(RecommendationException::class);
-        $this->expectExceptionMessage('Product with ID 999 not found');
+        $this->mockFallback->expects($this->once())
+            ->method('getPopularRecommendations')
+            ->with(10)
+            ->willReturn([
+                [
+                    'product_id' => 2,
+                    'product_name' => 'Mouse Gamer',
+                    'price' => '150.00',
+                    'score' => 55.0,
+                    'explanation' => 'Fallback (rule-based): recomendado por ser um produto popular',
+                    'fallback_reason' => 'popular_product',
+                ],
+            ]);
 
-        $this->service->execute($nonExistentId);
+        // Act
+        $result = $this->service->execute($nonExistentId);
+
+        // Assert
+        $this->assertNotEmpty($result);
+        $this->assertSame('popular_product', $result[0]['fallback_reason']);
     }
 
     public function testExecuteUsesCachedModelOnSecondCall(): void

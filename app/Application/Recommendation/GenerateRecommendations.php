@@ -75,9 +75,11 @@ class GenerateRecommendations
             $targetProductData = $this->productRepository->findById($targetProductId);
 
             if ($targetProductData === null) {
-                throw new RecommendationException(
-                    sprintf('Product with ID %d not found', $targetProductId)
-                );
+                // Cold-start for unknown user/item context: return popular fallback.
+                $this->logFallbackActivated('cold_start_unknown_user', $targetProductId, 'popularity_only');
+                $fallbackResults = $this->fallbackService->getPopularRecommendations($limit);
+                $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
+                return $fallbackResults;
             }
 
             // Convert array to Product entity

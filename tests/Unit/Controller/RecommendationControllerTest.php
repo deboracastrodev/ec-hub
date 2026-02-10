@@ -83,7 +83,7 @@ class RecommendationControllerTest extends TestCase
 
         // Assert/Act
         $this->expectException(InvalidRequestException::class);
-        $this->expectExceptionMessage('product_id must be a valid integer');
+        $this->expectExceptionMessage('user_id must be a valid integer');
 
         $this->controller->getRecommendations($queryParams);
     }
@@ -95,7 +95,7 @@ class RecommendationControllerTest extends TestCase
 
         // Assert/Act
         $this->expectException(InvalidRequestException::class);
-        $this->expectExceptionMessage('product_id must be a positive integer');
+        $this->expectExceptionMessage('user_id must be a positive integer');
 
         $this->controller->getRecommendations($queryParams);
     }
@@ -196,7 +196,7 @@ class RecommendationControllerTest extends TestCase
             ->method('warning')
             ->with(
                 $this->stringContains('Slow recommendation'),
-                $this->callback(fn($context) => isset($context['product_id']) && isset($context['time_ms']))
+                $this->callback(fn($context) => isset($context['user_id']) && isset($context['time_ms']))
             );
 
         // Act
@@ -249,6 +249,19 @@ class RecommendationControllerTest extends TestCase
         $this->assertArrayHasKey('price', $firstRec, 'AC1: price field required');
         $this->assertArrayHasKey('score', $firstRec, 'AC1: score field required');
         $this->assertArrayHasKey('explanation', $firstRec, 'AC1: explanation field required');
+        $this->assertIsFloat($firstRec['price'], 'AC1: price should be numeric');
+    }
+
+    public function testGetRecommendationsEnforcesMinimumLimitOfFive(): void
+    {
+        $queryParams = ['user_id' => '1', 'limit' => '1'];
+
+        $this->mockGenerateRecommendations->expects($this->once())
+            ->method('execute')
+            ->with(1, 5)
+            ->willReturn([]);
+
+        $this->controller->getRecommendations($queryParams);
     }
 
     public function testGetRecommendationsThrowsUnauthorizedWhenAuthRequired(): void

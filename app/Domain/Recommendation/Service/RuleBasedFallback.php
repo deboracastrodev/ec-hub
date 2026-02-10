@@ -73,6 +73,19 @@ class RuleBasedFallback
     }
 
     /**
+     * Get popularity-based recommendations for cold-start scenarios.
+     *
+     * @return array<array<string, mixed>>
+     */
+    public function getPopularRecommendations(int $limit = 10): array
+    {
+        $recommendations = $this->getByPopularity($limit);
+        $this->logFallbackActivated('popularity', count($recommendations), 'cold_start');
+
+        return $recommendations;
+    }
+
+    /**
      * Get recommendations by category
      */
     private function getByCategory(Product $contextProduct, int $limit): array

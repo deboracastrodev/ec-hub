@@ -101,9 +101,12 @@ class RecommendationApiEndpointTest extends TestCase
         // Act
         $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
 
-        // Assert - AC3: 5-10 products (if enough products exist)
+        // Assert - AC3: 5-10 products (if enough catalog exists)
         $count = $response['meta']['count'];
-        $this->assertGreaterThanOrEqual(0, $count);
+        $catalogSize = count($this->repository->findAll(50, 0));
+        if ($catalogSize >= 6) {
+            $this->assertGreaterThanOrEqual(5, $count, 'AC3: Minimum 5 recommendations when catalog is sufficient');
+        }
         $this->assertLessThanOrEqual(10, $count, 'AC3: Maximum 10 recommendations');
     }
 
@@ -115,7 +118,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
 
         // Assert - AC3: No duplicates
         $productIds = array_column($response['data'], 'id');
@@ -241,9 +244,9 @@ class RecommendationApiEndpointTest extends TestCase
         $this->assertContains($response['meta']['source'], ['ml', 'rules', 'popular']);
     }
 
-    public function test_api_throws_exception_without_product_id(): void
+    public function test_api_throws_exception_without_user_id(): void
     {
-        // Arrange - AC4: 400 Bad Request without product_id
+        // Arrange - AC4: 400 Bad Request without user_id
 
         // Assert/Act
         $this->expectException(\App\Controller\Exceptions\InvalidRequestException::class);
