@@ -45,3 +45,7 @@ composer.lock
 # Docker volumes (if mounted locally)
 /docker/mysql-data/
 /docker/redis-data/
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
+_bmad/render/
