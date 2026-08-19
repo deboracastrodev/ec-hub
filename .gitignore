@@ -26,6 +26,7 @@ Thumbs.db
 
 # Composer
 /vendor/
+.phpunit.result.cache
 
 # Application files
 /app/bootstrap/cache/*
