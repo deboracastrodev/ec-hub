@@ -137,7 +137,7 @@ class ResponsiveDesignTest extends TestCase
     {
         $css = file_get_contents($this->cssPath);
         // Body should have base font size for mobile readability
-        $this->assertRegExp('/body\s*{[^}]*font-size:\s*var\(--font-size-base\)/', $css);
+        $this->assertMatchesRegularExpression('/body\s*{[^}]*font-size:\s*var\(--font-size-base\)/', $css);
     }
 
     public function test_typography_scale_defined(): void

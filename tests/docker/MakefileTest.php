@@ -36,7 +36,7 @@ class MakefileTest extends TestCase
         $this->assertStringContainsString('down:', $content, 'O Makefile deve ter target "down"');
         $this->assertStringContainsString('$(COMPOSE)', $content, 'O Makefile deve usar variável COMPOSE');
         // Verifica que há uma linha com $(COMPOSE) down
-        $this->assertRegExp('/\$\(COMPOSE\)\s+down/', $content, 'O target "down" deve executar "docker-compose down"');
+        $this->assertMatchesRegularExpression('/\$\(COMPOSE\)\s+down/', $content, 'O target "down" deve executar "docker-compose down"');
     }
 
     public function test_makefile_has_restart_target(): void
@@ -101,7 +101,7 @@ class MakefileTest extends TestCase
         $this->assertStringContainsString('ps:', $content, 'O Makefile deve ter target "ps"');
         $this->assertStringContainsString('$(COMPOSE)', $content, 'O Makefile deve usar variável COMPOSE');
         // Verifica que há uma linha com $(COMPOSE) ps
-        $this->assertRegExp('/\$\(COMPOSE\)\s+ps/', $content, 'O target "ps" deve executar "docker-compose ps"');
+        $this->assertMatchesRegularExpression('/\$\(COMPOSE\)\s+ps/', $content, 'O target "ps" deve executar "docker-compose ps"');
     }
 
     public function test_makefile_has_build_target(): void

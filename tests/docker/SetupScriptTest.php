@@ -136,7 +136,7 @@ class SetupScriptTest extends TestCase
 
         $content = file_get_contents(self::SETUP_SCRIPT);
         $this->assertStringContainsString(
-            'db:seed',
+            'php bin/seed.php',
             $content,
             'O script deve executar seeders'
         );

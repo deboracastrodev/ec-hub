@@ -34,7 +34,7 @@ class RecommendationApiLiveHttpTest extends TestCase
         $this->assertArrayHasKey('x-recommendation-source', $headers);
         $this->assertContains($headers['x-recommendation-source'], ['ml', 'rules', 'popular']);
         $this->assertArrayHasKey('x-response-time', $headers);
-        $this->assertRegExp('/^\d+(\.\d+)?ms$/', $headers['x-response-time']);
+        $this->assertMatchesRegularExpression('/^\d+(\.\d+)?ms$/', $headers['x-response-time']);
 
         $decoded = json_decode($body, true);
         $this->assertIsArray($decoded);

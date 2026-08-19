@@ -6,7 +6,6 @@ namespace Tests\Integration\Application\Recommendation;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
-use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
@@ -192,16 +191,19 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->assertEquals(3, $this->knnService->getK());
     }
 
-    public function test_throws_exception_for_nonexistent_product(): void
+    public function test_returns_popular_fallback_for_nonexistent_product(): void
     {
         // Arrange
         $nonExistentId = 999999;
 
-        // Assert/Act - Should throw RecommendationException
-        $this->expectException(RecommendationException::class);
-        $this->expectExceptionMessage('Product with ID 999999 not found');
+        // Act - Unknown product contexts use the popular cold-start fallback.
+        $recommendations = $this->service->execute($nonExistentId);
 
-        $this->service->execute($nonExistentId);
+        // Assert - The fallback returns a non-empty recommendation list.
+        $this->assertNotEmpty($recommendations);
+        $this->assertArrayHasKey('product_id', $recommendations[0]);
+        $this->assertArrayHasKey('fallback_reason', $recommendations[0]);
+        $this->assertSame('popular_product', $recommendations[0]['fallback_reason']);
     }
 
     public function test_model_is_cached_on_second_call(): void
