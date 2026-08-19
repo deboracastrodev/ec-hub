@@ -26,7 +26,6 @@ Thumbs.db
 
 # Composer
 /vendor/
-composer.lock
 
 # Application files
 /app/bootstrap/cache/*
