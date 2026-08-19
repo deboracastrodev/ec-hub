@@ -1,9 +1,9 @@
 {
   "name": "ec-hub/app",
-  "description": "E-commerce com ML em PHP 7.4 + Clean Architecture",
+  "description": "E-commerce com ML em PHP 8.4 + Clean Architecture",
   "type": "project",
   "require": {
-    "php": "^7.4",
+    "php": "^8.4",
     "psr/container": "^1.0",
     "vlucas/phpdotenv": "^5.0",
     "rubix/ml": "^2.2",
@@ -32,7 +32,10 @@
     "test": "phpunit --coverage-text"
   },
   "config": {
-    "sort-packages": true
+    "sort-packages": true,
+    "platform": {
+      "php": "8.4.0"
+    }
   },
   "minimum-stability": "stable",
   "prefer-stable": true
