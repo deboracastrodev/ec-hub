@@ -161,7 +161,13 @@ try {
             'code' => $e->getHttpCode(),
         ], JSON_PRETTY_PRINT);
     } else {
-        echo $twig->render('error/400.html.twig', ['message' => $e->getMessage()]);
+        try {
+            echo $twig->render('error/400.html.twig', ['message' => $e->getMessage()]);
+        } catch (\Twig\Error\Error $twigError) {
+            // Fallback HTML if Twig fails
+            error_log('Twig error template rendering failed: ' . $twigError->getMessage());
+            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>400 Bad Request</title></head><body><h1>400 Bad Request</h1><p>' . htmlspecialchars($e->getMessage()) . '</p><a href="/products">&larr; Ver todos os produtos</a></body></html>';
+        }
     }
 } catch (RecommendationException $e) {
     // Internal service error
@@ -174,7 +180,13 @@ try {
         ], JSON_PRETTY_PRINT);
     } else {
         http_response_code(500);
-        echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
+        try {
+            echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
+        } catch (\Twig\Error\Error $twigError) {
+            // Fallback HTML if Twig fails
+            error_log('Twig error template rendering failed: ' . $twigError->getMessage());
+            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>Um erro ocorreu. Por favor, tente novamente.</p><a href="/products">&larr; Ver todos os produtos</a></body></html>';
+        }
     }
 } catch (\Exception $e) {
     // Generic error handler
@@ -186,6 +198,12 @@ try {
             'code' => 500,
         ], JSON_PRETTY_PRINT);
     } else {
-        echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
+        try {
+            echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
+        } catch (\Twig\Error\Error $twigError) {
+            // Fallback HTML if Twig fails
+            error_log('Twig error template rendering failed: ' . $twigError->getMessage());
+            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>Um erro ocorreu. Por favor, tente novamente.</p><a href="/products">&larr; Ver todos os produtos</a></body></html>';
+        }
     }
 }
