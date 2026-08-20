@@ -1,7 +1,7 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature test-recommendation migrate migrate-fresh seed db-reset
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset
 
 # Variáveis
-COMPOSE := docker-compose
+COMPOSE := docker compose
 APP_CONTAINER := ec-hub-app
 
 # Ajuda
@@ -11,9 +11,9 @@ help: ## Show this help message
 	@echo "  make down      - Para e remove os containers"
 	@echo "  make restart   - Reinicia os containers"
 	@echo "  make logs      - Mostra logs da aplicação"
-	@echo "  make test      - Executa testes PHPUnit"
-	@echo "  make test-recommendation - Executa testes de recomendacao (Story 3.2)"
-	@echo "  make cs-fix    - Executa PHP-CS-Fixer"
+	@echo "  make test      - Executa testes PHPUnit (local, sem Docker)"
+	@echo "  make cs-fix    - Executa PHP-CS-Fixer (local, sem Docker)"
+	@echo "  make cs-check  - Verifica estilo sem corrigir (local, sem Docker)"
 	@echo "  make shell     - Acessa bash do container app"
 	@echo "  make setup     - Executa script de setup"
 	@echo "  make db-shell  - Acessa MySQL CLI"
@@ -52,7 +52,7 @@ setup: ## Execute setup script
 	@chmod +x setup.sh
 	@./setup.sh
 
-# Database commands
+# Database commands (precisam do container do MySQL no ar)
 migrate: ## Run database migrations
 	$(COMPOSE) exec app php bin/migrate.php
 
@@ -72,32 +72,29 @@ shell: ## Open shell in app container
 db-shell: ## Access MySQL CLI
 	$(COMPOSE) exec mysql mysql -uroot -psecret ec_hub
 
-# Development tools
+# Development tools -- rodam local, sem precisar de Docker (a suíte sem
+# @group db passa sem banco nenhum; testes que exigem MySQL de verdade
+# fazem skip gracioso se não encontrarem conexão)
 test: ## Run all tests
-	$(COMPOSE) exec app vendor/bin/phpunit --testdox
+	vendor/bin/phpunit --testdox
 
 cs-fix: ## Fix code style issues (PSR-12)
-	$(COMPOSE) exec app vendor/bin/php-cs-fixer fix
+	vendor/bin/php-cs-fixer fix
 
 cs-check: ## Check code style without fixing
-	$(COMPOSE) exec app vendor/bin/php-cs-fixer fix --dry-run --diff
+	vendor/bin/php-cs-fixer fix --dry-run --diff
 
-test-coverage: ## Run tests with coverage report
-	$(COMPOSE) exec app vendor/bin/phpunit --coverage-html=coverage/html --coverage-text
+test-coverage: ## Run tests with coverage report (precisa de driver de cobertura, ex. pcov)
+	vendor/bin/phpunit --coverage-html=coverage/html --coverage-text
 
 test-unit: ## Run unit tests only
-	$(COMPOSE) exec app vendor/bin/phpunit --testsuite=Unit
+	vendor/bin/phpunit --testsuite=Unit
 
 test-integration: ## Run integration tests only
-	$(COMPOSE) exec app vendor/bin/phpunit --testsuite=Integration
+	vendor/bin/phpunit --testsuite=Integration
 
 test-feature: ## Run feature tests only
-	$(COMPOSE) exec app vendor/bin/phpunit --testsuite=Feature
-
-test-recommendation: ## Run recommendation unit + integration tests
-	$(COMPOSE) exec app vendor/bin/phpunit \
-		tests/Unit/Application/Recommendation/GenerateRecommendationsTest.php \
-		tests/Integration/Application/Recommendation/GenerateRecommendationsIntegrationTest.php
+	vendor/bin/phpunit --testsuite=Feature
 
 # Maintenance
 clean: ## Clean generated files
@@ -105,5 +102,5 @@ clean: ## Clean generated files
 	rm -rf vendor/
 	rm -rf runtime/logs/*
 
-install: ## Install dependencies (via Docker)
-	$(COMPOSE) exec app composer install
+install: ## Install dependencies
+	composer install

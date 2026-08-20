@@ -111,21 +111,22 @@ class MakefileTest extends TestCase
         $this->assertStringContainsString('build --no-cache', $content, 'O target "build" deve executar "docker-compose build --no-cache"');
     }
 
-    public function test_makefile_targets_use_docker_compose_exec(): void
+    public function test_makefile_dev_targets_run_locally_without_docker(): void
     {
+        // R7.5: a suíte sem @group db passa sem Docker -- test/cs-fix/cs-check
+        // devem rodar direto com vendor/bin/, não exigir o container no ar.
         $content = file_get_contents(self::MAKEFILE);
 
-        // Verificar que os comandos de dev usam docker-compose exec
-        $this->assertStringContainsString(
-            'exec app vendor/bin/phpunit',
+        $this->assertMatchesRegularExpression(
+            '/^test:.*\n\s*vendor\/bin\/phpunit/m',
             $content,
-            'O target "test" deve usar docker-compose exec para executar PHPUnit'
+            'O target "test" deve rodar vendor/bin/phpunit direto, sem depender do container'
         );
 
-        $this->assertStringContainsString(
-            'exec app vendor/bin/php-cs-fixer fix',
+        $this->assertMatchesRegularExpression(
+            '/^cs-fix:.*\n\s*vendor\/bin\/php-cs-fixer fix/m',
             $content,
-            'O target "cs-fix" deve usar docker-compose exec para executar PHP-CS-Fixer'
+            'O target "cs-fix" deve rodar vendor/bin/php-cs-fixer direto, sem depender do container'
         );
     }
 
