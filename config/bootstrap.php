@@ -9,6 +9,21 @@ declare(strict_types=1);
  * public/index.php should only call this and delegate to the router.
  */
 
+// Load .env for local (non-Docker) development. Docker Compose already
+// injects environment variables directly, and the immutable repository
+// never overwrites a variable that's already set, so this is a no-op
+// there. safeLoad() doesn't throw when no .env file exists (R5.8).
+//
+// phpdotenv's default adapters (ServerConstAdapter, EnvConstAdapter) only
+// populate $_ENV/$_SERVER, not getenv() -- and this codebase reads
+// getenv() everywhere. PutenvAdapter has to be added explicitly.
+$envRepository = \Dotenv\Repository\RepositoryBuilder::createWithDefaultAdapters()
+    ->addAdapter(\Dotenv\Repository\Adapter\PutenvAdapter::class)
+    ->immutable()
+    ->make();
+
+\Dotenv\Dotenv::create($envRepository, dirname(__DIR__))->safeLoad();
+
 return [
     // Lazy + memoized: only opens a DB connection when a consumer actually
     // resolves it, so requests that never touch the database (static assets,
