@@ -7,9 +7,10 @@ namespace Tests\Integration\View;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Controller\ProductController;
-use App\Infrastructure\Persistence\MySQL\ProductRepository;
+use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Service\CategoryService;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\InMemoryProductRepository;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
@@ -17,29 +18,23 @@ use Twig\Loader\FilesystemLoader;
  * Responsive Layout Test
  *
  * Tests that the product listing page has proper responsive CSS
- * per Task 4 requirements (AC #1)
+ * per Task 4 requirements (AC #1).
+ *
+ * Exercises real templates/controller but a fake in-memory repository:
+ * this is a view-structure test, not a database test (R2.5).
  */
 class ResponsiveLayoutTest extends TestCase
 {
     private ProductController $controller;
-    private ProductRepository $repository;
+    private ProductRepositoryInterface $repository;
     private CategoryService $categoryService;
     private GetProductList $getProductList;
     private GetProductDetail $getProductDetail;
     private Environment $twig;
-    private \PDO $pdo;
 
     protected function setUp(): void
     {
-        // Setup database connection
-        $this->pdo = new \PDO(
-            'mysql:host=' . (getenv('DB_HOST') ?: '127.0.0.1') . ';dbname=' . (getenv('DB_DATABASE') ?: 'ec_hub'),
-            getenv('DB_USERNAME') ?: 'root',
-            getenv('DB_PASSWORD') ?: 'secret',
-            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
-        );
-
-        $this->repository = new ProductRepository($this->pdo);
+        $this->repository = new InMemoryProductRepository();
         $this->categoryService = new CategoryService($this->repository);
         $this->getProductList = new GetProductList($this->repository, $this->categoryService);
         $this->getProductDetail = new GetProductDetail($this->repository);

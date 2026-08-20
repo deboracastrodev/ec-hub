@@ -4,14 +4,13 @@ declare(strict_types=1);
 namespace Tests\Integration\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
 class RecommendationHttpEndpointTest extends TestCase
 {
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_api_endpoint_returns_json_headers_and_200_status(): void
     {
         header_remove();

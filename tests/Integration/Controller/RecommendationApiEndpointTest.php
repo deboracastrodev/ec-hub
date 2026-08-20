@@ -6,8 +6,10 @@ namespace Tests\Integration\Controller;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\RecommendationController;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Tests\Support\RequiresDatabase;
 
 /**
  * Integration tests for Recommendation API Endpoint
@@ -19,21 +21,18 @@ use Psr\Log\NullLogger;
  * - Response format verification
  * - Performance verification (< 200ms)
  */
+#[Group('db')]
 class RecommendationApiEndpointTest extends TestCase
 {
+    use RequiresDatabase;
+
     private RecommendationController $controller;
     private ProductRepository $repository;
     private \PDO $pdo;
 
     protected function setUp(): void
     {
-        // Setup database connection
-        $this->pdo = new \PDO(
-            'mysql:host=' . (getenv('DB_HOST') ?: '127.0.0.1') . ';dbname=' . (getenv('DB_DATABASE') ?: 'ec_hub'),
-            getenv('DB_USERNAME') ?: 'root',
-            getenv('DB_PASSWORD') ?: 'secret',
-            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
-        );
+        $this->pdo = $this->connectToDatabaseOrSkip();
 
         $this->repository = new ProductRepository($this->pdo);
 

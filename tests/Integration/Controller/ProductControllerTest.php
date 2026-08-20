@@ -9,7 +9,9 @@ use App\Application\Product\GetProductList;
 use App\Controller\ProductController;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Service\CategoryService;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\RequiresDatabase;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
@@ -18,8 +20,11 @@ use Twig\Loader\FilesystemLoader;
  *
  * Tests ProductController with real dependencies (database, Twig)
  */
+#[Group('db')]
 class ProductControllerTest extends TestCase
 {
+    use RequiresDatabase;
+
     private ProductController $controller;
     private ProductRepository $repository;
     private CategoryService $categoryService;
@@ -30,13 +35,7 @@ class ProductControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        // Setup database connection
-        $this->pdo = new \PDO(
-            'mysql:host=' . (getenv('DB_HOST') ?: '127.0.0.1') . ';dbname=' . (getenv('DB_DATABASE') ?: 'ec_hub'),
-            getenv('DB_USERNAME') ?: 'root',
-            getenv('DB_PASSWORD') ?: 'secret',
-            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
-        );
+        $this->pdo = $this->connectToDatabaseOrSkip();
 
         $this->repository = new ProductRepository($this->pdo);
         $this->categoryService = new CategoryService($this->repository);
