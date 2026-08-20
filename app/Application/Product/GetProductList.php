@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Product;
 
 use App\Domain\Product\Repository\ProductRepositoryInterface;
-use App\Service\CategoryService;
+use App\Domain\Product\Service\CategoryService;
 
 /**
  * GetProductList Use Case

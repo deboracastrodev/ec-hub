@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Service;
+namespace App\Domain\Product\Service;
 
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 

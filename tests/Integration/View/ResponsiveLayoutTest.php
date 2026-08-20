@@ -8,7 +8,7 @@ use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Controller\ProductController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
-use App\Service\CategoryService;
+use App\Domain\Product\Service\CategoryService;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\InMemoryProductRepository;
 use Twig\Environment;

@@ -53,7 +53,7 @@ return [
 
     'services' => [
         'category' => function ($container) {
-            return new App\Service\CategoryService($container['repositories']['product']($container['pdo']()));
+            return new App\Domain\Product\Service\CategoryService($container['repositories']['product']($container['pdo']()));
         },
         'knn' => function ($container) {
             return new App\Domain\Recommendation\Service\KNNService(

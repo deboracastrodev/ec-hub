@@ -9,7 +9,7 @@ use App\Controller\ProductController;
 use App\Controller\RecommendationController;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Recommendation\Exception\RecommendationException;
-use App\Service\CategoryService;
+use App\Domain\Product\Service\CategoryService;
 
 /**
  * ec-hub Application Entry Point
