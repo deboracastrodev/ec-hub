@@ -92,6 +92,12 @@ class RuleBasedFallbackTest extends TestCase
         $this->assertEquals(2, $recommendations[0]['product_id']);
         $this->assertStringContainsString('categoria', $recommendations[0]['explanation']);
         $this->assertEquals('category_match', $recommendations[0]['fallback_reason']);
+        // Story 3.5 (AC4/AC6/AC7): fallback results carry the same confidence
+        // metadata as ML results.
+        $this->assertArrayHasKey('confidence_level', $recommendations[0]);
+        $this->assertArrayHasKey('score_label', $recommendations[0]);
+        $this->assertArrayHasKey('reasons', $recommendations[0]);
+        $this->assertNotEmpty($recommendations[0]['reasons']);
     }
 
     public function testGetByCategoryExcludesContextProduct(): void
@@ -140,7 +146,7 @@ class RuleBasedFallbackTest extends TestCase
 
         // Assert
         $this->assertCount(2, $recommendations);
-        $this->assertStringContainsString('Fallback', $recommendations[0]['explanation']);
+        $this->assertStringContainsString('visualizados', $recommendations[0]['explanation']);
         $this->assertEquals('popular_product', $recommendations[0]['fallback_reason']);
     }
 

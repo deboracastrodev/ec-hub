@@ -317,6 +317,41 @@ class RecommendationControllerTest extends TestCase
         $this->assertLessThan(200.0, (float) $response['meta']['response_time_ms']);
     }
 
+    public function testGetRecommendationsIncludesConfidenceMetadataPerAc8(): void
+    {
+        // Story 3.5, AC8: each item carries score_label, reasons, source
+        // and confidence_level alongside the existing fields.
+        $queryParams = ['product_id' => '1'];
+        $expectedRecommendations = [
+            [
+                'product_id' => 2,
+                'name' => 'Fone Bluetooth Premium',
+                'price' => 299.90,
+                'score' => 87.5,
+                'score_label' => 'Alta similaridade',
+                'explanation' => 'Recomendado com base em Fone Bluetooth Sony que você visualizou (87% de similaridade)',
+                'reasons' => [
+                    ['type' => 'similarity', 'description' => '87% similar ao produto visualizado'],
+                ],
+                'source' => 'ml',
+                'confidence_level' => 'high',
+            ],
+        ];
+
+        $this->mockGenerateRecommendations->expects($this->once())
+            ->method('execute')
+            ->willReturn($expectedRecommendations);
+
+        $response = $this->controller->getRecommendations($queryParams);
+
+        $firstRec = $response['data'][0];
+        $this->assertSame('Alta similaridade', $firstRec['score_label']);
+        $this->assertSame('high', $firstRec['confidence_level']);
+        $this->assertSame('ml', $firstRec['source']);
+        $this->assertNotEmpty($firstRec['reasons']);
+        $this->assertSame(2, $firstRec['product_id']);
+    }
+
     public function testGetRecommendationsThrowsUnauthorizedWhenAuthRequired(): void
     {
         putenv('AUTH_REQUIRED=true');

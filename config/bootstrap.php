@@ -17,9 +17,11 @@ use App\Controller\ProductController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
+use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\NeighborFinderInterface;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
+use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
@@ -112,10 +114,17 @@ return new Container([
         $c->get(NeighborFinderInterface::class)
     ),
 
+    // Story 3.5: confidence scores and explanations for recommendations.
+    ConfidenceCalculator::class => fn () => new ConfidenceCalculator(),
+
+    ExplanationGenerator::class => fn () => new ExplanationGenerator(),
+
     RuleBasedFallback::class => fn (ContainerInterface $c) => new RuleBasedFallback(
         $c->get(ProductRepositoryInterface::class),
         $c->get(LoggerInterface::class),
-        $c->get(RecommendationSettings::class)
+        $c->get(RecommendationSettings::class),
+        $c->get(ExplanationGenerator::class),
+        $c->get(ConfidenceCalculator::class)
     ),
 
     GenerateRecommendations::class => fn (ContainerInterface $c) => new GenerateRecommendations(
@@ -123,7 +132,8 @@ return new Container([
         $c->get(KNNService::class),
         $c->get(RuleBasedFallback::class),
         $c->get(LoggerInterface::class),
-        $c->get(RecommendationSettings::class)
+        $c->get(RecommendationSettings::class),
+        $c->get(ExplanationGenerator::class)
     ),
 
     RecommendationController::class => fn (ContainerInterface $c) => new RecommendationController(

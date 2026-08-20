@@ -6,6 +6,7 @@ namespace App\Domain\Recommendation\Service;
 
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use Psr\Log\LoggerInterface;
 
@@ -20,6 +21,8 @@ class RuleBasedFallback
     private ProductRepositoryInterface $productRepository;
     private LoggerInterface $logger;
     private RecommendationSettings $settings;
+    private ExplanationGenerator $explanationGenerator;
+    private ConfidenceCalculator $confidenceCalculator;
     private int $fallbackActivatedTotal = 0;
 
     // Fallback strategies
@@ -30,11 +33,15 @@ class RuleBasedFallback
     public function __construct(
         ProductRepositoryInterface $productRepository,
         LoggerInterface $logger,
-        ?RecommendationSettings $settings = null
+        ?RecommendationSettings $settings = null,
+        ?ExplanationGenerator $explanationGenerator = null,
+        ?ConfidenceCalculator $confidenceCalculator = null
     ) {
         $this->productRepository = $productRepository;
         $this->logger = $logger;
         $this->settings = $settings ?? RecommendationSettings::fromArray([]);
+        $this->explanationGenerator = $explanationGenerator ?? new ExplanationGenerator();
+        $this->confidenceCalculator = $confidenceCalculator ?? new ConfidenceCalculator();
     }
 
     /**
@@ -117,16 +124,23 @@ class RuleBasedFallback
 
             $score = $this->calculateFallbackScore('category', $count);
 
-            $recommendations[] = [
+            $item = [
                 'product_id' => $product->getId(),
                 'product_name' => $product->getName(),
                 'category' => $product->getCategory(),
                 'price' => $product->getPrice()->getDecimal(),
                 'score' => $score,
-                'explanation' => $this->generateCategoryExplanation($category),
                 'fallback_reason' => 'category_match',
                 'fallback_strategy' => 'category',
             ];
+            $item['explanation'] = $this->explanationGenerator->generateForFallback($item, 'category');
+            $item['confidence_level'] = $this->confidenceCalculator->calculateConfidenceLevel($score);
+            $item['score_label'] = $this->confidenceCalculator->calculateScoreLabel($score);
+            $item['reasons'] = [
+                ['type' => 'category', 'description' => sprintf('Mesma categoria: %s', $category)],
+            ];
+
+            $recommendations[] = $item;
 
             $count++;
         }
@@ -150,16 +164,23 @@ class RuleBasedFallback
         foreach ($products as $index => $product) {
             $score = $this->calculateFallbackScore('popularity', $index);
 
-            $recommendations[] = [
+            $item = [
                 'product_id' => $product->getId(),
                 'product_name' => $product->getName(),
                 'category' => $product->getCategory(),
                 'price' => $product->getPrice()->getDecimal(),
                 'score' => $score,
-                'explanation' => $this->generatePopularityExplanation(),
                 'fallback_reason' => 'popular_product',
                 'fallback_strategy' => 'popularity',
             ];
+            $item['explanation'] = $this->explanationGenerator->generateForFallback($item, 'popularity');
+            $item['confidence_level'] = $this->confidenceCalculator->calculateConfidenceLevel($score);
+            $item['score_label'] = $this->confidenceCalculator->calculateScoreLabel($score);
+            $item['reasons'] = [
+                ['type' => 'popularity', 'description' => 'Produto popular entre os clientes'],
+            ];
+
+            $recommendations[] = $item;
         }
 
         return $recommendations;
@@ -217,25 +238,6 @@ class RuleBasedFallback
         $score = $max - ($rank * 2);
 
         return max($min, min($max, $score));
-    }
-
-    /**
-     * Generate explanation for category-based recommendation
-     */
-    private function generateCategoryExplanation(string $category): string
-    {
-        return sprintf(
-            "Fallback (rule-based): recomendado por ser da categoria %s",
-            $category
-        );
-    }
-
-    /**
-     * Generate explanation for popularity-based recommendation
-     */
-    private function generatePopularityExplanation(): string
-    {
-        return "Fallback (rule-based): recomendado por ser um produto popular";
     }
 
     /**

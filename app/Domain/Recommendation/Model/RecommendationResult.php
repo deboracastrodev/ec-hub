@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Recommendation\Model;
 
+use App\Domain\Recommendation\Utility\ConfidenceCalculator;
+
 /**
  * Value Object representing a recommendation outcome.
  */
@@ -16,7 +18,20 @@ class RecommendationResult
     private float $score;
     private int $rank;
     private string $explanation;
+    private string $confidenceLevel;
+    private string $scoreLabel;
 
+    /** @var list<array{type: string, description: string}> */
+    private array $reasons;
+
+    /**
+     * @param list<array{type: string, description: string}> $reasons Story 3.5 (AC7): multi-factor
+     *        explanation reasons, most relevant first. Capped at 3 by the caller (ExplanationGenerator).
+     * @param string|null $confidenceLevel Story 3.5 (AC6): 'high'|'medium'|'low'. When omitted it's
+     *        derived from $score via ConfidenceCalculator, so existing call sites keep working unchanged.
+     * @param string|null $scoreLabel Story 3.5 (AC5): Portuguese label ("Alta similaridade" etc), also
+     *        derived from $score when omitted.
+     */
     public function __construct(
         int $productId,
         string $productName,
@@ -24,7 +39,10 @@ class RecommendationResult
         float $price,
         float $score,
         int $rank,
-        string $explanation
+        string $explanation,
+        ?string $confidenceLevel = null,
+        ?string $scoreLabel = null,
+        array $reasons = []
     ) {
         $this->productId = $productId;
         $this->productName = $productName;
@@ -33,6 +51,9 @@ class RecommendationResult
         $this->score = $score;
         $this->rank = $rank;
         $this->explanation = $explanation;
+        $this->confidenceLevel = $confidenceLevel ?? (new ConfidenceCalculator())->calculateConfidenceLevel($score);
+        $this->scoreLabel = $scoreLabel ?? (new ConfidenceCalculator())->calculateScoreLabel($score);
+        $this->reasons = $reasons;
     }
 
     public function getProductId(): int
@@ -74,6 +95,24 @@ class RecommendationResult
         return $this->explanation;
     }
 
+    public function getConfidenceLevel(): string
+    {
+        return $this->confidenceLevel;
+    }
+
+    public function getScoreLabel(): string
+    {
+        return $this->scoreLabel;
+    }
+
+    /**
+     * @return list<array{type: string, description: string}>
+     */
+    public function getReasons(): array
+    {
+        return $this->reasons;
+    }
+
     public function toArray(): array
     {
         return [
@@ -84,6 +123,9 @@ class RecommendationResult
             'score' => $this->score,
             'rank' => $this->rank,
             'explanation' => $this->explanation,
+            'confidence_level' => $this->confidenceLevel,
+            'score_label' => $this->scoreLabel,
+            'reasons' => $this->reasons,
         ];
     }
 }

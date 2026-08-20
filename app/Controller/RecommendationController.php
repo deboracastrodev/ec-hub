@@ -173,13 +173,24 @@ class RecommendationController
     private function formatResponse(array $recommendations, float $responseTime): array
     {
         $source = $this->detectSource($recommendations);
-        $data = array_map(function (array $rec): array {
+        $data = array_map(function (array $rec) use ($source): array {
+            $productId = $rec['product_id'] ?? $rec['id'] ?? null;
+
             return [
-                'id' => $rec['product_id'] ?? $rec['id'] ?? null,
+                // 'id' kept for backward compatibility; 'product_id' matches AC8.
+                'id' => $productId,
+                'product_id' => $productId,
                 'name' => $rec['name'] ?? $rec['product_name'] ?? null,
                 'price' => isset($rec['price']) ? (float) $rec['price'] : null,
-                'score' => $rec['score'] ?? null,
+                'score' => isset($rec['score']) ? (float) $rec['score'] : null,
+                'score_label' => $rec['score_label'] ?? null,
                 'explanation' => $rec['explanation'] ?? null,
+                'reasons' => $rec['reasons'] ?? [],
+                // Per-item source (AC8): a single response can mix ML and
+                // fallback items when ML returns fewer than requested, so
+                // this is more precise than the batch-level meta.source.
+                'source' => $rec['source'] ?? $source,
+                'confidence_level' => $rec['confidence_level'] ?? null,
             ];
         }, $recommendations);
 

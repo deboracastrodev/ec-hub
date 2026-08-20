@@ -8,8 +8,10 @@ use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
+use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
+use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use Psr\Log\LoggerInterface;
 
@@ -27,6 +29,7 @@ class GenerateRecommendations
     private RuleBasedFallback $fallbackService;
     private LoggerInterface $logger;
     private RecommendationSettings $settings;
+    private ExplanationGenerator $explanationGenerator;
 
     /** @var array<int, Product>|null */
     private ?array $productsCache = null;
@@ -39,13 +42,15 @@ class GenerateRecommendations
         KNNService $knnService,
         RuleBasedFallback $fallbackService,
         LoggerInterface $logger,
-        ?RecommendationSettings $settings = null
+        ?RecommendationSettings $settings = null,
+        ?ExplanationGenerator $explanationGenerator = null
     ) {
         $this->productRepository = $productRepository;
         $this->knnService = $knnService;
         $this->fallbackService = $fallbackService;
         $this->logger = $logger;
         $this->settings = $settings ?? RecommendationSettings::fromArray([]);
+        $this->explanationGenerator = $explanationGenerator ?? new ExplanationGenerator();
     }
 
     /**
@@ -101,8 +106,8 @@ class GenerateRecommendations
             // Generate recommendations using KNN
             $recommendations = $this->knnService->recommend($targetProduct, $limit);
 
-            // Convert to DTO format
-            $formatted = $this->formatRecommendations($recommendations);
+            // Convert to DTO format (Story 3.5: enriched with explanation/confidence metadata)
+            $formatted = $this->formatRecommendations($recommendations, $targetProduct);
 
             // Fill with fallback if ML returns fewer than requested
             if (count($formatted) < $limit) {
@@ -200,21 +205,43 @@ class GenerateRecommendations
     }
 
     /**
-     * Format KNN results to recommendation DTOs
+     * Format KNN results to recommendation DTOs, enriched with the
+     * Story 3.5 explanation/confidence metadata (AC2, AC3, AC7, AC8).
      *
-     * @param array $knnResults Raw results from KNNService
+     * @param RecommendationResult[] $knnResults Raw results from KNNService
      * @return array<array<string, mixed>>
      */
-    private function formatRecommendations(array $knnResults): array
+    private function formatRecommendations(array $knnResults, Product $targetProduct): array
     {
-        return array_map(
-            fn (RecommendationResult $result) => RecommendationDTO::fromRecommendationResult($result)->toArray(),
-            $knnResults
-        );
+        return array_map(function (RecommendationResult $result) use ($targetProduct): array {
+            $explanation = $this->explanationGenerator->generateForML($result, $targetProduct);
+            $reasons = $this->explanationGenerator->buildReasonsArray($result, $targetProduct);
+
+            $enriched = new RecommendationResult(
+                $result->getProductId(),
+                $result->getProductName(),
+                $result->getCategory(),
+                $result->getPrice(),
+                $result->getScore(),
+                $result->getRank(),
+                $explanation,
+                $result->getConfidenceLevel(),
+                $result->getScoreLabel(),
+                $reasons
+            );
+
+            $data = RecommendationDTO::fromRecommendationResult($enriched)->toArray();
+            $data['source'] = 'ml';
+
+            return $data;
+        }, $knnResults);
     }
 
     /**
-     * Normalize fallback results to match API response shape.
+     * Normalize fallback results to match API response shape (Story 3.5,
+     * AC4/AC8): RuleBasedFallback already fills in explanation, reasons and
+     * confidence metadata -- this only guards against a fallback
+     * implementation that omits them, and adds the per-item 'source' field.
      *
      * @param array<array<string, mixed>> $fallbackResults
      * @return array<array<string, mixed>>
@@ -231,6 +258,16 @@ class GenerateRecommendations
             if (! isset($rec['explanation'])) {
                 $rec['explanation'] = 'Fallback (rule-based): recommendation';
             }
+            if (! isset($rec['reasons'])) {
+                $rec['reasons'] = [];
+            }
+            if (! isset($rec['confidence_level']) || ! isset($rec['score_label'])) {
+                $calculator = new ConfidenceCalculator();
+                $score = isset($rec['score']) ? (float) $rec['score'] : 0.0;
+                $rec['confidence_level'] = $rec['confidence_level'] ?? $calculator->calculateConfidenceLevel($score);
+                $rec['score_label'] = $rec['score_label'] ?? $calculator->calculateScoreLabel($score);
+            }
+            $rec['source'] = $rec['fallback_reason'] === 'popular_product' ? 'popular' : 'rules';
 
             return $rec;
         }, $fallbackResults);
