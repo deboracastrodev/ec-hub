@@ -161,7 +161,7 @@ class MetaTagsService
         ];
     }
 
-    private function generateStructuredData(string $page, array $data): ?string
+    private function generateStructuredData(string $page, array $data): string
     {
         switch ($page) {
             case 'product.detail':

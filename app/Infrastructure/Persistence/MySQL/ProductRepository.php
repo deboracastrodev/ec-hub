@@ -279,7 +279,7 @@ class ProductRepository implements ProductRepositoryInterface
             $transliterated = $value;
         }
         $slug = strtolower((string) $transliterated);
-        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug ?? '');
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
         $slug = trim((string) $slug, '-');
 
         return $slug !== '' ? $slug : 'produto';

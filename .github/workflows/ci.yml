@@ -30,6 +30,9 @@ jobs:
       - name: Code style (PSR-12)
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
 
+      - name: Static analysis (PHPStan level 5)
+        run: vendor/bin/phpstan analyse --memory-limit=512M
+
       - name: .env.example matches getenv() calls (R6.4)
         run: php bin/ci/check-env-vars.php
 

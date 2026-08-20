@@ -113,7 +113,7 @@ class CategoryService
         }
 
         $normalized = strtolower((string) $transliterated);
-        $normalized = preg_replace('/[^a-z0-9]+/', '-', $normalized ?? '');
+        $normalized = preg_replace('/[^a-z0-9]+/', '-', $normalized);
 
         return trim((string) $normalized, '-');
     }

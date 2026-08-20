@@ -14,6 +14,7 @@ help: ## Show this help message
 	@echo "  make test      - Executa testes PHPUnit (local, sem Docker)"
 	@echo "  make cs-fix    - Executa PHP-CS-Fixer (local, sem Docker)"
 	@echo "  make cs-check  - Verifica estilo sem corrigir (local, sem Docker)"
+	@echo "  make stan      - Roda PHPStan nível 5 (local, sem Docker)"
 	@echo "  make shell     - Acessa bash do container app"
 	@echo "  make setup     - Executa script de setup"
 	@echo "  make db-shell  - Acessa MySQL CLI"
@@ -83,6 +84,9 @@ cs-fix: ## Fix code style issues (PSR-12)
 
 cs-check: ## Check code style without fixing
 	vendor/bin/php-cs-fixer fix --dry-run --diff
+
+stan: ## Run PHPStan static analysis (level 5)
+	vendor/bin/phpstan analyse --memory-limit=512M
 
 test-coverage: ## Run tests with coverage report (precisa de driver de cobertura, ex. pcov)
 	vendor/bin/phpunit --coverage-html=coverage/html --coverage-text

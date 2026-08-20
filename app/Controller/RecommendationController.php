@@ -167,7 +167,6 @@ class RecommendationController
      * Format response according to AC1 specification
      *
      * @param array<array<string, mixed>> $recommendations
-     * @param string $source Source of recommendations (ml|rules|popular)
      * @param float $responseTime Response time in milliseconds
      * @return array<string, mixed> Formatted response
      */
@@ -220,9 +219,7 @@ class RecommendationController
     private function getRequestHeaders(): array
     {
         if (function_exists('getallheaders')) {
-            $headers = getallheaders();
-
-            return is_array($headers) ? $headers : [];
+            return getallheaders();
         }
 
         $headers = [];

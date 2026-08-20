@@ -28,6 +28,9 @@ Thumbs.db
 /vendor/
 .phpunit.result.cache
 .phpunit.cache/
+.phpstan.cache/
+coverage.xml
+coverage.txt
 
 # Application files
 /app/bootstrap/cache/*
