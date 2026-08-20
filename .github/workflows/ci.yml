@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static-checks:
+    name: Composer + style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: composer validate
+        run: composer validate --strict
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Check platform requirements
+        run: composer check-platform-reqs
+
+      - name: Code style (PSR-12)
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+  test-no-db:
+    name: Tests (no database)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: PHPUnit (--exclude-group db)
+        run: vendor/bin/phpunit --exclude-group db
+
+  test-full:
+    name: Tests (with MySQL) + coverage
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: ec_hub
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: ec_hub
+      DB_USERNAME: root
+      DB_PASSWORD: secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run migrations
+        run: php bin/migrate.php
+
+      - name: Seed database
+        run: php bin/seed.php
+
+      - name: PHPUnit (full suite) + coverage
+        run: vendor/bin/phpunit --coverage-clover=coverage.xml --coverage-text=coverage.txt
+
+      - name: Show coverage summary
+        run: cat coverage.txt
+
+      - name: Enforce minimum line coverage
+        run: php bin/ci/check-coverage.php coverage.xml 65
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml

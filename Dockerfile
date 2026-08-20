@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_mysql mbstring zip
 
+# pcov: code coverage driver used by `make test-coverage` (R7.4)
+RUN pecl install pcov && docker-php-ext-enable pcov
+
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
