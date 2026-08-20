@@ -59,7 +59,7 @@ class RecommendationApiEndpointTest extends TestCase
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products, 'Database must have at least one product');
 
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
@@ -75,7 +75,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
@@ -96,7 +96,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange - AC3: 5-10 products returned
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
@@ -115,7 +115,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange - AC3: No duplicates
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
@@ -131,7 +131,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange - AC2: Response time < 200ms
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $startTime = microtime(true);
@@ -148,7 +148,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
@@ -165,7 +165,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
@@ -181,7 +181,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations([
@@ -198,7 +198,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act - Request more than MAX_LIMIT (50)
         $response = $this->controller->getRecommendations([
@@ -233,7 +233,7 @@ class RecommendationApiEndpointTest extends TestCase
             new NullLogger()
         );
 
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $controller->getRecommendations(['product_id' => (string) $productId], []);
@@ -260,7 +260,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Arrange
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $productId = $products[0]['id'];
+        $productId = $products[0]->getId();
 
         // Act
         $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);

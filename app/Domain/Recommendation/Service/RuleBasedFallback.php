@@ -98,7 +98,7 @@ class RuleBasedFallback
         $excludeId = $contextProduct->getId();
 
         // Fetch products from same category
-        $productsData = $this->productRepository->findByCategory(
+        $products = $this->productRepository->findByCategory(
             $category,
             $limit + 1 // +1 to account for excluded product
         );
@@ -106,8 +106,8 @@ class RuleBasedFallback
         $recommendations = [];
         $count = 0;
 
-        foreach ($productsData as $productData) {
-            if ($productData['id'] == $excludeId) {
+        foreach ($products as $product) {
+            if ($product->getId() === $excludeId) {
                 continue; // Skip context product
             }
 
@@ -118,10 +118,10 @@ class RuleBasedFallback
             $score = $this->calculateFallbackScore('category', $count);
 
             $recommendations[] = [
-                'product_id' => $productData['id'],
-                'product_name' => $productData['name'],
-                'category' => $productData['category'],
-                'price' => (float) $productData['price'],
+                'product_id' => $product->getId(),
+                'product_name' => $product->getName(),
+                'category' => $product->getCategory(),
+                'price' => $product->getPrice()->getDecimal(),
                 'score' => $score,
                 'explanation' => $this->generateCategoryExplanation($category),
                 'fallback_reason' => 'category_match',
@@ -141,20 +141,20 @@ class RuleBasedFallback
     {
         // For now, random order (until we have view tracking)
         // In Epic 4, this will use actual view counts
-        $productsData = $this->productRepository->findAll($limit, 0);
+        $products = $this->productRepository->findAll($limit, 0);
 
-        shuffle($productsData); // Random for variety
+        shuffle($products); // Random for variety
 
         $recommendations = [];
 
-        foreach ($productsData as $index => $productData) {
+        foreach ($products as $index => $product) {
             $score = $this->calculateFallbackScore('popularity', $index);
 
             $recommendations[] = [
-                'product_id' => $productData['id'],
-                'product_name' => $productData['name'],
-                'category' => $productData['category'],
-                'price' => (float) $productData['price'],
+                'product_id' => $product->getId(),
+                'product_name' => $product->getName(),
+                'category' => $product->getCategory(),
+                'price' => $product->getPrice()->getDecimal(),
                 'score' => $score,
                 'explanation' => $this->generatePopularityExplanation(),
                 'fallback_reason' => 'popular_product',

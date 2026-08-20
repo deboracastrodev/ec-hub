@@ -20,12 +20,14 @@ class GetProductDetail
 
     public function execute(int $productId): ?array
     {
-        return $this->productRepository->findById($productId);
+        // The repository returns a Product entity (R3.4); serialize to the
+        // array shape the view expects here, at the Application/View boundary.
+        return $this->productRepository->findById($productId)?->toArray();
     }
 
     public function executeBySlug(string $slug): ?array
     {
-        return $this->productRepository->findBySlug($slug);
+        return $this->productRepository->findBySlug($slug)?->toArray();
     }
 
     public function executeByIdentifier(string $identifier): ?array

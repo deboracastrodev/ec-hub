@@ -68,9 +68,9 @@ class GenerateRecommendations
             $products = $this->loadProducts();
 
             // Get target product
-            $targetProductData = $this->productRepository->findById($targetProductId);
+            $targetProduct = $this->productRepository->findById($targetProductId);
 
-            if ($targetProductData === null) {
+            if ($targetProduct === null) {
                 // Cold-start for an unknown target product: return popular fallback.
                 $this->logFallbackActivated('cold_start_unknown_product', $targetProductId, 'popularity_only');
                 $fallbackResults = $this->fallbackService->getPopularRecommendations($limit);
@@ -78,9 +78,6 @@ class GenerateRecommendations
 
                 return $fallbackResults;
             }
-
-            // Convert array to Product entity
-            $targetProduct = $this->arrayToProduct($targetProductData);
 
             // Check if we should use fallback
             if ($insufficientData || $this->shouldUseFallback()) {
@@ -130,12 +127,10 @@ class GenerateRecommendations
             ]);
 
             // Fallback to rule-based on error
-            $targetProductData = $this->productRepository->findById($targetProductId);
-            if ($targetProductData === null) {
+            $targetProduct = $this->productRepository->findById($targetProductId);
+            if ($targetProduct === null) {
                 return [];
             }
-
-            $targetProduct = $this->arrayToProduct($targetProductData);
 
             $this->logFallbackActivated('ml_error', $targetProductId, $strategy);
             $fallbackResults = $this->fallbackService->getRecommendations(
@@ -199,22 +194,9 @@ class GenerateRecommendations
             return $this->productsCache;
         }
 
-        $productData = $this->productRepository->findAll(1000, 0);
-
-        $this->productsCache = array_map(
-            fn (array $data) => $this->arrayToProduct($data),
-            $productData
-        );
+        $this->productsCache = $this->productRepository->findAll(1000, 0);
 
         return $this->productsCache;
-    }
-
-    /**
-     * Convert repository array to Product entity.
-     */
-    private function arrayToProduct(array $data): Product
-    {
-        return Product::fromArray($data);
     }
 
     /**

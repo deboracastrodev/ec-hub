@@ -4,25 +4,27 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Persistence\MySQL;
 
+use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use PDO;
 
 /**
  * MySQL Product Repository Implementation
  *
- * Implements the repository interface using PDO.
- * Returns arrays as defined in the interface contract.
+ * Implements the repository interface using PDO. Read methods hydrate rows
+ * into Product entities here -- the only place in the app that knows the
+ * products table's column shape (R3.4).
  */
 class ProductRepository implements ProductRepositoryInterface
 {
     private PDO $pdo;
-    /** @var array<string, array<int, array<string, mixed>>> */
+    /** @var array<string, array<int, Product>> */
     private array $listCache = [];
-    /** @var array<string, array<int, array<string, mixed>>> */
+    /** @var array<string, array<int, Product>> */
     private array $categoryPageCache = [];
     /** @var array<string, int> */
     private array $categoryCountCache = [];
-    /** @var array<string, array<string, mixed>> */
+    /** @var array<string, Product> */
     private array $slugCache = [];
     private ?int $totalCountCache = null;
     private ?array $categoriesCache = null;
@@ -32,20 +34,26 @@ class ProductRepository implements ProductRepositoryInterface
         $this->pdo = $pdo;
     }
 
-    public function findById(int $id): ?array
+    public function findById(int $id): ?Product
     {
         $stmt = $this->pdo->prepare("SELECT * FROM products WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($row && isset($row['slug'])) {
-            $this->slugCache[$row['slug']] = $row;
+        if (! $row) {
+            return null;
         }
 
-        return $row ?: null;
+        $product = Product::fromArray($row);
+
+        if ($product->getSlug() !== '') {
+            $this->slugCache[$product->getSlug()] = $product;
+        }
+
+        return $product;
     }
 
-    public function findBySlug(string $slug): ?array
+    public function findBySlug(string $slug): ?Product
     {
         if (isset($this->slugCache[$slug])) {
             return $this->slugCache[$slug];
@@ -55,11 +63,14 @@ class ProductRepository implements ProductRepositoryInterface
         $stmt->execute(['slug' => $slug]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($row) {
-            $this->slugCache[$slug] = $row;
+        if (! $row) {
+            return null;
         }
 
-        return $row ?: null;
+        $product = Product::fromArray($row);
+        $this->slugCache[$slug] = $product;
+
+        return $product;
     }
 
     public function findAll(int $limit = 50, int $offset = 0): array
@@ -74,7 +85,10 @@ class ProductRepository implements ProductRepositoryInterface
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = array_map(
+            static fn (array $row): Product => Product::fromArray($row),
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
+        );
         $this->listCache[$cacheKey] = $results;
 
         return $results;
@@ -102,7 +116,10 @@ class ProductRepository implements ProductRepositoryInterface
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $results = array_map(
+            static fn (array $row): Product => Product::fromArray($row),
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
+        );
         $this->categoryPageCache[$cacheKey] = $results;
 
         return $results;

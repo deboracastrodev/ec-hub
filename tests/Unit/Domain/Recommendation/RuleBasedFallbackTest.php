@@ -48,6 +48,17 @@ class RuleBasedFallbackTest extends TestCase
         $this->contextProduct->setId(1);
     }
 
+    /**
+     * The repository returns Product entities, not raw rows (R3.4).
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, Product>
+     */
+    private function productsFromRows(array $rows): array
+    {
+        return array_map(static fn (array $row): Product => Product::fromArray($row), $rows);
+    }
+
     public function testGetByCategoryReturnsSameCategoryProducts(): void
     {
         // Arrange
@@ -59,7 +70,7 @@ class RuleBasedFallbackTest extends TestCase
         $this->mockRepository->expects($this->once())
             ->method('findByCategory')
             ->with('Eletrônicos', 3)
-            ->willReturn($categoryProducts);
+            ->willReturn($this->productsFromRows($categoryProducts));
 
         $this->mockLogger->expects($this->once())
             ->method('info')
@@ -93,7 +104,7 @@ class RuleBasedFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findByCategory')
-            ->willReturn($categoryProducts);
+            ->willReturn($this->productsFromRows($categoryProducts));
 
         // Act
         $recommendations = $this->fallback->getRecommendations(
@@ -118,7 +129,7 @@ class RuleBasedFallbackTest extends TestCase
         $this->mockRepository->expects($this->once())
             ->method('findAll')
             ->with(2, 0)
-            ->willReturn($allProducts);
+            ->willReturn($this->productsFromRows($allProducts));
 
         // Act
         $recommendations = $this->fallback->getRecommendations(
@@ -147,11 +158,11 @@ class RuleBasedFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findByCategory')
-            ->willReturn($categoryProducts);
+            ->willReturn($this->productsFromRows($categoryProducts));
 
         $this->mockRepository->expects($this->once())
             ->method('findAll')
-            ->willReturn($allProducts);
+            ->willReturn($this->productsFromRows($allProducts));
 
         // Act
         $recommendations = $this->fallback->getRecommendations(
@@ -175,7 +186,7 @@ class RuleBasedFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findByCategory')
-            ->willReturn($categoryProducts);
+            ->willReturn($this->productsFromRows($categoryProducts));
 
         // Act
         $recommendations = $this->fallback->getRecommendations(
@@ -198,9 +209,9 @@ class RuleBasedFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findAll')
-            ->willReturn([
+            ->willReturn($this->productsFromRows([
                 ['id' => 3, 'name' => 'Camiseta', 'category' => 'Roupas', 'price' => '79.90'],
-            ]);
+            ]));
 
         // Use a callback to verify the specific log message
         $this->mockLogger->expects($this->atLeastOnce())

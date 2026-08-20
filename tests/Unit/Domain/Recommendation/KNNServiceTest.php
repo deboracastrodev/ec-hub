@@ -134,7 +134,7 @@ class KNNServiceTest extends TestCase
     {
         $this->productRepository->expects($this->once())
             ->method('findAll')
-            ->willReturn($this->convertProductsToArray($this->testProducts));
+            ->willReturn($this->testProducts);
 
         $targetProduct = $this->testProducts[0];
         $recommendations = $this->knnService->recommend($targetProduct, 2);
@@ -154,24 +154,5 @@ class KNNServiceTest extends TestCase
             $firstRec = $recommendations[0]->toArray();
             $this->assertNotEmpty($firstRec['explanation'] ?? null);
         }
-    }
-
-    /**
-     * @param Product[] $products
-     * @return array<int, array<string, mixed>>
-     */
-    private function convertProductsToArray(array $products): array
-    {
-        return array_map(static function (Product $product): array {
-            return [
-                'id' => $product->getId(),
-                'name' => $product->getName(),
-                'description' => $product->getDescription(),
-                'price' => (string) $product->getPrice()->getDecimal(),
-                'category' => $product->getCategory(),
-                'image_url' => $product->getImageUrl(),
-                'created_at' => $product->getCreatedAt()->format('Y-m-d H:i:s'),
-            ];
-        }, $products);
     }
 }

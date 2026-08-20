@@ -4,54 +4,45 @@ declare(strict_types=1);
 
 namespace App\Domain\Product\Repository;
 
+use App\Domain\Product\Model\Product;
+
 /**
  * Product Repository Interface
  *
- * Defines contract for Product data access following DDD Repository pattern
+ * Defines contract for Product data access following DDD Repository pattern.
+ * Read methods return Product entities, not raw arrays (R3.4) -- the shape
+ * of the products table is an Infrastructure concern, not a Domain one.
  */
 interface ProductRepositoryInterface
 {
     /**
      * Find product by ID
-     *
-     * @param int $id Product ID
-     * @return array|null Product data or null if not found
      */
-    public function findById(int $id): ?array;
+    public function findById(int $id): ?Product;
 
     /**
      * Find product by slug
-     *
-     * @param string $slug Product slug
-     * @return array|null Product data or null if not found
      */
-    public function findBySlug(string $slug): ?array;
+    public function findBySlug(string $slug): ?Product;
 
     /**
      * Find all products
      *
-     * @param int $limit Limit results
-     * @param int $offset Offset for pagination
-     * @return array List of products
+     * @return list<Product>
      */
     public function findAll(int $limit = 50, int $offset = 0): array;
 
     /**
      * Find products by category
      *
-     * @param string $category Category name
-     * @param int $limit Limit results
-     * @return array List of products
+     * @return list<Product>
      */
     public function findByCategory(string $category, int $limit = 50): array;
 
     /**
      * Find products by category with pagination
      *
-     * @param string $category Category name
-     * @param int $limit Limit results
-     * @param int $offset Offset for pagination
-     * @return array List of products
+     * @return list<Product>
      */
     public function findByCategoryPaginated(string $category, int $limit, int $offset): array;
 

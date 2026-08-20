@@ -52,6 +52,10 @@ class GetProductList
             $totalProducts = $totalAllProducts;
         }
 
+        // The repository returns Product entities (R3.4); serialize to the
+        // array shape the view expects here, at the Application/View boundary.
+        $products = array_map(static fn ($product) => $product->toArray(), $products);
+
         $totalPages = max(1, (int) ceil($totalProducts / $limit));
         $categoriesWithCounts = $this->categoryService->getCategoriesWithCounts();
 

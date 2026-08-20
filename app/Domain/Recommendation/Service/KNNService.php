@@ -288,16 +288,12 @@ class KNNService
     }
 
     /**
-     * Load and convert products from repository.
+     * Load products from repository.
      *
      * @return Product[]
      */
     private function loadProductsFromRepository(): array
     {
-        $rawProducts = $this->productRepository->findAll(1000, 0);
-
-        return array_map(static function (array $item): Product {
-            return Product::fromArray($item);
-        }, $rawProducts);
+        return $this->productRepository->findAll(1000, 0);
     }
 }

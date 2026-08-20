@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Integration\Application\Recommendation;
 
 use App\Application\Recommendation\GenerateRecommendations;
+use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
@@ -47,14 +48,14 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
         // Arrange - only 2 products (less than MIN_PRODUCTS_FOR_ML = 5)
         $this->mockRepository->expects($this->once())
             ->method('findAll')
-            ->willReturn([
+            ->willReturn($this->productsFromRows([
                 ['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01'],
                 ['id' => 2, 'name' => 'Product 2', 'category' => 'Cat1', 'price' => '200.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01'],
-            ]);
+            ]));
 
         $this->mockRepository->expects($this->once())
             ->method('findById')
-            ->willReturn(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']);
+            ->willReturn(Product::fromArray(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']));
 
         $fallbackRecs = [
             ['product_id' => 2, 'product_name' => 'Product 2', 'score' => 60.0, 'explanation' => 'Fallback (rule-based): Category match', 'fallback_reason' => 'category'],
@@ -89,7 +90,7 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findById')
-            ->willReturn(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']);
+            ->willReturn(Product::fromArray(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']));
 
         $this->mockKNNService->expects($this->once())
             ->method('isTrained')
@@ -133,7 +134,7 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->once())
             ->method('findById')
-            ->willReturn(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']);
+            ->willReturn(Product::fromArray(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']));
 
         $fallbackRecs = [
             ['product_id' => 2, 'product_name' => 'Product 2', 'score' => 60.0, 'explanation' => 'Fallback (rule-based): Category match', 'fallback_reason' => 'category'],
@@ -166,7 +167,7 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
 
         $this->mockRepository->expects($this->exactly(2))
             ->method('findById')
-            ->willReturn(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']);
+            ->willReturn(Product::fromArray(['id' => 1, 'name' => 'Product 1', 'category' => 'Cat1', 'price' => '100.00', 'description' => '', 'image_url' => '', 'created_at' => '2024-01-01']));
 
         $this->mockKNNService->expects($this->once())
             ->method('isTrained')
@@ -199,9 +200,9 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
 
     private function getEnoughProducts(): array
     {
-        $products = [];
+        $rows = [];
         for ($i = 1; $i <= 10; $i++) {
-            $products[] = [
+            $rows[] = [
                 'id' => $i,
                 'name' => "Product $i",
                 'category' => 'Cat1',
@@ -212,6 +213,17 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
             ];
         }
 
-        return $products;
+        return $this->productsFromRows($rows);
+    }
+
+    /**
+     * The repository returns Product entities, not raw rows (R3.4).
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, Product>
+     */
+    private function productsFromRows(array $rows): array
+    {
+        return array_map(static fn (array $row): Product => Product::fromArray($row), $rows);
     }
 }

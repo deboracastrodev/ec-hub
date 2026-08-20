@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
+use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 
 /**
@@ -59,22 +60,22 @@ class InMemoryProductRepository implements ProductRepositoryInterface
         ];
     }
 
-    public function findById(int $id): ?array
+    public function findById(int $id): ?Product
     {
         foreach ($this->products as $product) {
             if ((int) $product['id'] === $id) {
-                return $product;
+                return Product::fromArray($product);
             }
         }
 
         return null;
     }
 
-    public function findBySlug(string $slug): ?array
+    public function findBySlug(string $slug): ?Product
     {
         foreach ($this->products as $product) {
             if (($product['slug'] ?? null) === $slug) {
-                return $product;
+                return Product::fromArray($product);
             }
         }
 
@@ -83,7 +84,10 @@ class InMemoryProductRepository implements ProductRepositoryInterface
 
     public function findAll(int $limit = 50, int $offset = 0): array
     {
-        return array_slice($this->products, $offset, $limit);
+        return array_map(
+            static fn (array $p): Product => Product::fromArray($p),
+            array_slice($this->products, $offset, $limit)
+        );
     }
 
     public function findByCategory(string $category, int $limit = 50): array
@@ -98,7 +102,10 @@ class InMemoryProductRepository implements ProductRepositoryInterface
             static fn (array $p) => $p['category'] === $category
         ));
 
-        return array_slice($filtered, $offset, $limit);
+        return array_map(
+            static fn (array $p): Product => Product::fromArray($p),
+            array_slice($filtered, $offset, $limit)
+        );
     }
 
     public function countByCategory(string $category): int

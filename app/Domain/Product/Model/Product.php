@@ -20,6 +20,7 @@ class Product
     private Money $price;
     private string $category;
     private string $imageUrl;
+    private string $slug;
     private \DateTimeImmutable $createdAt;
 
     public function __construct(
@@ -27,13 +28,15 @@ class Product
         string $description,
         Money $price,
         string $category,
-        string $imageUrl = ''
+        string $imageUrl = '',
+        string $slug = ''
     ) {
         $this->name = $name;
         $this->description = $description;
         $this->price = $price;
         $this->category = $category;
         $this->imageUrl = $imageUrl;
+        $this->slug = $slug;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -68,6 +71,11 @@ class Product
         return $this->imageUrl;
     }
 
+    public function getSlug(): string
+    {
+        return $this->slug;
+    }
+
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
@@ -99,6 +107,11 @@ class Product
         $this->imageUrl = $imageUrl;
     }
 
+    public function setSlug(string $slug): void
+    {
+        $this->slug = $slug;
+    }
+
     /**
      * Convert to array format (useful for JSON responses)
      */
@@ -112,6 +125,7 @@ class Product
             'price_formatted' => $this->price->getFormatted(),
             'category' => $this->category,
             'image_url' => $this->imageUrl,
+            'slug' => $this->slug,
             'created_at' => $this->createdAt->format('Y-m-d H:i:s'),
         ];
     }
@@ -126,7 +140,8 @@ class Product
             $data['description'] ?? '',
             Money::fromDecimal((float) $data['price']),
             $data['category'],
-            $data['image_url'] ?? ''
+            $data['image_url'] ?? '',
+            $data['slug'] ?? ''
         );
 
         if (isset($data['id'])) {

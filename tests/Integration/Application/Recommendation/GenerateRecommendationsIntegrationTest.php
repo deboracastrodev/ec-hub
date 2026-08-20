@@ -132,7 +132,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
 
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products, 'Database must have at least one product');
-        $targetProductId = (int) $products[0]['id'];
+        $targetProductId = (int) $products[0]->getId();
 
         // Act - Execute recommendation flow
         $recommendations = $this->service->execute($targetProductId, 5);
@@ -156,23 +156,20 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         }
     }
 
-    public function test_repository_array_to_product_entity_conversion(): void
+    public function test_repository_returns_product_entities_directly(): void
     {
-        // Arrange - Get raw product data from repository
+        // R3.4: the repository hydrates rows into Product entities itself --
+        // callers no longer receive arrays and convert them by hand.
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
 
-        $productData = $products[0];
+        $product = $products[0];
 
-        // Act - Convert to Product entity using fromArray factory
-        $product = Product::fromArray($productData);
-
-        // Assert - Verify conversion worked correctly
         $this->assertInstanceOf(Product::class, $product);
-        $this->assertEquals($productData['id'], $product->getId());
-        $this->assertEquals($productData['name'], $product->getName());
-        $this->assertEquals($productData['category'], $product->getCategory());
-        $this->assertEquals((float) $productData['price'], (float) $product->getPrice()->getDecimal());
+        $this->assertNotNull($product->getId());
+        $this->assertNotSame('', $product->getName());
+        $this->assertNotSame('', $product->getCategory());
+        $this->assertGreaterThanOrEqual(0.0, $product->getPrice()->getDecimal());
     }
 
     public function test_knn_training_with_real_repository_data(): void
@@ -181,11 +178,10 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $totalProducts = $this->repository->count();
         $this->assertGreaterThanOrEqual(2, $totalProducts, 'Need at least 2 products for KNN training');
 
-        // Act - Train KNN with repository products
+        // Act - Train KNN with repository products (already Product entities, R3.4)
         $products = $this->repository->findAll(1000, 0);
-        $productEntities = array_map(fn ($data) => Product::fromArray($data), $products);
 
-        $this->knnService->train($productEntities, 3);
+        $this->knnService->train($products, 3);
 
         // Assert - Model is trained
         $this->assertTrue($this->knnService->isTrained());
@@ -212,7 +208,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         // Arrange - Get first product
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $targetProductId = (int) $products[0]['id'];
+        $targetProductId = (int) $products[0]->getId();
 
         // Act - Call execute twice
         $result1 = $this->service->execute($targetProductId);
@@ -229,7 +225,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         // Arrange - Get first product and train model
         $products = $this->repository->findAll(1, 0);
         $this->assertNotEmpty($products);
-        $targetProductId = (int) $products[0]['id'];
+        $targetProductId = (int) $products[0]->getId();
 
         // Act - Train, clear cache, and train again
         $this->service->execute($targetProductId);
@@ -256,7 +252,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
             $this->markTestSkipped('Need at least 2 products for this test');
         }
 
-        $targetProductId = (int) $products[0]['id'];
+        $targetProductId = (int) $products[0]->getId();
 
         // Act
         $recommendations = $this->service->execute($targetProductId, 3);

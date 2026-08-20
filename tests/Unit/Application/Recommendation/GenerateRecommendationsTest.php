@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Application\Recommendation;
 
 use App\Application\Recommendation\GenerateRecommendations;
+use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
@@ -207,11 +208,11 @@ class GenerateRecommendationsTest extends TestCase
     }
 
     /**
-     * @return array<int, array<string, mixed>>
+     * @return array<int, Product>
      */
     private function getMockProductsData(): array
     {
-        return [
+        $rows = [
             [
                 'id' => 1,
                 'name' => 'Laptop Gamer',
@@ -258,6 +259,9 @@ class GenerateRecommendationsTest extends TestCase
                 'created_at' => '2024-01-01 00:00:00',
             ],
         ];
+
+        // The repository returns Product entities, not raw arrays (R3.4).
+        return array_map(static fn (array $row): Product => Product::fromArray($row), $rows);
     }
 
     /**
