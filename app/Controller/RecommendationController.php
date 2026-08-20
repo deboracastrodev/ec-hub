@@ -6,7 +6,7 @@ namespace App\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\Exceptions\InvalidRequestException;
-use App\Controller\Exceptions\RecommendationException;
+use App\Domain\Recommendation\Exception\RecommendationException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -58,7 +58,9 @@ class RecommendationController
      * @param array<string, string|int> $queryParams Query parameters (product_id, limit)
      * @return array<string, mixed> JSON-serializable response array
      * @throws InvalidRequestException If request validation fails
-     * @throws RecommendationException If recommendation generation fails
+     * @throws RecommendationException If recommendation generation fails -- left
+     *         uncaught here; mapping a domain failure to an HTTP status is the
+     *         edge's job (public/index.php), not the controller's
      */
     public function getRecommendations(array $queryParams, ?array $headers = null): array
     {
@@ -69,31 +71,21 @@ class RecommendationController
         $productId = $this->validateProductId($queryParams);
         $limit = $this->validateAndParseLimit($queryParams);
 
-        try {
-            // Generate recommendations
-            $recommendations = $this->generateRecommendations->execute($productId, $limit);
+        // Generate recommendations
+        $recommendations = $this->generateRecommendations->execute($productId, $limit);
 
-            $responseTime = (microtime(true) - $startTime) * 1000;
+        $responseTime = (microtime(true) - $startTime) * 1000;
 
-            // Log slow requests (AC2: performance monitoring)
-            if ($responseTime > self::SLOW_REQUEST_THRESHOLD_MS) {
-                $this->logger->warning('Slow recommendation', [
-                    'product_id' => $productId,
-                    'time_ms' => round($responseTime, 2),
-                ]);
-            }
-
-            // Format response (AC1, AC8)
-            return $this->formatResponse($recommendations, $responseTime);
-
-        } catch (\App\Domain\Recommendation\Exception\RecommendationException $e) {
-            // Domain exception - wrap in controller exception
-            throw new RecommendationException(
-                'Failed to generate recommendations',
-                500,
-                $e
-            );
+        // Log slow requests (AC2: performance monitoring)
+        if ($responseTime > self::SLOW_REQUEST_THRESHOLD_MS) {
+            $this->logger->warning('Slow recommendation', [
+                'product_id' => $productId,
+                'time_ms' => round($responseTime, 2),
+            ]);
         }
+
+        // Format response (AC1, AC8)
+        return $this->formatResponse($recommendations, $responseTime);
     }
 
     /**

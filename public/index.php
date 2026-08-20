@@ -8,7 +8,7 @@ use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\ProductController;
 use App\Controller\RecommendationController;
 use App\Controller\Exceptions\InvalidRequestException;
-use App\Controller\Exceptions\RecommendationException;
+use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Service\CategoryService;
 
 /**
@@ -170,13 +170,14 @@ try {
         }
     }
 } catch (RecommendationException $e) {
-    // Internal service error
-    http_response_code($e->getHttpCode());
+    // Domain exception: no HTTP awareness by design (R3.2) -- always 500 here,
+    // the one place that maps a domain failure to a status code.
+    http_response_code(500);
     if ($isApiRoute) {
         header('Content-Type: application/json');
         echo json_encode([
-            'error' => $e->getMessage(),
-            'code' => $e->getHttpCode(),
+            'error' => 'Failed to generate recommendations',
+            'code' => 500,
         ], JSON_PRETTY_PRINT);
     } else {
         http_response_code(500);

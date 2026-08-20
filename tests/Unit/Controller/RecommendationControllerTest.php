@@ -6,8 +6,8 @@ namespace Tests\Unit\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\Exceptions\InvalidRequestException;
-use App\Controller\Exceptions\RecommendationException;
 use App\Controller\RecommendationController;
+use App\Domain\Recommendation\Exception\RecommendationException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -205,18 +205,21 @@ class RecommendationControllerTest extends TestCase
         $this->controller->getRecommendations($queryParams);
     }
 
-    public function testGetRecommendationsHandlesServiceException(): void
+    public function testGetRecommendationsPropagatesDomainException(): void
     {
-        // Arrange
+        // Arrange -- the controller no longer wraps domain exceptions in an
+        // HTTP-flavored one (R3.2): it lets the single RecommendationException
+        // propagate as-is, unchanged. Mapping it to a status code is the
+        // edge's job (public/index.php), not the controller's.
         $queryParams = ['product_id' => '999']; // Non-existent product
 
         $this->mockGenerateRecommendations->expects($this->once())
             ->method('execute')
-            ->willThrowException(new \App\Domain\Recommendation\Exception\RecommendationException('Product not found'));
+            ->willThrowException(new RecommendationException('Product not found'));
 
         // Assert/Act
         $this->expectException(RecommendationException::class);
-        $this->expectExceptionMessage('Failed to generate recommendations');
+        $this->expectExceptionMessage('Product not found');
 
         $this->controller->getRecommendations($queryParams);
     }
