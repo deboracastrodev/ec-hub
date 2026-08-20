@@ -15,7 +15,7 @@ final class RecommendationResultTest extends TestCase
             42,
             'Smartphone Galaxy X',
             'Eletrônicos',
-            'R$ 2.999,00',
+            2999.0,
             95.5,
             1,
             'Recomendado porque...'
@@ -26,7 +26,7 @@ final class RecommendationResultTest extends TestCase
         $this->assertSame(42, $data['product_id']);
         $this->assertSame('Smartphone Galaxy X', $data['product_name']);
         $this->assertSame('Eletrônicos', $data['category']);
-        $this->assertSame('R$ 2.999,00', $data['price']);
+        $this->assertSame(2999.0, $data['price']);
         $this->assertSame(95.5, $data['score']);
         $this->assertSame(1, $data['rank']);
         $this->assertSame('Recomendado porque...', $data['explanation']);

@@ -231,7 +231,7 @@ class KNNService
                 (int) $neighborProduct->getId(),
                 $neighborProduct->getName(),
                 $neighborProduct->getCategory(),
-                $neighborProduct->getPrice()->getFormatted(),
+                $neighborProduct->getPrice()->getDecimal(),
                 $score,
                 ++$rank,
                 $this->generateExplanation($targetProduct, $neighborProduct)

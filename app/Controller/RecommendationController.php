@@ -178,7 +178,7 @@ class RecommendationController
             return [
                 'id' => $rec['product_id'] ?? $rec['id'] ?? null,
                 'name' => $rec['name'] ?? $rec['product_name'] ?? null,
-                'price' => $this->normalizePrice($rec['price'] ?? null),
+                'price' => isset($rec['price']) ? (float) $rec['price'] : null,
                 'score' => $rec['score'] ?? null,
                 'explanation' => $rec['explanation'] ?? null,
             ];
@@ -234,39 +234,5 @@ class RecommendationController
         }
 
         return $headers;
-    }
-
-    /**
-     * Normalize price to numeric value when possible.
-     *
-     * @param mixed $price
-     */
-    private function normalizePrice($price): ?float
-    {
-        if ($price === null) {
-            return null;
-        }
-
-        if (is_int($price) || is_float($price)) {
-            return (float) $price;
-        }
-
-        if (is_string($price)) {
-            $normalized = preg_replace('/[^\d,.\-]/', '', $price);
-            if ($normalized === null || $normalized === '') {
-                return null;
-            }
-
-            if (strpos($normalized, ',') !== false && strpos($normalized, '.') !== false) {
-                $normalized = str_replace('.', '', $normalized);
-                $normalized = str_replace(',', '.', $normalized);
-            } elseif (strpos($normalized, ',') !== false) {
-                $normalized = str_replace(',', '.', $normalized);
-            }
-
-            return is_numeric($normalized) ? (float) $normalized : null;
-        }
-
-        return null;
     }
 }

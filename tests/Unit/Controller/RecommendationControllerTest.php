@@ -42,7 +42,7 @@ class RecommendationControllerTest extends TestCase
             [
                 'product_id' => 2,
                 'name' => 'Mouse Gamer',
-                'price' => 'R$ 150,00',
+                'price' => 150.0,
                 'category' => 'Eletrônicos',
                 'score' => 0.85,
                 'explanation' => 'Similar ao produto visualizado',
@@ -109,7 +109,7 @@ class RecommendationControllerTest extends TestCase
             [
                 'product_id' => 2,
                 'name' => 'Mouse Gamer',
-                'price' => 'R$ 150,00',
+                'price' => 150.0,
                 'category' => 'Eletrônicos',
                 'score' => 0.85,
                 'explanation' => 'Similar ao produto visualizado',
@@ -182,7 +182,7 @@ class RecommendationControllerTest extends TestCase
         // Arrange
         $queryParams = ['product_id' => '1'];
         $expectedRecommendations = [
-            ['product_id' => 2, 'name' => 'Test', 'price' => 'R$ 100', 'category' => 'Test', 'score' => 0.5, 'explanation' => 'Test'],
+            ['product_id' => 2, 'name' => 'Test', 'price' => 100.0, 'category' => 'Test', 'score' => 0.5, 'explanation' => 'Test'],
         ];
 
         // Mock execute to take some time (simulated by actually working)
@@ -232,7 +232,7 @@ class RecommendationControllerTest extends TestCase
             [
                 'product_id' => 2,
                 'name' => 'Mouse Gamer',
-                'price' => 'R$ 150,00',
+                'price' => 150.0,
                 'category' => 'Eletrônicos',
                 'score' => 0.95,
                 'explanation' => 'Customers who bought this also bought...',
@@ -308,7 +308,7 @@ class RecommendationControllerTest extends TestCase
             ->method('execute')
             ->with(1, 10)
             ->willReturn([
-                ['product_id' => 2, 'name' => 'Test', 'price' => 'R$ 100', 'score' => 0.8, 'explanation' => 'Test'],
+                ['product_id' => 2, 'name' => 'Test', 'price' => 100.0, 'score' => 0.8, 'explanation' => 'Test'],
             ]);
 
         $response = $this->controller->getRecommendations($queryParams);

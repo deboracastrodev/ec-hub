@@ -12,7 +12,7 @@ class RecommendationResult
     private int $productId;
     private string $productName;
     private string $category;
-    private string $priceFormatted;
+    private float $price;
     private float $score;
     private int $rank;
     private string $explanation;
@@ -21,7 +21,7 @@ class RecommendationResult
         int $productId,
         string $productName,
         string $category,
-        string $priceFormatted,
+        float $price,
         float $score,
         int $rank,
         string $explanation
@@ -29,7 +29,7 @@ class RecommendationResult
         $this->productId = $productId;
         $this->productName = $productName;
         $this->category = $category;
-        $this->priceFormatted = $priceFormatted;
+        $this->price = $price;
         $this->score = $score;
         $this->rank = $rank;
         $this->explanation = $explanation;
@@ -50,9 +50,13 @@ class RecommendationResult
         return $this->category;
     }
 
-    public function getPriceFormatted(): string
+    /**
+     * Decimal price (e.g. 149.9). Formatting for display happens once, at
+     * the view layer (Twig |BRL filter) -- not here (R3.3).
+     */
+    public function getPrice(): float
     {
-        return $this->priceFormatted;
+        return $this->price;
     }
 
     public function getScore(): float
@@ -76,7 +80,7 @@ class RecommendationResult
             'product_id' => $this->productId,
             'product_name' => $this->productName,
             'category' => $this->category,
-            'price' => $this->priceFormatted,
+            'price' => $this->price,
             'score' => $this->score,
             'rank' => $this->rank,
             'explanation' => $this->explanation,

@@ -270,7 +270,7 @@ class GenerateRecommendationsTest extends TestCase
                 2,
                 'Mouse Gamer',
                 'Eletrônicos',
-                'R$ 150,00',
+                150.0,
                 85.0,
                 1,
                 'Recomendado porque você visualizou "Laptop Gamer" que também é da categoria Eletrônicos'

@@ -14,7 +14,7 @@ class RecommendationDTO
     private int $productId;
     private string $name;
     private string $category;
-    private string $price;
+    private float $price;
     private float $score;
     private string $explanation;
 
@@ -22,7 +22,7 @@ class RecommendationDTO
         int $productId,
         string $name,
         string $category,
-        string $price,
+        float $price,
         float $score,
         string $explanation
     ) {
@@ -40,7 +40,7 @@ class RecommendationDTO
             $result->getProductId(),
             $result->getProductName(),
             $result->getCategory(),
-            $result->getPriceFormatted(),
+            $result->getPrice(),
             $result->getScore(),
             $result->getExplanation()
         );

@@ -109,7 +109,7 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
                     2,
                     'Product 2',
                     'Cat1',
-                    'R$ 100,00',
+                    100.0,
                     85.0,
                     1,
                     'Recomendado porque você visualizou "Product 1"'
