@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\SEO\Service;
+namespace App\Application\SEO\Service;
 
 class MetaTagsService
 {
@@ -15,7 +15,7 @@ class MetaTagsService
     {
         $this->siteName = 'ec-hub';
         $this->siteUrl = 'https://ec-hub.example.com';
-        $this->defaultDescription = 'Catálogo de produtos do ec-hub - E-commerce com Machine Learning em PHP 7.4';
+        $this->defaultDescription = 'Catálogo de produtos do ec-hub - E-commerce com Machine Learning em PHP';
         $this->defaultImage = $this->siteUrl . '/assets/images/og-default.jpg';
     }
 
@@ -59,7 +59,7 @@ class MetaTagsService
 
             case 'home':
             default:
-                return "{$this->siteName} - E-commerce com ML em PHP 7.4";
+                return "{$this->siteName} - E-commerce com ML em PHP";
         }
     }
 
@@ -99,7 +99,7 @@ class MetaTagsService
                 return strtolower("{$productName}, {$category}, comprar, preço, {$this->siteName}");
 
             default:
-                return 'e-commerce, produtos, compras, machine learning, php 7.4, recomendações';
+                return 'e-commerce, produtos, compras, machine learning, php, recomendações';
         }
     }
 
@@ -227,7 +227,7 @@ class MetaTagsService
             '@type' => 'Organization',
             'name' => $this->siteName,
             'url' => $this->siteUrl,
-            'description' => 'E-commerce com Machine Learning em PHP 7.4',
+            'description' => 'E-commerce com Machine Learning em PHP',
         ];
 
         return json_encode($org, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

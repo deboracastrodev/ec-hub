@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
+use App\Application\SEO\Service\MetaTagsService;
 
 /**
  * Product Controller
@@ -17,16 +18,19 @@ class ProductController
 {
     private GetProductList $getProductList;
     private GetProductDetail $getProductDetail;
+    private MetaTagsService $metaTagsService;
     private \Twig\Environment $twig;
 
     public function __construct(
         GetProductList $getProductList,
         GetProductDetail $getProductDetail,
-        \Twig\Environment $twig
+        \Twig\Environment $twig,
+        ?MetaTagsService $metaTagsService = null
     ) {
         $this->getProductList = $getProductList;
         $this->getProductDetail = $getProductDetail;
         $this->twig = $twig;
+        $this->metaTagsService = $metaTagsService ?? new MetaTagsService();
     }
 
     /**
@@ -41,10 +45,18 @@ class ProductController
         $listResult = $this->getProductList->execute($queryParams);
         $renderTime = (microtime(true) - $startTime) * 1000; // ms
 
+        $meta = $this->metaTagsService->generateForPage('product.listing', [
+            'category' => $listResult['currentCategoryLabel'] ?? null,
+            'category_slug' => $listResult['currentCategory'] ?? null,
+            'product_count' => $listResult['totalProducts'] ?? 0,
+            'products' => $listResult['products'] ?? [],
+        ]);
+
         return $this->twig->render('product/listing.html.twig', array_merge(
             $listResult,
             [
                 'renderTime' => $renderTime,
+                'meta' => $meta,
             ]
         ));
     }
@@ -68,8 +80,19 @@ class ProductController
             ]);
         }
 
+        $meta = $this->metaTagsService->generateForPage('product.detail', [
+            'product_name' => $product['name'] ?? '',
+            'description' => $product['description'] ?? '',
+            'category' => $product['category'] ?? '',
+            'price' => $product['price'] ?? '',
+            'image_url' => $product['image_url'] ?? '',
+            'product_slug' => $product['slug'] ?? '',
+            'product_id' => $product['id'] ?? '',
+        ]);
+
         return $this->twig->render('product/detail.html.twig', [
             'product' => $product,
+            'meta' => $meta,
         ]);
     }
 }

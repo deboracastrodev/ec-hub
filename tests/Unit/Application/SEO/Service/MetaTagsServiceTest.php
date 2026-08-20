@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Tests\Unit\Domain\SEO\Service;
+namespace Tests\Unit\Application\SEO\Service;
 
-use App\Domain\SEO\Service\MetaTagsService;
+use App\Application\SEO\Service\MetaTagsService;
 use PHPUnit\Framework\TestCase;
 
 /**

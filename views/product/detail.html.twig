@@ -1,6 +1,22 @@
 {% extends 'layout/base.html.twig' %}
 
-{% block title %}{{ product.name }} - ec-hub{% endblock %}
+{% block title %}{{ meta.title }}{% endblock %}
+{% block description %}{{ meta.description }}{% endblock %}
+{% block keywords %}{{ meta.keywords }}{% endblock %}
+{% block canonical %}{{ meta.canonical }}{% endblock %}
+
+{% block og_title %}{{ meta.og['og:title'] }}{% endblock %}
+{% block og_description %}{{ meta.og['og:description'] }}{% endblock %}
+{% block og_image %}{{ meta.og['og:image'] }}{% endblock %}
+{% block og_url %}{{ meta.og['og:url'] }}{% endblock %}
+
+{% block twitter_title %}{{ meta.twitter['twitter:title'] }}{% endblock %}
+{% block twitter_description %}{{ meta.twitter['twitter:description'] }}{% endblock %}
+{% block twitter_image %}{{ meta.twitter['twitter:image'] }}{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">{{ meta.structured_data|raw }}</script>
+{% endblock %}
 
 {% block content %}
 <main class="product-detail">
