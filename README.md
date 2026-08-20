@@ -1,178 +1,146 @@
 # ec-hub
 
-[![PHP](https://img.shields.io/badge/PHP-7.4-777884?logo=php&logoColor=white)](https://php.net)
-[![Build](https://img.shields.io/badge/Build-WIP-orange)](#)
-[![Tests](https://img.shields.io/badge/Tests-not_run-lightgrey)](#)
+[![CI](https://github.com/deboracastrodev/ec-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/deboracastrodev/ec-hub/actions/workflows/ci.yml)
+[![PHP](https://img.shields.io/badge/PHP-8.4-777884?logo=php&logoColor=white)](https://php.net)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **Machine Learning em PHP 7.4** - Uma POC técnica demonstrando Clean Architecture + DDD + Swoole + Rubix ML
+> **ML nativo em PHP com Clean Architecture** — catálogo de produtos + recomendações item-a-item via KNN (Rubix ML), com fallback baseado em regras.
 
-## 🎯 Por que PHP 7.4 + ML?
+## O que existe hoje
 
-Este projeto é uma **prova de conceito técnica** que demonstra:
+- **Catálogo de produtos** — listagem paginada, filtro por categoria, página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
+- **API de recomendações** — `GET /api/recommendations?product_id=X` devolve produtos similares via KNN (Rubix ML: `OneHotEncoder` + `MinMaxNormalizer` + `BallTree`), com fallback automático baseado em regras (categoria/popularidade) quando o catálogo é pequeno demais ou o ML falha
+- **Clean Architecture** — 4 camadas (Controller/Application/Domain/Infrastructure); o Domain não importa nenhuma biblioteca externa, nem o Rubix ML (fica atrás de uma porta, em `App\Infrastructure\ML`)
+- **PHP 8.4**, MySQL 8, Twig, servidor embutido do PHP (`php -S`) — sem Swoole, sem Redis
+- **137 testes** (PHPUnit 12), cobertura de linhas medida em **~81%**; a suíte sem grupo `db` passa sem Docker
+- **CI** (GitHub Actions): estilo (PSR-12), suíte sem banco, suíte completa com MySQL + cobertura
 
-- **ML nativo em PHP** usando Rubix ML - extremamente raro no mercado
-- **Clean Architecture + DDD** - Patterns enterprise escaláveis
-- **Swoole HTTP Server** - Workers long-running com coroutines
-- **Redis Pub/Sub** - Event-driven architecture
+O que o projeto **não** faz ainda está listado no [Roadmap](#roadmap) — não é omissão, é escopo.
 
-**O diferencial:** Implementar Machine Learning em PHP 7.4 (stack "legacy") com arquitetura moderna demonstra capacidade de adaptabilidade e domínio técnico profundo.
-
-## ✨ Conquistas
-
-- 🧠 **KNN funcional** - Recomendações usando Rubix ML em PHP 7.4
-- 🏗️ **Clean Architecture** - 4 camadas com DDD bounded contexts
-- ⚡ **Performance** - Recomendações < 200ms, Dashboard < 500ms
-- ✅ **70% test coverage** - Domain + Application layers
-- 🐳 **Docker Compose** - Setup one-command
-- 📊 **Transparência** - Dashboard `/metrics` mostra arquitetura em ação
-
-## 🚀 Quick Start (6 passos)
+## Quick Start
 
 ### Pré-requisitos
 
-- Docker Desktop instalado
-- Docker Compose (vem com Docker Desktop)
+- Docker Desktop (ou Docker Engine + Compose plugin)
 
 ### Setup
 
 ```bash
-# 1. Clonar repositório
-git clone https://github.com/seu-usuario/ec-hub.git
+git clone https://github.com/deboracastrodev/ec-hub.git
 cd ec-hub
 
-# 2. Copiar variáveis de ambiente
 cp .env.example .env
 
-# 3. Subir containers Docker
-make up
-# ou: docker-compose up -d
+make up      # sobe os containers (app + mysql)
+make setup   # espera o MySQL, instala dependências, roda migrations e seed
 
-# 4. Executar setup automatizado
-make setup
-# ou: ./setup.sh
-
-# 5. Acessar aplicação
 open http://localhost:9501
 ```
 
-**⏱️ Tempo estimado:** 6 minutos
-
-### Comandos Úteis
+### Comandos úteis
 
 ```bash
-make logs      # Ver logs da aplicação
-make test      # Executar testes
-make shell     # Acessar shell do container
-make down      # Parar containers
-make db-shell  # Acessar MySQL CLI
-make redis-cli # Acessar Redis CLI
+make logs       # logs da aplicação
+make test       # suíte completa (roda local, sem precisar do container)
+make cs-check   # estilo PSR-12 (local, sem Docker)
+make shell      # bash dentro do container app
+make db-shell   # MySQL CLI
+make down       # para os containers
 ```
 
-## 🏗️ Arquitetura em 15 Minutos
+`make test` e `make cs-check` não precisam de Docker no ar — rodam direto com `vendor/bin/`. Alvos de banco (`migrate`, `seed`, `db-shell`) precisam do container do MySQL.
 
-### Estrutura de Pastas
+## Arquitetura
+
+4 camadas, dependências apontando para dentro (`Controller → Application → Domain`; `Infrastructure` implementa interfaces que o `Domain` declara):
 
 ```
 app/
-├── Controller/          # Layer 1: HTTP handlers
-├── Application/         # Layer 2: Use cases/orchestrators
-├── Domain/              # Layer 3: Core business logic (DDD)
-│   ├── Product/         # Catálogo de produtos
-│   ├── User/            # Autenticação e usuários
-│   ├── Cart/            # Carrinho de compras
-│   ├── Recommendation/  # Sistema de recomendação ML ⭐
-│   └── Metrics/         # Dashboard e monitoramento
-├── Infrastructure/      # Layer 4: Database, Redis, Messaging
-└── Shared/              # Helpers, Middleware, Traits
+├── Controller/       # HTTP handlers (ProductController, RecommendationController)
+├── Application/      # Casos de uso (GetProductList, GenerateRecommendations, ...)
+├── Domain/
+│   ├── Product/      # Catálogo — entidade, repositório (interface), CategoryService
+│   └── Recommendation/  # KNNService, RuleBasedFallback, NeighborFinderInterface
+├── Infrastructure/
+│   ├── ML/            # RubixNeighborFinder — único arquivo que importa Rubix\*
+│   └── Persistence/    # ProductRepository (MySQL/PDO)
+└── Shared/
+    ├── Container/     # Container PSR-11 mínimo
+    └── Http/          # Router, ErrorHandler
 ```
 
-### Clean Architecture (4 Camadas)
+O `Domain` não depende de framework nem de biblioteca de ML — `App\Domain\Recommendation\Service\NeighborFinderInterface` é a porta; `App\Infrastructure\ML\RubixNeighborFinder` é a única implementação, e o único lugar do projeto que importa `Rubix\ML\*`.
 
-1. **Controller** → Recebe HTTP requests
-2. **Application** → Orquestra use cases
-3. **Domain** → Lógica de negócio pura (DDD)
-4. **Infrastructure** → Banco, Redis, APIs externas
+Detalhes completos: [docs/STRUCTURE.md](docs/STRUCTURE.md) (árvore + fluxo de requisição) e [docs/architecture.md](docs/architecture.md) (decisões, com o porquê).
 
-**Dependências apontam para dentro:** `Controller → Application → Domain`
+## API de recomendações
 
-Isso significa que o **Domain** não depende de ninguém - é código testável e independente.
+```
+GET /api/recommendations?product_id={id}&limit={1-50, default 10}
+```
 
-### Mapa Mental de Code Review
+```json
+{
+  "data": [
+    { "id": 497, "name": "Bola Futebol Oficial", "price": 460.8, "score": 91.03, "explanation": "..." }
+  ],
+  "meta": { "source": "ml", "count": 20, "response_time_ms": 2.34, "generated_at": "2026-08-20T13:50:00+00:00" }
+}
+```
 
-1. **composer.json** - Stack: PHP 7.4, Hyperf 2.2, Swoole, Rubix ML
-2. **app/Domain/Recommendation/** - ML implementation (KNN)
-3. **app/Infrastructure/Messaging/RedisEventBus.php** - Event-driven
-4. **config/server.php** - Swoole configuration
-5. **docs/STRUCTURE.md** - Arquitetura explicada
+- `product_id` ausente ou inválido → `400`
+- `limit` fora de `1..50` ou não numérico → `400`; acima de 50 → saturado em 50, sem erro
+- `product_id` de um produto inexistente → `200` com fallback popular (cold-start), não erro
+- `meta.source` é `ml`, `rules` ou `popular`, conforme de onde a resposta veio
+- Headers de resposta: `X-Recommendation-Source`, `X-Response-Time`
 
-**Diferenciais que impressionam:**
-- `Domain/` não depende de framework
-- Bounded contexts DDD bem delimitados
-- Event-driven com Redis Pub/Sub
-- PSR-12 compliance configurado
-
-## 🧪 Testes
+## Testes
 
 ```bash
-# Executar todos os testes
-make test
-
-# Executar apenas unit tests
-docker-compose exec app phpunit --testsuite Unit
-
-# Executar com coverage
-docker-compose exec app phpunit --coverage-html
+make test                              # suíte completa
+vendor/bin/phpunit --exclude-group db  # sem MySQL
+vendor/bin/phpunit --testsuite=Unit    # só unit
 ```
 
-## 📊 Dashboard
+Cobertura medida (não aspiracional — ver [docs/remediation-spec.md](docs/remediation-spec.md) para como foi apurada): **linhas ~81%, métodos ~69%**. O CI falha se a cobertura cair abaixo de 70%.
 
-Após o setup, acesse:
+## Roadmap
 
-- **Aplicação:** http://localhost:9501
-- **Dashboard:** http://localhost:9501/metrics
-- **Health Check:** http://localhost:9501/health
-- **Memory Debug:** http://localhost:9501/debug/memory
+Não implementado — fora do escopo atual, não abandonado no meio:
 
-O dashboard `/metrics` mostra em tempo real:
-- Produtos visualizados na sessão
-- Recomendações atuais + explicações
-- Histórico de eventos capturados
-- Memória atual, pico e crescimento (%)
-- Swoole workers status
+- **Captura de eventos / sessão** — recomendações hoje são item-a-item (por `product_id`); personalização por usuário/sessão depende disso existir
+- **Dashboard `/metrics`, `/health`** — visibilidade em tempo real da arquitetura e do KNN
+- **Swoole** — servidor assíncrono com workers e coroutines (hoje: `php -S`)
+- **Redis** — Pub/Sub, cache de sessão
+- **Autenticação real** — `AUTH_REQUIRED=true` hoje só exige a *presença* do header `Authorization`, sem validar nada; é um placeholder, documentado como tal
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Docker não inicia
 ```bash
-# Verificar status
 docker ps
-
-# Ver logs
-docker-compose logs app
+docker compose logs app
 ```
 
 ### Composer install falha
 ```bash
-# Limpar cache e rebuild
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### MySQL connection error
 ```bash
-# Verificar se MySQL está pronto
-make db-shell
-# Se entrar, está OK
+make db-shell   # se entrar, o MySQL está OK
 ```
 
-## 📚 Documentação Adicional
+## Documentação adicional
 
-- [docs/STRUCTURE.md](docs/STRUCTURE.md) - Estrutura completa do projeto
-- [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) - PSR-12 compliance
-- [docs/ARCHITECTURE.md](docs/architecture.md) - Decisões arquiteturais
+- [docs/STRUCTURE.md](docs/STRUCTURE.md) — estrutura de pastas e fluxo de requisição
+- [docs/architecture.md](docs/architecture.md) — decisões arquiteturais (ADRs)
+- [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) — PSR-12 e convenções específicas do projeto
+- [docs/remediation-spec.md](docs/remediation-spec.md) — histórico da remediação que trouxe o projeto ao estado atual
 
-## 📝 License
+## License
 
 MIT License - Copyright (c) 2026 Debora

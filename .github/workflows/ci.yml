@@ -33,6 +33,9 @@ jobs:
       - name: .env.example matches getenv() calls (R6.4)
         run: php bin/ci/check-env-vars.php
 
+      - name: README.md file links exist (R6.1)
+        run: php bin/ci/check-readme-paths.php
+
   test-no-db:
     name: Tests (no database)
     runs-on: ubuntu-latest
@@ -99,7 +102,7 @@ jobs:
         run: cat coverage.txt
 
       - name: Enforce minimum line coverage
-        run: php bin/ci/check-coverage.php coverage.xml 65
+        run: php bin/ci/check-coverage.php coverage.xml 70
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
