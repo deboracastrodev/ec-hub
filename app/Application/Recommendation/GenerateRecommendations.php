@@ -56,7 +56,6 @@ class GenerateRecommendations
      * @param int $targetProductId ID of product to get recommendations for
      * @param int $limit Number of recommendations to return
      * @return array<array<string, mixed>> Array of recommendation DTOs
-     * @throws RecommendationException If target product not found
      */
     public function execute(
         int $targetProductId,
