@@ -18,12 +18,12 @@ if [ ! -f "$DOCKERFILE_PATH" ]; then
 fi
 echo "✅ Dockerfile exists"
 
-# Check PHP 7.4-FPM base image
-if ! grep -q "FROM php:7.4-fpm" "$DOCKERFILE_PATH"; then
-  echo "❌ FAIL: Dockerfile must use PHP 7.4-FPM base image"
+# Check PHP 8.4-cli base image (D1: platform target, R1.1)
+if ! grep -q "FROM php:8.4-cli" "$DOCKERFILE_PATH"; then
+  echo "❌ FAIL: Dockerfile must use PHP 8.4-cli base image"
   ERRORS=$((ERRORS + 1))
 else
-  echo "✅ Base image: PHP 7.4-FPM"
+  echo "✅ Base image: PHP 8.4-cli"
 fi
 
 # Check PDO extension
@@ -34,28 +34,12 @@ else
   echo "✅ PDO extension found"
 fi
 
-# Check Redis extension
-if ! grep -q "redis" "$DOCKERFILE_PATH"; then
-  echo "❌ FAIL: Missing Redis extension"
+# Check pcov (code coverage driver, R7.4)
+if ! grep -q "pcov" "$DOCKERFILE_PATH"; then
+  echo "❌ FAIL: Missing pcov (needed for make test-coverage)"
   ERRORS=$((ERRORS + 1))
 else
-  echo "✅ Redis extension found"
-fi
-
-# Check BCMath extension
-if ! grep -q "bcmath" "$DOCKERFILE_PATH"; then
-  echo "❌ FAIL: Missing BCMath extension"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "✅ BCMath extension found"
-fi
-
-# Check Swoole extension
-if ! grep -q "swoole" "$DOCKERFILE_PATH"; then
-  echo "❌ FAIL: Missing Swoole extension"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "✅ Swoole extension found"
+  echo "✅ pcov found"
 fi
 
 # Check Composer installation

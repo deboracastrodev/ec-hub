@@ -28,8 +28,6 @@ REQUIRED_VARS=(
   "DB_DATABASE"
   "DB_USERNAME"
   "DB_PASSWORD"
-  "REDIS_HOST"
-  "REDIS_PORT"
   "SWOOLE_HTTP_SERVER_PORT"
 )
 
@@ -56,14 +54,6 @@ if ! grep -q "MYSQL_ROOT_PASSWORD" "$COMPOSE_FILE"; then
   ERRORS=$((ERRORS + 1))
 else
   echo "✅ MySQL credentials found in docker-compose.yml"
-fi
-
-# Check Redis configuration
-if ! grep -q "REDIS_HOST=redis" "$ENV_EXAMPLE"; then
-  echo "❌ FAIL: REDIS_HOST must be set to 'redis' (service name)"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "✅ REDIS_HOST=redis configured"
 fi
 
 if [ $ERRORS -gt 0 ]; then

@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell redis-cli ps build clean install test-coverage test-unit test-integration test-feature test-recommendation migrate migrate-fresh seed db-reset
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature test-recommendation migrate migrate-fresh seed db-reset
 
 # Variáveis
 COMPOSE := docker-compose
@@ -17,7 +17,6 @@ help: ## Show this help message
 	@echo "  make shell     - Acessa bash do container app"
 	@echo "  make setup     - Executa script de setup"
 	@echo "  make db-shell  - Acessa MySQL CLI"
-	@echo "  make redis-cli - Acessa Redis CLI"
 	@echo "  make ps        - Lista status dos containers"
 	@echo "  make build     - Rebuild Docker images"
 	@echo "  make clean     - Limpa arquivos gerados"
@@ -72,9 +71,6 @@ shell: ## Open shell in app container
 
 db-shell: ## Access MySQL CLI
 	$(COMPOSE) exec mysql mysql -uroot -psecret ec_hub
-
-redis-cli: ## Access Redis CLI
-	$(COMPOSE) exec redis redis-cli
 
 # Development tools
 test: ## Run all tests

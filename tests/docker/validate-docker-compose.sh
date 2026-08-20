@@ -34,14 +34,6 @@ else
   echo "✅ MySQL service found"
 fi
 
-# Check redis service
-if ! grep -q "redis:" "$COMPOSE_FILE"; then
-  echo "❌ FAIL: Missing 'redis' service"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "✅ Redis service found"
-fi
-
 # Check MySQL 8.x image
 if ! grep -q "mysql:8" "$COMPOSE_FILE" && ! grep -q "mysql:8.0" "$COMPOSE_FILE"; then
   echo "❌ FAIL: MySQL service must use MySQL 8.x image"
@@ -50,13 +42,7 @@ else
   echo "✅ MySQL 8.x image found"
 fi
 
-# Check Redis 7.x image
-if ! grep -q "redis:7" "$COMPOSE_FILE"; then
-  echo "❌ FAIL: Redis service must use Redis 7.x image"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "✅ Redis 7.x image found"
-fi
+# Redis has no consumer in the app (R5.5) -- deliberately not required here.
 
 # Check network configuration
 if ! grep -q "networks:" "$COMPOSE_FILE"; then
@@ -74,9 +60,9 @@ else
   echo "✅ Volumes configuration found"
 fi
 
-# Check app service depends_on mysql and redis
+# Check app service depends_on mysql
 if ! grep -A 20 "app:" "$COMPOSE_FILE" | grep -q "depends_on"; then
-  echo "❌ FAIL: App service must depend on mysql and redis"
+  echo "❌ FAIL: App service must depend on mysql"
   ERRORS=$((ERRORS + 1))
 else
   echo "✅ App service dependencies found"

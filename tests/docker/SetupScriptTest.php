@@ -81,22 +81,19 @@ class SetupScriptTest extends TestCase
         );
     }
 
-    public function test_setup_script_has_wait_for_redis_function(): void
+    public function test_setup_script_does_not_wait_for_unused_services(): void
     {
+        // R5.5: Redis has no consumer in the app -- setup.sh should not
+        // block on a service the app never actually connects to.
         if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
         $content = file_get_contents(self::SETUP_SCRIPT);
-        $this->assertStringContainsString(
+        $this->assertStringNotContainsString(
             'wait_for_redis',
             $content,
-            'O script deve ter função wait_for_redis'
-        );
-        $this->assertStringContainsString(
-            'redis-cli ping',
-            $content,
-            'A função wait_for_redis deve usar redis-cli ping'
+            'O script não deve esperar por Redis -- nenhum consumidor no app'
         );
     }
 

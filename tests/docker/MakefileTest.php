@@ -88,11 +88,11 @@ class MakefileTest extends TestCase
         $this->assertStringContainsString('mysql -uroot -psecret ec_hub', $content, 'O target "db-shell" deve acessar MySQL com credenciais corretas');
     }
 
-    public function test_makefile_has_redis_cli_target(): void
+    public function test_makefile_has_no_redis_target(): void
     {
+        // R5.5: Redis has no consumer in the app -- no Makefile target for it.
         $content = file_get_contents(self::MAKEFILE);
-        $this->assertStringContainsString('redis-cli:', $content, 'O Makefile deve ter target "redis-cli"');
-        $this->assertStringContainsString('redis redis-cli', $content, 'O target "redis-cli" deve executar redis-cli');
+        $this->assertStringNotContainsString('redis-cli:', $content, 'Redis não tem consumidor no app; sem target dedicado');
     }
 
     public function test_makefile_has_ps_target(): void

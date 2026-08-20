@@ -2,7 +2,7 @@
 # Test ID: INFRA-P0-001
 # Tags: @p0 @smoke @connectivity
 # Full connectivity test between app and services
-# This script tests if app container can connect to MySQL and Redis
+# This script tests if app container can connect to MySQL
 
 set -e
 
@@ -13,7 +13,6 @@ cd "$PROJECT_ROOT"
 
 # Track test failures
 MYSQL_PASSED=false
-REDIS_PASSED=false
 
 # Cleanup trap - always runs regardless of success/failure
 cleanup() {
@@ -28,7 +27,7 @@ echo "====================================================="
 echo ""
 
 echo "🐢 Starting services for connectivity test..."
-docker compose up -d mysql redis app
+docker compose up -d mysql app
 
 echo ""
 echo "⏳ Waiting for services to be ready (deterministic health checks)..."
@@ -57,21 +56,6 @@ until docker exec ec-hub-mysql mysql -h"${DB_HOST:-localhost}" -u"${DB_USERNAME:
   sleep 2
 done
 echo "✅ MySQL is ready!"
-
-# Wait for Redis with health check
-RETRY_COUNT=0
-echo "Waiting for Redis to be healthy..."
-until docker exec ec-hub-redis redis-cli -h "${REDIS_HOST:-redis}" -p "${REDIS_PORT:-6379}" ping > /dev/null 2>&1; do
-  RETRY_COUNT=$((RETRY_COUNT + 1))
-  if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-    echo "❌ Redis health check timeout after ${MAX_RETRIES} attempts"
-    cleanup
-    exit 1
-  fi
-  echo "  Attempt ${RETRY_COUNT}/${MAX_RETRIES}..."
-  sleep 2
-done
-echo "✅ Redis is ready!"
 
 # Wait for app container to be ready
 RETRY_COUNT=0
@@ -109,48 +93,23 @@ else
   echo "❌ MySQL connectivity FAILED"
 fi
 
-# Test Redis from app
-echo "Testing Redis connection from app..."
-if docker exec ec-hub-app php -r "
-try {
-    \$redis = new Redis();
-    \$redis->connect('${REDIS_HOST:-redis}', ${REDIS_PORT:-6379});
-    echo '✅ Redis connection successful\n';
-    exit(0);
-} catch (Exception \$e) {
-    echo '❌ Redis connection failed: ' . \$e->getMessage() . '\n';
-    exit(1);
-}
-" 2>/dev/null; then
-  echo "✅ Redis connectivity OK"
-  REDIS_PASSED=true
-else
-  echo "❌ Redis connectivity FAILED"
-fi
-
 echo ""
 echo "====================================================="
 echo "📊 Test Result Summary"
 echo "====================================================="
 
-if [ "$MYSQL_PASSED" = true ] && [ "$REDIS_PASSED" = true ]; then
+if [ "$MYSQL_PASSED" = true ]; then
   echo -e "✅ ALL CONNECTIVITY TESTS PASSED!"
   echo ""
   echo "Results:"
   echo "  MySQL:  ✅ PASS"
-  echo "  Redis:  ✅ PASS"
   exit 0
 else
   echo -e "❌ CONNECTIVITY TESTS FAILED!"
   echo ""
   echo "Results:"
-  if [ "$MYSQL_PASSED" = false ]; then
-    echo "  MySQL:  ❌ FAIL"
-  fi
-  if [ "$REDIS_PASSED" = false ]; then
-    echo "  Redis:  ❌ FAIL"
-  fi
+  echo "  MySQL:  ❌ FAIL"
   echo ""
-  echo "Failure: One or more services are unreachable from app container"
+  echo "Failure: MySQL is unreachable from app container"
   exit 1
 fi

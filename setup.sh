@@ -35,27 +35,6 @@ wait_for_mysql() {
     exit 1
 }
 
-# Função para aguardar Redis
-wait_for_redis() {
-    echo -n "⏳ Aguardando Redis..."
-    local max_attempts=15
-    local attempt=0
-
-    while [ $attempt -lt $max_attempts ]; do
-        if docker-compose exec -T redis redis-cli ping > /dev/null 2>&1; then
-            echo -e " ${GREEN}✓${NC}"
-            return 0
-        fi
-        echo -n "."
-        sleep 1
-        attempt=$((attempt + 1))
-    done
-
-    echo -e " ${RED}✗${NC}"
-    echo "❌ Redis não está pronto após 15 segundos"
-    exit 1
-}
-
 # Verificar se Docker está rodando
 if ! docker info > /dev/null 2>&1; then
     echo "❌ Docker não está rodando. Inicie o Docker primeiro."
@@ -70,7 +49,6 @@ fi
 
 # Aguardar serviços
 wait_for_mysql
-wait_for_redis
 
 # Instalar dependências Composer
 echo ""
@@ -93,8 +71,6 @@ echo ""
 echo "🎉 O ec-hub está pronto para uso!"
 echo ""
 echo "📍 Acesse: http://localhost:9501"
-echo "📊 Metrics: http://localhost:9501/metrics"
-echo "🔍 Health: http://localhost:9501/health"
 echo ""
 echo "Comandos úteis:"
 echo "  make logs    - Ver logs da aplicação"

@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: ec-hub-app
     ports:
-      - "9501:9501"  # Swoole HTTP Server
+      - "9501:9501"  # php -S built-in server
     volumes:
       - ./app:/var/www/html/app
       - ./config:/var/www/html/config
@@ -14,6 +14,10 @@ services:
       - ./public:/var/www/html/public
       - ./views:/var/www/html/views
       - ./tests:/var/www/html/tests
+      - ./composer.json:/var/www/html/composer.json
+      - ./composer.lock:/var/www/html/composer.lock
+      - ./phpunit.xml:/var/www/html/phpunit.xml
+      - ./.php-cs-fixer.php:/var/www/html/.php-cs-fixer.php
       - composer-cache:/root/.composer/cache
     environment:
       - APP_ENV=local
@@ -23,11 +27,8 @@ services:
       - DB_DATABASE=ec_hub
       - DB_USERNAME=root
       - DB_PASSWORD=secret
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
     depends_on:
       - mysql
-      - redis
     networks:
       - ec-hub-network
 
@@ -41,14 +42,6 @@ services:
       - MYSQL_DATABASE=ec_hub
     volumes:
       - mysql-data:/var/lib/mysql
-    networks:
-      - ec-hub-network
-
-  redis:
-    image: redis:7-alpine
-    container_name: ec-hub-redis
-    ports:
-      - "6379:6379"
     networks:
       - ec-hub-network
 
