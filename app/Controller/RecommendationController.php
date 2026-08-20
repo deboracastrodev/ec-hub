@@ -26,11 +26,8 @@ class RecommendationController
     private GenerateRecommendations $generateRecommendations;
     private LoggerInterface $logger;
 
-    /** @var int Default number of recommendations to return */
+    /** @var int Default number of recommendations to return when limit is omitted */
     private const DEFAULT_LIMIT = 10;
-
-    /** @var int Minimum number of recommendations allowed */
-    private const MIN_LIMIT = 5;
 
     /** @var int Maximum number of recommendations allowed */
     private const MAX_LIMIT = 50;
@@ -135,10 +132,15 @@ class RecommendationController
     }
 
     /**
-     * Validate and parse limit parameter
+     * Validate and parse limit parameter. Valid range is 1..MAX_LIMIT: values
+     * above the max are capped (not an error), but a limit that isn't a
+     * positive integer is rejected explicitly rather than silently swapped
+     * for the default (R3.6 -- a client asking for limit=1 must get 1, not
+     * a value the server picked instead).
      *
      * @param array<string, string|int> $queryParams
      * @return int Parsed and capped limit value
+     * @throws InvalidRequestException If limit is provided but not a positive integer
      */
     private function validateAndParseLimit(array $queryParams): int
     {
@@ -148,24 +150,17 @@ class RecommendationController
 
         $limit = $queryParams['limit'];
 
-        // Validate it's an integer
-        if (! ctype_digit((string) $limit) && ! is_int($limit)) {
-            return self::DEFAULT_LIMIT;
+        if (! is_int($limit) && ! ctype_digit((string) $limit)) {
+            throw new InvalidRequestException('limit must be a positive integer');
         }
 
         $limitInt = (int) $limit;
 
-        // Enforce maximum limit
-        if ($limitInt > self::MAX_LIMIT) {
-            return self::MAX_LIMIT;
+        if ($limitInt < 1) {
+            throw new InvalidRequestException('limit must be a positive integer');
         }
 
-        // Enforce AC lower bound
-        if ($limitInt < self::MIN_LIMIT) {
-            return self::MIN_LIMIT;
-        }
-
-        return $limitInt;
+        return min($limitInt, self::MAX_LIMIT);
     }
 
     /**

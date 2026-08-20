@@ -257,14 +257,46 @@ class RecommendationControllerTest extends TestCase
         $this->assertIsFloat($firstRec['price'], 'AC1: price should be numeric');
     }
 
-    public function testGetRecommendationsEnforcesMinimumLimitOfFive(): void
+    public function testGetRecommendationsRespectsLimitOfOne(): void
     {
+        // R3.6: a client asking for limit=1 gets 1, not a server-picked
+        // minimum (the old MIN_LIMIT=5 silently overrode the caller here).
         $queryParams = ['product_id' => '1', 'limit' => '1'];
 
         $this->mockGenerateRecommendations->expects($this->once())
             ->method('execute')
-            ->with(1, 5)
+            ->with(1, 1)
             ->willReturn([]);
+
+        $this->controller->getRecommendations($queryParams);
+    }
+
+    public function testGetRecommendationsThrowsExceptionForZeroLimit(): void
+    {
+        $queryParams = ['product_id' => '1', 'limit' => '0'];
+
+        $this->expectException(InvalidRequestException::class);
+        $this->expectExceptionMessage('limit must be a positive integer');
+
+        $this->controller->getRecommendations($queryParams);
+    }
+
+    public function testGetRecommendationsThrowsExceptionForNegativeLimit(): void
+    {
+        $queryParams = ['product_id' => '1', 'limit' => '-5'];
+
+        $this->expectException(InvalidRequestException::class);
+        $this->expectExceptionMessage('limit must be a positive integer');
+
+        $this->controller->getRecommendations($queryParams);
+    }
+
+    public function testGetRecommendationsThrowsExceptionForNonNumericLimit(): void
+    {
+        $queryParams = ['product_id' => '1', 'limit' => 'abc'];
+
+        $this->expectException(InvalidRequestException::class);
+        $this->expectExceptionMessage('limit must be a positive integer');
 
         $this->controller->getRecommendations($queryParams);
     }
