@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
-use App\Controller\RecommendationController;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\Exceptions\RecommendationException;
+use App\Controller\RecommendationController;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -44,8 +45,8 @@ class RecommendationControllerTest extends TestCase
                 'price' => 'R$ 150,00',
                 'category' => 'Eletrônicos',
                 'score' => 0.85,
-                'explanation' => 'Similar ao produto visualizado'
-            ]
+                'explanation' => 'Similar ao produto visualizado',
+            ],
         ];
 
         $this->mockGenerateRecommendations->expects($this->once())
@@ -111,8 +112,8 @@ class RecommendationControllerTest extends TestCase
                 'price' => 'R$ 150,00',
                 'category' => 'Eletrônicos',
                 'score' => 0.85,
-                'explanation' => 'Similar ao produto visualizado'
-            ]
+                'explanation' => 'Similar ao produto visualizado',
+            ],
         ];
 
         $this->mockGenerateRecommendations->expects($this->once())
@@ -181,14 +182,15 @@ class RecommendationControllerTest extends TestCase
         // Arrange
         $queryParams = ['user_id' => '1'];
         $expectedRecommendations = [
-            ['product_id' => 2, 'name' => 'Test', 'price' => 'R$ 100', 'category' => 'Test', 'score' => 0.5, 'explanation' => 'Test']
+            ['product_id' => 2, 'name' => 'Test', 'price' => 'R$ 100', 'category' => 'Test', 'score' => 0.5, 'explanation' => 'Test'],
         ];
 
         // Mock execute to take some time (simulated by actually working)
         $this->mockGenerateRecommendations->expects($this->once())
             ->method('execute')
-            ->willReturnCallback(function() use ($expectedRecommendations) {
+            ->willReturnCallback(function () use ($expectedRecommendations) {
                 usleep(250000); // 250ms to trigger slow request logging
+
                 return $expectedRecommendations;
             });
 
@@ -196,7 +198,7 @@ class RecommendationControllerTest extends TestCase
             ->method('warning')
             ->with(
                 $this->stringContains('Slow recommendation'),
-                $this->callback(fn($context) => isset($context['user_id']) && isset($context['time_ms']))
+                $this->callback(fn ($context) => isset($context['user_id']) && isset($context['time_ms']))
             );
 
         // Act
@@ -230,8 +232,8 @@ class RecommendationControllerTest extends TestCase
                 'price' => 'R$ 150,00',
                 'category' => 'Eletrônicos',
                 'score' => 0.95,
-                'explanation' => 'Customers who bought this also bought...'
-            ]
+                'explanation' => 'Customers who bought this also bought...',
+            ],
         ];
 
         $this->mockGenerateRecommendations->expects($this->once())

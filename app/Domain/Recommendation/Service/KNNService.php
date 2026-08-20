@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Domain\Recommendation\Service;
@@ -285,6 +286,7 @@ class KNNService
         $products = $this->productCache ?: $this->loadProductsFromRepository();
         $this->train($products, $this->k);
     }
+
     /**
      * Load and convert products from repository.
      *

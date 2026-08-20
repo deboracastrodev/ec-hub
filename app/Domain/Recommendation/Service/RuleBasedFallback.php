@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Domain\Recommendation\Service;
@@ -55,17 +56,20 @@ class RuleBasedFallback
             case self::STRATEGY_CATEGORY:
                 $recommendations = $this->getByCategory($contextProduct, $limit);
                 $this->logFallbackActivated('category', count($recommendations), 'category_only');
+
                 break;
 
             case self::STRATEGY_POPULARITY:
                 $recommendations = $this->getByPopularity($limit);
                 $this->logFallbackActivated('popularity', count($recommendations), 'popularity_only');
+
                 break;
 
             case self::STRATEGY_HYBRID:
             default:
                 $recommendations = $this->getHybridRecommendations($contextProduct, $limit);
                 $this->logFallbackActivated('hybrid', count($recommendations), 'hybrid');
+
                 break;
         }
 
@@ -181,7 +185,7 @@ class RuleBasedFallback
             $categoryIds = array_column($categoryRecs, 'product_id');
             $popularityRecs = array_filter(
                 $popularityRecs,
-                fn($rec) => !in_array($rec['product_id'], $categoryIds)
+                fn ($rec) => ! in_array($rec['product_id'], $categoryIds)
             );
             $popularityRecs = array_values($popularityRecs); // Re-index
         }

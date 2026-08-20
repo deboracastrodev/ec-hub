@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Controller;
@@ -112,7 +113,7 @@ class RecommendationController
         $userId = $rawId;
 
         // First check if it's a valid integer (including negative numbers)
-        if (!is_numeric($userId) || (int) $userId != $userId) {
+        if (! is_numeric($userId) || (int) $userId != $userId) {
             throw new InvalidRequestException('user_id must be a valid integer');
         }
 
@@ -149,14 +150,14 @@ class RecommendationController
      */
     private function validateAndParseLimit(array $queryParams): int
     {
-        if (!isset($queryParams['limit'])) {
+        if (! isset($queryParams['limit'])) {
             return self::DEFAULT_LIMIT;
         }
 
         $limit = $queryParams['limit'];
 
         // Validate it's an integer
-        if (!ctype_digit((string) $limit) && !is_int($limit)) {
+        if (! ctype_digit((string) $limit) && ! is_int($limit)) {
             return self::DEFAULT_LIMIT;
         }
 
@@ -213,12 +214,13 @@ class RecommendationController
     private function detectSource(array $recommendations): string
     {
         foreach ($recommendations as $rec) {
-            if (!isset($rec['fallback_reason'])) {
+            if (! isset($rec['fallback_reason'])) {
                 continue;
             }
             if ($rec['fallback_reason'] === 'popular_product') {
                 return 'popular';
             }
+
             return 'rules';
         }
 
@@ -232,6 +234,7 @@ class RecommendationController
     {
         if (function_exists('getallheaders')) {
             $headers = getallheaders();
+
             return is_array($headers) ? $headers : [];
         }
 

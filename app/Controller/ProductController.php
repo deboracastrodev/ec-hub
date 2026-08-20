@@ -59,11 +59,12 @@ class ProductController
     {
         $product = $this->getProductDetail->executeByIdentifier($productIdentifier);
 
-        if (!$product) {
+        if (! $product) {
             error_log(sprintf('[ProductController] Produto não encontrado: %s', $productIdentifier));
             http_response_code(404);
+
             return $this->twig->render('error/404.html.twig', [
-                'message' => 'Produto não encontrado'
+                'message' => 'Produto não encontrado',
             ]);
         }
 

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Domain\SEO\Service;
@@ -48,10 +49,12 @@ class MetaTagsService
                 if ($category) {
                     return "{$category} - Produtos - {$this->siteName}";
                 }
+
                 return "Catálogo de Produtos - {$this->siteName}";
 
             case 'product.detail':
                 $productName = $data['product_name'] ?? 'Produto';
+
                 return "{$productName} - {$this->siteName}";
 
             case 'home':
@@ -66,12 +69,14 @@ class MetaTagsService
             case 'product.listing':
                 $category = $data['category'] ?? 'todos';
                 $count = $data['product_count'] ?? 0;
+
                 return "Explore {$count} produtos na categoria {$category}. Encontre as melhores ofertas com recomendações personalizadas via ML.";
 
             case 'product.detail':
                 $productName = $data['product_name'] ?? 'Produto';
                 $category = $data['category'] ?? '';
                 $price = $data['price'] ?? '';
+
                 return $productName . ' - ' . $category . ' por R$ ' . $price . '. Compre agora com as melhores recomendações personalizadas.';
 
             default:
@@ -84,11 +89,13 @@ class MetaTagsService
         switch ($page) {
             case 'product.listing':
                 $category = $data['category'] ?? 'produtos';
+
                 return strtolower("{$category}, e-commerce, compras, {$this->siteName}, machine learning, recomendações");
 
             case 'product.detail':
                 $productName = $data['product_name'] ?? '';
                 $category = $data['category'] ?? '';
+
                 return strtolower("{$productName}, {$category}, comprar, preço, {$this->siteName}");
 
             default:
@@ -104,6 +111,7 @@ class MetaTagsService
                 if ($category) {
                     return $this->siteUrl . "/products?category={$category}";
                 }
+
                 return $this->siteUrl . "/products";
 
             case 'product.detail':
@@ -112,6 +120,7 @@ class MetaTagsService
                     return $this->siteUrl . "/products/{$slug}";
                 }
                 $productId = $data['product_id'] ?? '';
+
                 return $this->siteUrl . "/products/{$productId}";
 
             default:

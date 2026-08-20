@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Recommendation;
@@ -214,6 +215,7 @@ class RuleBasedFallbackTest extends TestCase
                     if (isset($context['category_products'])) {
                         return true;
                     }
+
                     // Allow other log contexts
                     return true;
                 })

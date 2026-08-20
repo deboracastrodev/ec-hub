@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Integration\Application\Recommendation;
@@ -140,7 +141,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->assertIsArray($recommendations);
 
         // May return empty if products are too similar or only 1 product exists
-        if (!empty($recommendations)) {
+        if (! empty($recommendations)) {
             $this->assertArrayHasKey('product_id', $recommendations[0]);
             $this->assertArrayHasKey('name', $recommendations[0]);
             $this->assertArrayHasKey('category', $recommendations[0]);
@@ -182,7 +183,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
 
         // Act - Train KNN with repository products
         $products = $this->repository->findAll(1000, 0);
-        $productEntities = array_map(fn($data) => Product::fromArray($data), $products);
+        $productEntities = array_map(fn ($data) => Product::fromArray($data), $products);
 
         $this->knnService->train($productEntities, 3);
 
@@ -261,7 +262,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $recommendations = $this->service->execute($targetProductId, 3);
 
         // Assert - Check if recommendations exist and have required fields
-        if (!empty($recommendations)) {
+        if (! empty($recommendations)) {
             foreach ($recommendations as $rec) {
                 $this->assertArrayHasKey('score', $rec);
                 $this->assertArrayHasKey('explanation', $rec);

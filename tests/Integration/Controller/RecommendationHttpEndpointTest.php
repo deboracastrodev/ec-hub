@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Integration\Controller;
@@ -30,7 +31,7 @@ class RecommendationHttpEndpointTest extends TestCase
                 ],
             ]);
 
-        $twig = new class {
+        $twig = new class () {
             public function render(string $view, array $params = []): string
             {
                 return $view . json_encode($params);
@@ -40,8 +41,8 @@ class RecommendationHttpEndpointTest extends TestCase
         $GLOBALS['EC_HUB_TEST_CONTAINER'] = [
             'twig' => $twig,
             'services' => [
-                'logger' => fn(array $container) => new NullLogger(),
-                'generate_recommendations' => fn(array $container) => $generateRecommendations,
+                'logger' => fn (array $container) => new NullLogger(),
+                'generate_recommendations' => fn (array $container) => $generateRecommendations,
             ],
             'repositories' => [],
         ];

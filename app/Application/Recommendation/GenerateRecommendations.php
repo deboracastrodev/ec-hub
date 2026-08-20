@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Application\Recommendation;
@@ -62,8 +63,7 @@ class GenerateRecommendations
         int $limit = 10,
         bool $insufficientData = false,
         ?string $fallbackStrategy = null
-    ): array
-    {
+    ): array {
         $strategy = $fallbackStrategy ?? $this->fallbackStrategy;
 
         try {
@@ -78,6 +78,7 @@ class GenerateRecommendations
                 $this->logFallbackActivated('cold_start_unknown_user', $targetProductId, 'popularity_only');
                 $fallbackResults = $this->fallbackService->getPopularRecommendations($limit);
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
+
                 return $fallbackResults;
             }
 
@@ -96,6 +97,7 @@ class GenerateRecommendations
                 );
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
                 $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
+
                 return $fallbackResults;
             }
 
@@ -146,6 +148,7 @@ class GenerateRecommendations
             );
             $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
             $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
+
             return $fallbackResults;
         }
     }
@@ -166,6 +169,7 @@ class GenerateRecommendations
     {
         if ($this->knnService->isTrained()) {
             $this->modelTrained = true;
+
             return;
         }
 
@@ -201,7 +205,7 @@ class GenerateRecommendations
         $productData = $this->productRepository->findAll(1000, 0);
 
         $this->productsCache = array_map(
-            fn(array $data) => $this->arrayToProduct($data),
+            fn (array $data) => $this->arrayToProduct($data),
             $productData
         );
 
@@ -225,7 +229,7 @@ class GenerateRecommendations
     private function formatRecommendations(array $knnResults): array
     {
         return array_map(
-            fn(RecommendationResult $result) => RecommendationDTO::fromRecommendationResult($result)->toArray(),
+            fn (RecommendationResult $result) => RecommendationDTO::fromRecommendationResult($result)->toArray(),
             $knnResults
         );
     }
@@ -239,15 +243,16 @@ class GenerateRecommendations
     private function normalizeFallbackResults(array $fallbackResults): array
     {
         return array_map(function (array $rec): array {
-            if (!isset($rec['name']) && isset($rec['product_name'])) {
+            if (! isset($rec['name']) && isset($rec['product_name'])) {
                 $rec['name'] = $rec['product_name'];
             }
-            if (!isset($rec['fallback_reason'])) {
+            if (! isset($rec['fallback_reason'])) {
                 $rec['fallback_reason'] = 'rule_based';
             }
-            if (!isset($rec['explanation'])) {
+            if (! isset($rec['explanation'])) {
                 $rec['explanation'] = 'Fallback (rule-based): recommendation';
             }
+
             return $rec;
         }, $fallbackResults);
     }
@@ -259,9 +264,10 @@ class GenerateRecommendations
     private function filterOutTargetProduct(array $recommendations, int $targetProductId): array
     {
         return array_values(array_filter($recommendations, function (array $rec) use ($targetProductId): bool {
-            if (!isset($rec['product_id'])) {
+            if (! isset($rec['product_id'])) {
                 return true;
             }
+
             return (int) $rec['product_id'] !== $targetProductId;
         }));
     }
@@ -319,6 +325,7 @@ class GenerateRecommendations
         }
 
         $env = getenv('RECOMMENDATION_FALLBACK_STRATEGY');
+
         return $env !== false ? (string) $env : 'hybrid';
     }
 
@@ -333,6 +340,7 @@ class GenerateRecommendations
         }
 
         $env = getenv('RECOMMENDATION_MIN_PRODUCTS_FOR_ML');
+
         return $env !== false ? (int) $env : self::MIN_PRODUCTS_FOR_ML;
     }
 

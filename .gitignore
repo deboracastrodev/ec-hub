@@ -50,3 +50,4 @@ Thumbs.db
 .bmad-loop/cache/
 .bmad-loop/policy.toml
 _bmad/render/
+.php-cs-fixer.cache

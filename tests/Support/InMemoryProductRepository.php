@@ -25,7 +25,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
         $this->products = $products !== [] ? $products : self::defaultFixtures();
         $this->nextId = 1 + array_reduce(
             $this->products,
-            static fn(int $max, array $p) => max($max, (int) $p['id']),
+            static fn (int $max, array $p) => max($max, (int) $p['id']),
             0
         );
     }
@@ -95,7 +95,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
     {
         $filtered = array_values(array_filter(
             $this->products,
-            static fn(array $p) => $p['category'] === $category
+            static fn (array $p) => $p['category'] === $category
         ));
 
         return array_slice($filtered, $offset, $limit);
@@ -105,7 +105,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
     {
         return count(array_filter(
             $this->products,
-            static fn(array $p) => $p['category'] === $category
+            static fn (array $p) => $p['category'] === $category
         ));
     }
 

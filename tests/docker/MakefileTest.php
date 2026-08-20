@@ -116,11 +116,17 @@ class MakefileTest extends TestCase
         $content = file_get_contents(self::MAKEFILE);
 
         // Verificar que os comandos de dev usam docker-compose exec
-        $this->assertStringContainsString('exec app vendor/bin/phpunit', $content,
-            'O target "test" deve usar docker-compose exec para executar PHPUnit');
+        $this->assertStringContainsString(
+            'exec app vendor/bin/phpunit',
+            $content,
+            'O target "test" deve usar docker-compose exec para executar PHPUnit'
+        );
 
-        $this->assertStringContainsString('exec app vendor/bin/php-cs-fixer fix', $content,
-            'O target "cs-fix" deve usar docker-compose exec para executar PHP-CS-Fixer');
+        $this->assertStringContainsString(
+            'exec app vendor/bin/php-cs-fixer fix',
+            $content,
+            'O target "cs-fix" deve usar docker-compose exec para executar PHP-CS-Fixer'
+        );
     }
 
     public function test_makefile_has_phony_declaration(): void

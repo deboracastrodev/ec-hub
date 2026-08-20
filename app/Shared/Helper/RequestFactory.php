@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Shared\Helper;
 
-use Swoole\Http\Request as SwooleRequest;
 use Psr\Http\Message\ServerRequestInterface;
+use Swoole\Http\Request as SwooleRequest;
 
 /**
  * Request Factory
@@ -26,7 +26,7 @@ class RequestFactory
         // In a full implementation, this would use a PSR-7 factory
         // to properly convert Swoole request to PSR-7 format
 
-        return new class($swooleRequest) implements ServerRequestInterface {
+        return new class ($swooleRequest) implements ServerRequestInterface {
             private $swooleRequest;
 
             public function __construct(SwooleRequest $swooleRequest)

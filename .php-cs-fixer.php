@@ -29,5 +29,4 @@ return (new PhpCsFixer\Config())
         ],
         'single_trait_insert_per_statement' => true,
     ])
-    ->setFinder(PhpCsFixer\Finder::create()->in('app'))
-    ->setFinder(PhpCsFixer\Finder::create()->in('tests'));
+    ->setFinder(PhpCsFixer\Finder::create()->in(['app', 'tests']));

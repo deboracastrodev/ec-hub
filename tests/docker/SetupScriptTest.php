@@ -24,7 +24,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_is_executable(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -36,7 +36,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_has_shebang(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -50,7 +50,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_has_docker_check(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -64,7 +64,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_has_wait_for_mysql_function(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -83,7 +83,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_has_wait_for_redis_function(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -102,7 +102,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_runs_composer_install(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -116,7 +116,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_runs_migrations(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -130,7 +130,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_runs_seeders(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -144,7 +144,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_has_error_handling(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
@@ -158,7 +158,7 @@ class SetupScriptTest extends TestCase
 
     public function test_setup_script_has_success_message(): void
     {
-        if (!file_exists(self::SETUP_SCRIPT)) {
+        if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 

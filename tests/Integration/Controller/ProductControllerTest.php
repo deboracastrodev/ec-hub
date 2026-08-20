@@ -246,6 +246,7 @@ class ProductControllerTest extends TestCase
         foreach ($categories as $cat) {
             if ($this->repository->countByCategory($cat) > 20) {
                 $categoryForPagination = $cat;
+
                 break;
             }
         }
@@ -309,7 +310,7 @@ class ProductControllerTest extends TestCase
     {
         // Arrange - find a category containing special characters (e.g., Eletrônicos)
         $categories = $this->repository->findCategories();
-        if (!in_array('Eletrônicos', $categories, true)) {
+        if (! in_array('Eletrônicos', $categories, true)) {
             $this->markTestSkipped('Category Eletrônicos not available in dataset');
         }
 

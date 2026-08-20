@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Integration\Controller;
@@ -185,7 +186,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Act
         $response = $this->controller->getRecommendations([
             'user_id' => (string) $productId,
-            'limit' => '5'
+            'limit' => '5',
         ]);
 
         // Assert - limit parameter is respected
@@ -202,7 +203,7 @@ class RecommendationApiEndpointTest extends TestCase
         // Act - Request more than MAX_LIMIT (50)
         $response = $this->controller->getRecommendations([
             'user_id' => (string) $productId,
-            'limit' => '999'
+            'limit' => '999',
         ]);
 
         // Assert - MAX_LIMIT (50) is enforced

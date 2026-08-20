@@ -1,14 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Integration\Application\Recommendation;
 
 use App\Application\Recommendation\GenerateRecommendations;
-use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
-use App\Domain\Shared\ValueObject\Money;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -209,9 +208,10 @@ class GenerateRecommendationsWithFallbackTest extends TestCase
                 'price' => '100.00',
                 'description' => '',
                 'image_url' => '',
-                'created_at' => '2024-01-01'
+                'created_at' => '2024-01-01',
             ];
         }
+
         return $products;
     }
 }

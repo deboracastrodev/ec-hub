@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Shared\Router;
 
-use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Simple Router
@@ -30,7 +30,7 @@ class SimpleRouter
         // 4. Call the action with parameters
         // 5. Return the response
 
-        return new class implements ResponseInterface {
+        return new class () implements ResponseInterface {
             private $statusCode = 200;
             private $headers = [];
             private $body = '{"message":"ec-hub API - Clean Architecture + DDD"}';
@@ -43,6 +43,7 @@ class SimpleRouter
             public function withStatus($code, $reasonPhrase = '')
             {
                 $this->statusCode = $code;
+
                 return $this;
             }
 
@@ -84,18 +85,21 @@ class SimpleRouter
             public function withHeader($name, $value)
             {
                 $this->headers[$name] = (array) $value;
+
                 return $this;
             }
 
             public function withAddedHeader($name, $value)
             {
                 $this->headers[$name][] = $value;
+
                 return $this;
             }
 
             public function withoutHeader($name)
             {
                 unset($this->headers[$name]);
+
                 return $this;
             }
 
