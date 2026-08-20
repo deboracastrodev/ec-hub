@@ -105,7 +105,7 @@ $action = $matchedRoute['action'];
 
 switch ($controllerClass) {
     case ProductController::class:
-        $productRepository = $container['repositories']['product']($container['pdo']);
+        $productRepository = $container['repositories']['product']($container['pdo']());
         $categoryService = new CategoryService($productRepository);
         $getProductList = new GetProductList($productRepository, $categoryService);
         $getProductDetail = new GetProductDetail($productRepository);
