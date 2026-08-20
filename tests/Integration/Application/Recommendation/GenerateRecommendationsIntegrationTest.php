@@ -9,6 +9,7 @@ use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
+use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -36,7 +37,7 @@ class GenerateRecommendationsIntegrationTest extends TestCase
         $this->seedProducts();
 
         $this->repository = new ProductRepository($this->pdo);
-        $this->knnService = new KNNService($this->repository);
+        $this->knnService = new KNNService($this->repository, new RubixNeighborFinder());
         $logger = new NullLogger();
         $this->fallbackService = new RuleBasedFallback($this->repository, $logger);
 

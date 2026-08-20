@@ -64,7 +64,8 @@ return [
         },
         'knn' => function ($container) {
             return new App\Domain\Recommendation\Service\KNNService(
-                $container['repositories']['product']($container['pdo']())
+                $container['repositories']['product']($container['pdo']()),
+                new App\Infrastructure\ML\RubixNeighborFinder()
             );
         },
         'rule_based_fallback' => function ($container) {

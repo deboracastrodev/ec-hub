@@ -9,6 +9,7 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Shared\ValueObject\Money;
+use App\Infrastructure\ML\RubixNeighborFinder;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -28,7 +29,7 @@ class KNNServiceTest extends TestCase
         parent::setUp();
 
         $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
-        $this->knnService = new KNNService($this->productRepository);
+        $this->knnService = new KNNService($this->productRepository, new RubixNeighborFinder());
 
         // Create test products
         $this->testProducts = [

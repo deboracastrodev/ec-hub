@@ -38,7 +38,7 @@ class RecommendationApiEndpointTest extends TestCase
         $this->repository = new ProductRepository($this->pdo);
 
         // Create real GenerateRecommendations service
-        $knnService = new \App\Domain\Recommendation\Service\KNNService($this->repository);
+        $knnService = new \App\Domain\Recommendation\Service\KNNService($this->repository, new \App\Infrastructure\ML\RubixNeighborFinder());
         $fallbackService = new \App\Domain\Recommendation\Service\RuleBasedFallback($this->repository, new NullLogger());
         $generateRecommendations = new GenerateRecommendations(
             $this->repository,
@@ -218,7 +218,7 @@ class RecommendationApiEndpointTest extends TestCase
         $this->assertNotEmpty($products);
 
         // Clear any cached model to force cold start
-        $knnService = new \App\Domain\Recommendation\Service\KNNService($this->repository);
+        $knnService = new \App\Domain\Recommendation\Service\KNNService($this->repository, new \App\Infrastructure\ML\RubixNeighborFinder());
         $fallbackService = new \App\Domain\Recommendation\Service\RuleBasedFallback($this->repository, new NullLogger());
         $generateRecommendations = new GenerateRecommendations(
             $this->repository,

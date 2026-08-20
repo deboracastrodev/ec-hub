@@ -7,69 +7,43 @@ namespace App\Domain\Recommendation\Service;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Model\RecommendationResult;
-use Rubix\ML\Kernels\Distance\Euclidean;
 
 /**
  * K-Nearest Neighbors Recommendation Service
  *
- * Uses manual KNN implementation for PHP 7.4 compatibility.
- * This is the CORE DIFFERENTIAL of ec-hub - ML in PHP!
+ * Orchestrates item-to-item recommendations: asks a NeighborFinderInterface
+ * (Rubix ML, in Infrastructure -- see R4.3) for the closest products by
+ * category + price, then turns the result into scored, explained
+ * RecommendationResult entries. Scoring and explanation text are business
+ * rules and stay here in the Domain.
  */
 class KNNService
 {
-    private array $productsIndex = [];
-    private int $k = 5;
-    private bool $isTrained = false;
-    private array $featureRanges = [];
-    private array $trainingSamples = [];
-    private array $categories = [];
-    private array $productCache = [];
     private ProductRepositoryInterface $productRepository;
-    private Euclidean $distanceKernel;
+    private NeighborFinderInterface $neighborFinder;
+    private int $k = 5;
+    private array $productCache = [];
 
     public function __construct(
         ProductRepositoryInterface $productRepository,
-        ?Euclidean $distanceKernel = null
+        NeighborFinderInterface $neighborFinder
     ) {
         $this->productRepository = $productRepository;
-        $this->distanceKernel = $distanceKernel ?? new Euclidean();
+        $this->neighborFinder = $neighborFinder;
     }
 
     /**
-     * Train KNN model with product dataset
+     * Train the neighbor index with a product dataset.
      *
-     * @param array|null $products Array of Product entities
-     * @param int $k Number of neighbors (default: 5)
-     * @return void
+     * @param Product[]|null $products
      */
     public function train(?array $products = null, int $k = 5): void
     {
         $this->k = $k;
         $products = $products ?? $this->loadProductsFromRepository();
 
-        if (empty($products)) {
-            throw new \RuntimeException('Nenhum produto disponível para treinar o KNN.');
-        }
-
         $this->productCache = $products;
-        $products = array_values($products);
-
-        $this->categories = array_unique(array_map(static function (Product $product) {
-            return $product->getCategory();
-        }, $products));
-        sort($this->categories);
-
-        $this->productsIndex = [];
-        $this->trainingSamples = [];
-
-        foreach ($products as $product) {
-            $featureVector = $this->extractSingleProductFeatures($product);
-            $this->trainingSamples[] = $featureVector;
-            $this->productsIndex[] = $product;
-        }
-
-        $this->trainingSamples = $this->normalizeFeatures($this->trainingSamples);
-        $this->isTrained = true;
+        $this->neighborFinder->train($products);
     }
 
     public function trainFromRepository(int $k = 5): void
@@ -78,154 +52,46 @@ class KNNService
     }
 
     /**
-     * Get product recommendations for a target product
+     * Get product recommendations for a target product.
      *
-     * @param Product $targetProduct Product to get recommendations for
-     * @param int $limit Number of recommendations to return
-     * @return array Array of recommendations with scores
+     * Asks for limit+1 neighbors (R4.1): the query product is frequently
+     * its own nearest neighbor (distance 0), and the +1 leaves room to drop
+     * it and still return exactly $limit results, instead of the fixed
+     * internal k silently capping every response regardless of $limit.
+     *
+     * @return RecommendationResult[]
      */
     public function recommend(Product $targetProduct, int $limit = 10): array
     {
         $this->ensureModelIsTrained();
 
-        // Extract and normalize target product features
-        $targetFeatures = $this->extractSingleProductFeatures($targetProduct);
-        $targetFeaturesNormalized = $this->normalizeSingleFeature($targetFeatures);
+        $neighbors = $this->neighborFinder->nearest($targetProduct, $limit + 1);
 
-        // Calculate distances to all training samples
-        $distances = $this->calculateDistances($targetFeaturesNormalized);
-
-        // Sort by distance (ascending - closest first)
-        asort($distances);
-
-        // Get k nearest neighbors
-        $neighborIndices = array_slice(array_keys($distances), 0, $this->k, true);
-
-        // Convert predictions to recommendations with scores
-        $recommendations = $this->buildRecommendations(
-            $neighborIndices,
-            $distances,
-            $limit,
-            $targetProduct
-        );
-
-        return $recommendations;
+        return $this->buildRecommendations($neighbors, $limit, $targetProduct);
     }
 
     /**
-     * Extract features from a single product
+     * @param list<array{product: Product, distance: float}> $neighbors
+     * @return RecommendationResult[]
      */
-    private function extractSingleProductFeatures(Product $product): array
+    private function buildRecommendations(array $neighbors, int $limit, Product $targetProduct): array
     {
-        $featureVector = [];
-
-        // One-hot encode category
-        foreach ($this->categories as $cat) {
-            $featureVector[] = (int) ($product->getCategory() === $cat ? 1 : 0);
-        }
-
-        // Add price
-        $featureVector[] = $product->getPrice()->getDecimal();
-
-        return $featureVector;
-    }
-
-    /**
-     * Calculate Euclidean distances from target to all training samples
-     */
-    private function calculateDistances(array $targetFeatures): array
-    {
-        $distances = [];
-
-        foreach ($this->trainingSamples as $index => $sample) {
-            $distances[$index] = $this->distanceKernel->compute($targetFeatures, $sample);
-        }
-
-        return $distances;
-    }
-
-    /**
-     * Normalize features using min-max scaling
-     */
-    private function normalizeFeatures(array $samples): array
-    {
-        if (empty($samples)) {
-            return $samples;
-        }
-
-        $numFeatures = count($samples[0]);
-        $this->featureRanges = [];
-
-        // Find min/max for each feature
-        for ($i = 0; $i < $numFeatures; $i++) {
-            $values = array_column($samples, $i);
-            $this->featureRanges[$i] = [
-                'min' => min($values),
-                'max' => max($values),
-            ];
-        }
-
-        // Normalize
-        foreach ($samples as &$sample) {
-            $sample = $this->normalizeSingleFeature($sample);
-        }
-
-        return $samples;
-    }
-
-    /**
-     * Normalize a single feature vector using stored ranges
-     */
-    private function normalizeSingleFeature(array $feature): array
-    {
-        foreach ($feature as $i => $value) {
-            $min = (float) ($this->featureRanges[$i]['min'] ?? 0);
-            $max = (float) ($this->featureRanges[$i]['max'] ?? 1);
-            $value = (float) $value;
-
-            if ($max - $min == 0) {
-                $feature[$i] = 0.0;
-            } else {
-                $feature[$i] = ($value - $min) / ($max - $min);
-            }
-        }
-
-        return $feature;
-    }
-
-    /**
-     * Build recommendation results from neighbor indices
-     *
-     * @param array $neighborIndices Array of neighbor indices (sorted by distance)
-     * @param array $distances Array of distances indexed by sample index
-     * @param int $limit Number of recommendations to return
-     * @param Product $targetProduct Original product
-     * @return array
-     */
-    private function buildRecommendations(
-        array $neighborIndices,
-        array $distances,
-        int $limit,
-        Product $targetProduct
-    ): array {
         $recommendations = [];
-
         $excludedId = $targetProduct->getId();
         $rank = 0;
 
-        foreach ($neighborIndices as $index) {
+        foreach ($neighbors as $neighbor) {
             if (count($recommendations) >= $limit) {
                 break;
             }
 
-            $neighborProduct = $this->productsIndex[$index];
+            $neighborProduct = $neighbor['product'];
 
             if ($neighborProduct->getId() === $excludedId) {
                 continue;
             }
 
-            $distance = (float) $distances[$index];
-            $score = max(0, min(100, 100 * (1 / (1 + $distance))));
+            $score = max(0, min(100, 100 * (1 / (1 + $neighbor['distance']))));
 
             $recommendations[] = new RecommendationResult(
                 (int) $neighborProduct->getId(),
@@ -269,7 +135,7 @@ class KNNService
      */
     public function isTrained(): bool
     {
-        return $this->isTrained;
+        return $this->neighborFinder->isTrained();
     }
 
     public function getK(): int
@@ -279,7 +145,7 @@ class KNNService
 
     private function ensureModelIsTrained(): void
     {
-        if ($this->isTrained) {
+        if ($this->neighborFinder->isTrained()) {
             return;
         }
 
