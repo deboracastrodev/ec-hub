@@ -2,32 +2,31 @@
 
 declare(strict_types=1);
 
-use App\Application\Product\GetProductDetail;
-use App\Application\Product\GetProductList;
-use App\Application\Recommendation\GenerateRecommendations;
+use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\ProductController;
 use App\Controller\RecommendationController;
-use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Recommendation\Exception\RecommendationException;
-use App\Domain\Product\Service\CategoryService;
+use App\Shared\Http\ErrorHandler;
+use App\Shared\Http\Router;
+use Psr\Container\ContainerInterface;
+use Twig\Environment;
 
 /**
  * ec-hub Application Entry Point
  *
- * Minimal web-facing entry point.
- * Sensitive logic is in config/bootstrap.php (outside web root).
+ * Minimal web-facing entry point: static assets, routing, dispatch, and
+ * error mapping are the only things done here. Everything else (dependency
+ * wiring) is in config/bootstrap.php (outside web root); routing and error
+ * mapping are in App\Shared\Http (R5.6).
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 // Allow test harness to inject a container and bypass infrastructure bootstrapping.
-$container = isset($GLOBALS['EC_HUB_TEST_CONTAINER']) && is_array($GLOBALS['EC_HUB_TEST_CONTAINER'])
+$container = isset($GLOBALS['EC_HUB_TEST_CONTAINER']) && $GLOBALS['EC_HUB_TEST_CONTAINER'] instanceof ContainerInterface
     ? $GLOBALS['EC_HUB_TEST_CONTAINER']
     : (require __DIR__ . '/../config/bootstrap.php');
 
-$twig = $container['twig'];
-
-// Simple router
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -40,7 +39,6 @@ if (
     strpos($staticFile, $publicDir . DIRECTORY_SEPARATOR) === 0 &&
     is_file($staticFile)
 ) {
-    // Determine MIME type
     $extension = pathinfo($staticFile, PATHINFO_EXTENSION);
     $mimeTypes = [
         'css' => 'text/css',
@@ -64,81 +62,39 @@ if (
     exit;
 }
 
-// Route mapping
-$routes = [
-    'GET /' => ['controller' => 'ProductController', 'action' => 'index'],
-    'GET /products' => ['controller' => 'ProductController', 'action' => 'index'],
-    'GET /api/recommendations' => ['controller' => 'RecommendationController', 'action' => 'getRecommendations', 'type' => 'api'],
-];
+$router = new Router(
+    [
+        'GET /' => ['controller' => ProductController::class, 'action' => 'index'],
+        'GET /products' => ['controller' => ProductController::class, 'action' => 'index'],
+        'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
+    ],
+    [
+        '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => ProductController::class, 'action' => 'show'],
+    ]
+);
 
-// Pattern routes (with parameters) - pattern is URI only, method is checked separately
-$patternRoutes = [
-    '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => 'ProductController', 'action' => 'show'],
-];
+$matchedRoute = $router->match($method, $uri);
 
-// Match exact routes first
-$routeKey = "$method $uri";
-$matchedRoute = $routes[$routeKey] ?? null;
-$params = [];
-
-// If no exact match, try pattern routes
-if (!$matchedRoute) {
-    foreach ($patternRoutes as $pattern => $route) {
-        if ($route['method'] === $method && preg_match('#^' . $pattern . '$#', $uri, $matches)) {
-            $matchedRoute = $route;
-            $params = array_slice($matches, 1);
-            break;
-        }
-    }
-}
-
-// 404 if no route matched
-if (!$matchedRoute) {
+if ($matchedRoute === null) {
     http_response_code(404);
-    echo $twig->render('error/404.html.twig', ['message' => 'Página não encontrada']);
+    echo $container->get(Environment::class)->render('error/404.html.twig', ['message' => 'Página não encontrada']);
     exit;
 }
 
-// Create controller with dependencies via lightweight resolver
-$controllerClass = "App\\Controller\\{$matchedRoute['controller']}";
-$action = $matchedRoute['action'];
+$controller = $container->get($matchedRoute->controller);
+$action = $matchedRoute->action;
+$isApiRoute = $matchedRoute->isApi;
+$errorHandler = new ErrorHandler($container->get(Environment::class));
 
-switch ($controllerClass) {
-    case ProductController::class:
-        $productRepository = $container['repositories']['product']($container['pdo']());
-        $categoryService = new CategoryService($productRepository);
-        $getProductList = new GetProductList($productRepository, $categoryService);
-        $getProductDetail = new GetProductDetail($productRepository);
-        $controller = new ProductController($getProductList, $getProductDetail, $twig);
-        break;
-    case RecommendationController::class:
-        $logger = $container['services']['logger']($container);
-        $generateRecommendations = $container['services']['generate_recommendations']($container);
-        $controller = new RecommendationController($generateRecommendations, $logger);
-        break;
-    default:
-        throw new RuntimeException("Controller {$controllerClass} não configurado");
-}
-
-// Extract query params for index action
-$queryParams = $_GET;
-
-// Determine if this is an API route
-$isApiRoute = isset($matchedRoute['type']) && $matchedRoute['type'] === 'api';
-
-// Call controller action with exception handling for API
 try {
-    if ($action === 'show') {
-        $identifier = (string) $params[0];
-        $output = $controller->$action($identifier);
+    if ($matchedRoute->params !== []) {
+        $output = $controller->$action((string) $matchedRoute->params[0]);
     } else {
         $headers = function_exists('getallheaders') ? (array) getallheaders() : [];
-        $output = $controller->$action($queryParams, $headers);
+        $output = $controller->$action($_GET, $headers);
     }
 
-    // Send response
     if ($isApiRoute) {
-        // API endpoints return JSON
         $responseTimeMs = $output['meta']['response_time_ms'] ?? 0;
         $source = $output['meta']['source'] ?? 'unknown';
 
@@ -147,64 +103,13 @@ try {
         header('X-Response-Time: ' . round($responseTimeMs, 2) . 'ms');
         echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     } else {
-        // HTML endpoints
         header('Content-Type: text/html; charset=utf-8');
         echo $output;
     }
 } catch (InvalidRequestException $e) {
-    // AC4: 400 Bad Request for validation errors
-    http_response_code($e->getHttpCode());
-    if ($isApiRoute) {
-        header('Content-Type: application/json');
-        echo json_encode([
-            'error' => $e->getMessage(),
-            'code' => $e->getHttpCode(),
-        ], JSON_PRETTY_PRINT);
-    } else {
-        try {
-            echo $twig->render('error/400.html.twig', ['message' => $e->getMessage()]);
-        } catch (\Twig\Error\Error $twigError) {
-            // Fallback HTML if Twig fails
-            error_log('Twig error template rendering failed: ' . $twigError->getMessage());
-            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>400 Bad Request</title></head><body><h1>400 Bad Request</h1><p>' . htmlspecialchars($e->getMessage()) . '</p><a href="/products">&larr; Ver todos os produtos</a></body></html>';
-        }
-    }
+    $errorHandler->handleInvalidRequest($e, $isApiRoute);
 } catch (RecommendationException $e) {
-    // Domain exception: no HTTP awareness by design (R3.2) -- always 500 here,
-    // the one place that maps a domain failure to a status code.
-    http_response_code(500);
-    if ($isApiRoute) {
-        header('Content-Type: application/json');
-        echo json_encode([
-            'error' => 'Failed to generate recommendations',
-            'code' => 500,
-        ], JSON_PRETTY_PRINT);
-    } else {
-        http_response_code(500);
-        try {
-            echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
-        } catch (\Twig\Error\Error $twigError) {
-            // Fallback HTML if Twig fails
-            error_log('Twig error template rendering failed: ' . $twigError->getMessage());
-            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>Um erro ocorreu. Por favor, tente novamente.</p><a href="/products">&larr; Ver todos os produtos</a></body></html>';
-        }
-    }
-} catch (\Exception $e) {
-    // Generic error handler
-    http_response_code(500);
-    if ($isApiRoute) {
-        header('Content-Type: application/json');
-        echo json_encode([
-            'error' => 'Internal server error',
-            'code' => 500,
-        ], JSON_PRETTY_PRINT);
-    } else {
-        try {
-            echo $twig->render('error/500.html.twig', ['message' => 'Erro interno']);
-        } catch (\Twig\Error\Error $twigError) {
-            // Fallback HTML if Twig fails
-            error_log('Twig error template rendering failed: ' . $twigError->getMessage());
-            echo '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>500 Internal Server Error</title></head><body><h1>500 Internal Server Error</h1><p>Um erro ocorreu. Por favor, tente novamente.</p><a href="/products">&larr; Ver todos os produtos</a></body></html>';
-        }
-    }
+    $errorHandler->handleRecommendationFailure($e, $isApiRoute);
+} catch (\Throwable $e) {
+    $errorHandler->handleUnexpected($e, $isApiRoute);
 }

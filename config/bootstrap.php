@@ -9,6 +9,26 @@ declare(strict_types=1);
  * public/index.php should only call this and delegate to the router.
  */
 
+use App\Application\Product\GetProductDetail;
+use App\Application\Product\GetProductList;
+use App\Application\Recommendation\GenerateRecommendations;
+use App\Application\SEO\Service\MetaTagsService;
+use App\Controller\ProductController;
+use App\Controller\RecommendationController;
+use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Product\Service\CategoryService;
+use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\Service\NeighborFinderInterface;
+use App\Domain\Recommendation\Service\RuleBasedFallback;
+use App\Domain\Recommendation\ValueObject\RecommendationSettings;
+use App\Infrastructure\ML\RubixNeighborFinder;
+use App\Infrastructure\Persistence\MySQL\ProductRepository;
+use App\Shared\Container\Container;
+use Psr\Container\ContainerInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+use Twig\Environment;
+
 // Load .env for local (non-Docker) development. Docker Compose already
 // injects environment variables directly, and the immutable repository
 // never overwrites a variable that's already set, so this is a no-op
@@ -24,83 +44,90 @@ $envRepository = \Dotenv\Repository\RepositoryBuilder::createWithDefaultAdapters
 
 \Dotenv\Dotenv::create($envRepository, dirname(__DIR__))->safeLoad();
 
-return [
-    // Lazy + memoized: only opens a DB connection when a consumer actually
-    // resolves it, so requests that never touch the database (static assets,
-    // 404s) don't pay for one. Call as $container['pdo']().
-    'pdo' => (function (): callable {
-        $pdo = null;
+// A PSR-11 container (R5.7): every entry is a factory keyed by FQCN,
+// resolved lazily and memoized on first use. This is what keeps a request
+// that never needs the database (static assets, 404s) from opening a PDO
+// connection (R2.4) -- PDO::class's factory only runs if something actually
+// asks the container for it.
+return new Container([
+    PDO::class => function (): PDO {
+        $config = [
+            'db_host' => getenv('DB_HOST') ?: 'mysql',
+            'db_port' => (int) (getenv('DB_PORT') ?: 3306),
+            'db_database' => getenv('DB_DATABASE') ?: 'ec_hub',
+            'db_username' => getenv('DB_USERNAME') ?: 'root',
+            'db_password' => getenv('DB_PASSWORD') ?: '',
+        ];
 
-        return function () use (&$pdo): PDO {
-            if ($pdo !== null) {
-                return $pdo;
-            }
+        return new PDO(
+            "mysql:host={$config['db_host']};port={$config['db_port']};dbname={$config['db_database']};charset=utf8mb4",
+            $config['db_username'],
+            $config['db_password'],
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]
+        );
+    },
 
-            $config = [
-                'db_host' => getenv('DB_HOST') ?: 'mysql',
-                'db_port' => (int) (getenv('DB_PORT') ?: 3306),
-                'db_database' => getenv('DB_DATABASE') ?: 'ec_hub',
-                'db_username' => getenv('DB_USERNAME') ?: 'root',
-                'db_password' => getenv('DB_PASSWORD') ?: '',
-            ];
+    Environment::class => fn () => require __DIR__ . '/twig.php',
 
-            $pdo = new PDO(
-                "mysql:host={$config['db_host']};port={$config['db_port']};dbname={$config['db_database']};charset=utf8mb4",
-                $config['db_username'],
-                $config['db_password'],
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                ]
-            );
-
-            return $pdo;
-        };
-    })(),
-
-    'twig' => require __DIR__ . '/twig.php',
-
-    // Built once here -- the single place config/recommendation.php is read
-    // from disk. GenerateRecommendations and RuleBasedFallback receive the
-    // resulting value object; neither touches the filesystem itself (R3.5).
-    'recommendation_settings' => App\Domain\Recommendation\ValueObject\RecommendationSettings::fromArray(
+    // The single place config/recommendation.php is read from disk (R3.5).
+    RecommendationSettings::class => fn () => RecommendationSettings::fromArray(
         require __DIR__ . '/recommendation.php'
     ),
 
-    'repositories' => [
-        'product' => function (PDO $pdo) {
-            return new App\Infrastructure\Persistence\MySQL\ProductRepository($pdo);
-        },
-    ],
+    LoggerInterface::class => fn () => new NullLogger(),
 
-    'services' => [
-        'category' => function ($container) {
-            return new App\Domain\Product\Service\CategoryService($container['repositories']['product']($container['pdo']()));
-        },
-        'knn' => function ($container) {
-            return new App\Domain\Recommendation\Service\KNNService(
-                $container['repositories']['product']($container['pdo']()),
-                new App\Infrastructure\ML\RubixNeighborFinder()
-            );
-        },
-        'rule_based_fallback' => function ($container) {
-            return new App\Domain\Recommendation\Service\RuleBasedFallback(
-                $container['repositories']['product']($container['pdo']()),
-                $container['services']['logger']($container),
-                $container['recommendation_settings']
-            );
-        },
-        'generate_recommendations' => function ($container) {
-            return new App\Application\Recommendation\GenerateRecommendations(
-                $container['repositories']['product']($container['pdo']()),
-                $container['services']['knn']($container),
-                $container['services']['rule_based_fallback']($container),
-                $container['services']['logger']($container),
-                $container['recommendation_settings']
-            );
-        },
-        'logger' => function ($container) {
-            return new \Psr\Log\NullLogger();
-        },
-    ],
-];
+    ProductRepositoryInterface::class => fn (ContainerInterface $c) => new ProductRepository(
+        $c->get(PDO::class)
+    ),
+
+    CategoryService::class => fn (ContainerInterface $c) => new CategoryService(
+        $c->get(ProductRepositoryInterface::class)
+    ),
+
+    MetaTagsService::class => fn () => new MetaTagsService(),
+
+    GetProductList::class => fn (ContainerInterface $c) => new GetProductList(
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(CategoryService::class)
+    ),
+
+    GetProductDetail::class => fn (ContainerInterface $c) => new GetProductDetail(
+        $c->get(ProductRepositoryInterface::class)
+    ),
+
+    ProductController::class => fn (ContainerInterface $c) => new ProductController(
+        $c->get(GetProductList::class),
+        $c->get(GetProductDetail::class),
+        $c->get(Environment::class),
+        $c->get(MetaTagsService::class)
+    ),
+
+    NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
+
+    KNNService::class => fn (ContainerInterface $c) => new KNNService(
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(NeighborFinderInterface::class)
+    ),
+
+    RuleBasedFallback::class => fn (ContainerInterface $c) => new RuleBasedFallback(
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(LoggerInterface::class),
+        $c->get(RecommendationSettings::class)
+    ),
+
+    GenerateRecommendations::class => fn (ContainerInterface $c) => new GenerateRecommendations(
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(KNNService::class),
+        $c->get(RuleBasedFallback::class),
+        $c->get(LoggerInterface::class),
+        $c->get(RecommendationSettings::class)
+    ),
+
+    RecommendationController::class => fn (ContainerInterface $c) => new RecommendationController(
+        $c->get(GenerateRecommendations::class),
+        $c->get(LoggerInterface::class)
+    ),
+]);

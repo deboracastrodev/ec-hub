@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace Tests\Integration\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
+use App\Controller\RecommendationController;
+use App\Shared\Container\Container;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Twig\Environment;
+use Twig\Loader\FilesystemLoader;
 
 class RecommendationHttpEndpointTest extends TestCase
 {
@@ -31,21 +35,18 @@ class RecommendationHttpEndpointTest extends TestCase
                 ],
             ]);
 
-        $twig = new class () {
-            public function render(string $view, array $params = []): string
-            {
-                return $view . json_encode($params);
-            }
-        };
+        $logger = new NullLogger();
+        $controller = new RecommendationController($generateRecommendations, $logger);
 
-        $GLOBALS['EC_HUB_TEST_CONTAINER'] = [
-            'twig' => $twig,
-            'services' => [
-                'logger' => fn (array $container) => new NullLogger(),
-                'generate_recommendations' => fn (array $container) => $generateRecommendations,
-            ],
-            'repositories' => [],
-        ];
+        // Real Twig, same as every other integration test -- this route
+        // never renders a template, but public/index.php's ErrorHandler is
+        // typed against the concrete Twig\Environment (R5.6), not a fake.
+        $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'));
+
+        $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
+            Environment::class => fn () => $twig,
+            RecommendationController::class => fn () => $controller,
+        ]);
 
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/api/recommendations?product_id=1';
