@@ -45,6 +45,13 @@ return [
 
     'twig' => require __DIR__ . '/twig.php',
 
+    // Built once here -- the single place config/recommendation.php is read
+    // from disk. GenerateRecommendations and RuleBasedFallback receive the
+    // resulting value object; neither touches the filesystem itself (R3.5).
+    'recommendation_settings' => App\Domain\Recommendation\ValueObject\RecommendationSettings::fromArray(
+        require __DIR__ . '/recommendation.php'
+    ),
+
     'repositories' => [
         'product' => function (PDO $pdo) {
             return new App\Infrastructure\Persistence\MySQL\ProductRepository($pdo);
@@ -63,7 +70,8 @@ return [
         'rule_based_fallback' => function ($container) {
             return new App\Domain\Recommendation\Service\RuleBasedFallback(
                 $container['repositories']['product']($container['pdo']()),
-                $container['services']['logger']($container)
+                $container['services']['logger']($container),
+                $container['recommendation_settings']
             );
         },
         'generate_recommendations' => function ($container) {
@@ -71,7 +79,8 @@ return [
                 $container['repositories']['product']($container['pdo']()),
                 $container['services']['knn']($container),
                 $container['services']['rule_based_fallback']($container),
-                $container['services']['logger']($container)
+                $container['services']['logger']($container),
+                $container['recommendation_settings']
             );
         },
         'logger' => function ($container) {

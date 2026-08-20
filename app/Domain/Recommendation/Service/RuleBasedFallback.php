@@ -6,6 +6,7 @@ namespace App\Domain\Recommendation\Service;
 
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -18,6 +19,7 @@ class RuleBasedFallback
 {
     private ProductRepositoryInterface $productRepository;
     private LoggerInterface $logger;
+    private RecommendationSettings $settings;
     private int $fallbackActivatedTotal = 0;
 
     // Fallback strategies
@@ -25,16 +27,14 @@ class RuleBasedFallback
     private const STRATEGY_POPULARITY = 'popularity_only';
     private const STRATEGY_HYBRID = 'hybrid';
 
-    // Score ranges for fallback recommendations
-    private const MIN_FALLBACK_SCORE = 50.0;
-    private const MAX_FALLBACK_SCORE = 70.0;
-
     public function __construct(
         ProductRepositoryInterface $productRepository,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        ?RecommendationSettings $settings = null
     ) {
         $this->productRepository = $productRepository;
         $this->logger = $logger;
+        $this->settings = $settings ?? RecommendationSettings::fromArray([]);
     }
 
     /**
@@ -210,10 +210,8 @@ class RuleBasedFallback
      */
     private function calculateFallbackScore(string $type, int $rank): float
     {
-        // Category scores: 60-70
-        // Popularity scores: 50-60
-        $min = $type === 'category' ? 60.0 : 50.0;
-        $max = $type === 'category' ? 70.0 : 60.0;
+        $min = $type === 'category' ? $this->settings->getCategoryScoreMin() : $this->settings->getPopularityScoreMin();
+        $max = $type === 'category' ? $this->settings->getCategoryScoreMax() : $this->settings->getPopularityScoreMax();
 
         // Decrease score by rank (0 = highest)
         $score = $max - ($rank * 2);

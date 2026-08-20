@@ -10,6 +10,7 @@ use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
+use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -25,8 +26,7 @@ class GenerateRecommendations
     private KNNService $knnService;
     private RuleBasedFallback $fallbackService;
     private LoggerInterface $logger;
-    private string $fallbackStrategy;
-    private int $minProductsForMl;
+    private RecommendationSettings $settings;
 
     /** @var array<int, Product>|null */
     private ?array $productsCache = null;
@@ -34,21 +34,18 @@ class GenerateRecommendations
     /** @var bool Whether KNN model has been trained */
     private bool $modelTrained = false;
 
-    /** @var int Minimum products needed for ML recommendations */
-    private const MIN_PRODUCTS_FOR_ML = 5;
-
     public function __construct(
         ProductRepositoryInterface $productRepository,
         KNNService $knnService,
         RuleBasedFallback $fallbackService,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        ?RecommendationSettings $settings = null
     ) {
         $this->productRepository = $productRepository;
         $this->knnService = $knnService;
         $this->fallbackService = $fallbackService;
         $this->logger = $logger;
-        $this->fallbackStrategy = $this->resolveFallbackStrategy();
-        $this->minProductsForMl = $this->resolveMinProductsForMl();
+        $this->settings = $settings ?? RecommendationSettings::fromArray([]);
     }
 
     /**
@@ -64,7 +61,7 @@ class GenerateRecommendations
         bool $insufficientData = false,
         ?string $fallbackStrategy = null
     ): array {
-        $strategy = $fallbackStrategy ?? $this->fallbackStrategy;
+        $strategy = $fallbackStrategy ?? $this->settings->getFallbackStrategy();
 
         try {
             // Load products to check if we have enough for ML
@@ -159,7 +156,7 @@ class GenerateRecommendations
     private function shouldUseFallback(): bool
     {
         // Use fallback if we have too few products for ML
-        return count($this->productsCache ?? []) < $this->minProductsForMl;
+        return count($this->productsCache ?? []) < $this->settings->getMinProductsForMl();
     }
 
     /**
@@ -312,36 +309,6 @@ class GenerateRecommendations
             'products_count' => count($this->productsCache ?? []),
             'target_product_id' => $targetProductId,
         ]);
-    }
-
-    private function resolveFallbackStrategy(): string
-    {
-        $configPath = dirname(__DIR__, 3) . '/config/recommendation.php';
-        if (is_file($configPath)) {
-            $config = require $configPath;
-            if (is_array($config) && isset($config['fallback']['strategy'])) {
-                return (string) $config['fallback']['strategy'];
-            }
-        }
-
-        $env = getenv('RECOMMENDATION_FALLBACK_STRATEGY');
-
-        return $env !== false ? (string) $env : 'hybrid';
-    }
-
-    private function resolveMinProductsForMl(): int
-    {
-        $configPath = dirname(__DIR__, 3) . '/config/recommendation.php';
-        if (is_file($configPath)) {
-            $config = require $configPath;
-            if (is_array($config) && isset($config['fallback']['min_products_for_ml'])) {
-                return (int) $config['fallback']['min_products_for_ml'];
-            }
-        }
-
-        $env = getenv('RECOMMENDATION_MIN_PRODUCTS_FOR_ML');
-
-        return $env !== false ? (int) $env : self::MIN_PRODUCTS_FOR_ML;
     }
 
     /**
