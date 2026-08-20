@@ -30,6 +30,9 @@ jobs:
       - name: Code style (PSR-12)
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
 
+      - name: .env.example matches getenv() calls (R6.4)
+        run: php bin/ci/check-env-vars.php
+
   test-no-db:
     name: Tests (no database)
     runs-on: ubuntu-latest
