@@ -74,8 +74,8 @@ class GenerateRecommendations
             $targetProductData = $this->productRepository->findById($targetProductId);
 
             if ($targetProductData === null) {
-                // Cold-start for unknown user/item context: return popular fallback.
-                $this->logFallbackActivated('cold_start_unknown_user', $targetProductId, 'popularity_only');
+                // Cold-start for an unknown target product: return popular fallback.
+                $this->logFallbackActivated('cold_start_unknown_product', $targetProductId, 'popularity_only');
                 $fallbackResults = $this->fallbackService->getPopularRecommendations($limit);
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
 

@@ -47,15 +47,15 @@ class RecommendationController
     }
 
     /**
-     * Get product recommendations for a target product
+     * Get product recommendations similar to a given product (item-to-item).
      *
      * AC1: Returns JSON response with product recommendations
      * AC2: Response time < 200ms
-     * AC4: 400 Bad Request if user_id missing
+     * AC4: 400 Bad Request if product_id missing
      * AC5: Uses fallback automatically when ML fails
      * AC8: Includes response headers
      *
-     * @param array<string, string|int> $queryParams Query parameters (user_id, limit)
+     * @param array<string, string|int> $queryParams Query parameters (product_id, limit)
      * @return array<string, mixed> JSON-serializable response array
      * @throws InvalidRequestException If request validation fails
      * @throws RecommendationException If recommendation generation fails
@@ -66,19 +66,19 @@ class RecommendationController
 
         // Validate request
         $this->validateAuth($headers);
-        $userId = $this->validateUserId($queryParams);
+        $productId = $this->validateProductId($queryParams);
         $limit = $this->validateAndParseLimit($queryParams);
 
         try {
             // Generate recommendations
-            $recommendations = $this->generateRecommendations->execute($userId, $limit);
+            $recommendations = $this->generateRecommendations->execute($productId, $limit);
 
             $responseTime = (microtime(true) - $startTime) * 1000;
 
             // Log slow requests (AC2: performance monitoring)
             if ($responseTime > self::SLOW_REQUEST_THRESHOLD_MS) {
                 $this->logger->warning('Slow recommendation', [
-                    'user_id' => $userId,
+                    'product_id' => $productId,
                     'time_ms' => round($responseTime, 2),
                 ]);
             }
@@ -97,34 +97,34 @@ class RecommendationController
     }
 
     /**
-     * Validate user_id from query parameters
+     * Validate product_id from query parameters
      *
      * @param array<string, string|int> $queryParams
-     * @return int Validated user ID
+     * @return int Validated product ID
      * @throws InvalidRequestException If validation fails
      */
-    private function validateUserId(array $queryParams): int
+    private function validateProductId(array $queryParams): int
     {
-        $rawId = $queryParams['user_id'] ?? null;
+        $rawId = $queryParams['product_id'] ?? null;
         if ($rawId === null) {
-            throw new InvalidRequestException('user_id is required', 400);
+            throw new InvalidRequestException('product_id is required', 400);
         }
 
-        $userId = $rawId;
+        $productId = $rawId;
 
         // First check if it's a valid integer (including negative numbers)
-        if (! is_numeric($userId) || (int) $userId != $userId) {
-            throw new InvalidRequestException('user_id must be a valid integer');
+        if (! is_numeric($productId) || (int) $productId != $productId) {
+            throw new InvalidRequestException('product_id must be a valid integer');
         }
 
-        $userIdInt = (int) $userId;
+        $productIdInt = (int) $productId;
 
         // Validate it's positive
-        if ($userIdInt <= 0) {
-            throw new InvalidRequestException('user_id must be a positive integer');
+        if ($productIdInt <= 0) {
+            throw new InvalidRequestException('product_id must be a positive integer');
         }
 
-        return $userIdInt;
+        return $productIdInt;
     }
 
     private function validateAuth(?array $headers = null): void

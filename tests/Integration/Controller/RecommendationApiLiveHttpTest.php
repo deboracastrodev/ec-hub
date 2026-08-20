@@ -18,7 +18,7 @@ class RecommendationApiLiveHttpTest extends TestCase
             ],
         ]);
 
-        $body = @file_get_contents('http://127.0.0.1:9501/api/recommendations?user_id=1', false, $context);
+        $body = @file_get_contents('http://127.0.0.1:9501/api/recommendations?product_id=1', false, $context);
         if ($body === false) {
             $this->markTestSkipped('Servidor HTTP local indisponível em 127.0.0.1:9501.');
         }

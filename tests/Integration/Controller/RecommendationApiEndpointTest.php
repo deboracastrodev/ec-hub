@@ -62,7 +62,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert - AC1: Response format
         $this->assertIsArray($response);
@@ -78,7 +78,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert - AC1: Check first recommendation has all required fields
         if (count($response['data']) > 0) {
@@ -99,7 +99,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert - AC3: 5-10 products (if enough catalog exists)
         $count = $response['meta']['count'];
@@ -118,7 +118,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert - AC3: No duplicates
         $productIds = array_column($response['data'], 'id');
@@ -135,7 +135,7 @@ class RecommendationApiEndpointTest extends TestCase
 
         // Act
         $startTime = microtime(true);
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
         $endTime = microtime(true);
         $responseTime = ($endTime - $startTime) * 1000;
 
@@ -151,7 +151,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert - AC8: X-Response-Time header equivalent in meta
         $this->assertArrayHasKey('meta', $response);
@@ -168,7 +168,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert - AC8: X-Recommendation-Source equivalent in meta
         $this->assertArrayHasKey('meta', $response);
@@ -185,7 +185,7 @@ class RecommendationApiEndpointTest extends TestCase
 
         // Act
         $response = $this->controller->getRecommendations([
-            'user_id' => (string) $productId,
+            'product_id' => (string) $productId,
             'limit' => '5',
         ]);
 
@@ -202,7 +202,7 @@ class RecommendationApiEndpointTest extends TestCase
 
         // Act - Request more than MAX_LIMIT (50)
         $response = $this->controller->getRecommendations([
-            'user_id' => (string) $productId,
+            'product_id' => (string) $productId,
             'limit' => '999',
         ]);
 
@@ -236,7 +236,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $controller->getRecommendations(['user_id' => (string) $productId], []);
+        $response = $controller->getRecommendations(['product_id' => (string) $productId], []);
 
         // Assert - AC5/AC6: Should return recommendations via fallback
         $this->assertArrayHasKey('data', $response);
@@ -244,13 +244,13 @@ class RecommendationApiEndpointTest extends TestCase
         $this->assertContains($response['meta']['source'], ['ml', 'rules', 'popular']);
     }
 
-    public function test_api_throws_exception_without_user_id(): void
+    public function test_api_throws_exception_without_product_id(): void
     {
-        // Arrange - AC4: 400 Bad Request without user_id
+        // Arrange - AC4: 400 Bad Request without product_id
 
         // Assert/Act
         $this->expectException(\App\Controller\Exceptions\InvalidRequestException::class);
-        $this->expectExceptionMessage('user_id is required');
+        $this->expectExceptionMessage('product_id is required');
 
         $this->controller->getRecommendations([]);
     }
@@ -263,7 +263,7 @@ class RecommendationApiEndpointTest extends TestCase
         $productId = $products[0]['id'];
 
         // Act
-        $response = $this->controller->getRecommendations(['user_id' => (string) $productId]);
+        $response = $this->controller->getRecommendations(['product_id' => (string) $productId]);
 
         // Assert
         $this->assertArrayHasKey('meta', $response);

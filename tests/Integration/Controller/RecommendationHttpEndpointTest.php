@@ -48,8 +48,8 @@ class RecommendationHttpEndpointTest extends TestCase
         ];
 
         $_SERVER['REQUEST_METHOD'] = 'GET';
-        $_SERVER['REQUEST_URI'] = '/api/recommendations?user_id=1';
-        $_GET = ['user_id' => '1'];
+        $_SERVER['REQUEST_URI'] = '/api/recommendations?product_id=1';
+        $_GET = ['product_id' => '1'];
 
         ob_start();
         require dirname(__DIR__, 3) . '/public/index.php';
