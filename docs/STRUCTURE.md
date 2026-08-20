@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project follows **Clean Architecture** with **Domain-Driven Design (DDD)** patterns. The architecture is organized into 4 layers with dependencies pointing inward, making the core business logic independent of external concerns.
+O ec-hub segue **Clean Architecture**, organizado em 4 camadas com dependências apontando para dentro. O `Domain` não importa nenhuma biblioteca externa — nem mesmo o Rubix ML, que fica inteiramente atrás de uma interface (ver "O Domain e o Rubix ML" abaixo).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -10,22 +10,22 @@ This project follows **Clean Architecture** with **Domain-Driven Design (DDD)** 
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                   │
 │    ┌─────────────┐                                               │
-│    │ Controller  │  ←── HTTP requests enter here                │
+│    │ Controller  │  ←── HTTP requests entram aqui                │
 │    │  (Layer 1)  │                                               │
 │    └──────┬──────┘                                               │
-│           │ depends on                                           │
+│           │ depende de                                           │
 │    ┌──────▼──────┐                                               │
-│    │Application  │  ←── Use cases / Orchestrators                │
+│    │Application  │  ←── Casos de uso / orquestradores            │
 │    │  (Layer 2)  │                                               │
 │    └──────┬──────┘                                               │
-│           │ depends on                                           │
+│           │ depende de                                           │
 │    ┌──────▼──────┐                                               │
-│    │   Domain    │  ←── Core business logic (DDD)                │
-│    │  (Layer 3)  │       NO dependencies outward!                │
+│    │   Domain    │  ←── Lógica de negócio pura (DDD)              │
+│    │  (Layer 3)  │       ZERO dependências externas!              │
 │    └─────────────┘                                               │
 │                                                                   │
 │    ┌─────────────┐                                               │
-│    │Infrastructure│  ←── Database, Redis, External APIs          │
+│    │Infrastructure│  ←── Banco, APIs externas, ML                │
 │    │  (Layer 4)  │                                               │
 │    └─────────────┘                                               │
 │                                                                   │
@@ -34,283 +34,176 @@ This project follows **Clean Architecture** with **Domain-Driven Design (DDD)** 
 
 ## Directory Structure
 
+Árvore real (`find app -name '*.php'`), sem `.gitkeep` de andaimes vazios:
+
 ```
 ec-hub/
-├── app/                              # Application code (PSR-4 autoloading)
-│   ├── Controller/                   # Layer 1: Interface Layer
-│   │   └── .gitkeep                  # HTTP request handlers, controllers
+├── app/
+│   ├── Controller/
+│   │   ├── ProductController.php
+│   │   ├── RecommendationController.php
+│   │   └── Exceptions/
+│   │       └── InvalidRequestException.php
 │   │
-│   ├── Application/                  # Layer 2: Use Cases
-│   │   └── .gitkeep                  # Application services, orchestrators
+│   ├── Application/
+│   │   ├── Product/
+│   │   │   ├── GetProductList.php
+│   │   │   └── GetProductDetail.php
+│   │   ├── Recommendation/
+│   │   │   ├── GenerateRecommendations.php     # caso de uso principal
+│   │   │   └── RecommendationDTO.php
+│   │   └── SEO/Service/
+│   │       └── MetaTagsService.php             # OG/Twitter/JSON-LD por página
 │   │
-│   ├── Domain/                       # Layer 3: Core Business Logic (DDD)
-│   │   ├── Product/                  # Product bounded context
-│   │   │   ├── Model/                #   Entities, Value Objects
-│   │   │   ├── Repository/           #   Repository interfaces
-│   │   │   └── Service/              #   Domain services
-│   │   ├── User/                     # User bounded context
-│   │   │   ├── Model/
-│   │   │   ├── Repository/
-│   │   │   └── Service/
-│   │   ├── Cart/                     # Cart bounded context
-│   │   ├── Recommendation/           # Recommendation bounded context
-│   │   ├── Metrics/                  # Metrics bounded context
-│   │   └── Shared/                   # Shared domain code
-│   │       ├── ValueObject/          # Shared value objects
-│   │       └── Event/                # Domain events
+│   ├── Domain/
+│   │   ├── Product/
+│   │   │   ├── Model/Product.php
+│   │   │   ├── Repository/ProductRepositoryInterface.php  # devolve Product, não array
+│   │   │   └── Service/CategoryService.php
+│   │   ├── Recommendation/
+│   │   │   ├── Service/KNNService.php               # orquestra o NeighborFinder
+│   │   │   ├── Service/NeighborFinderInterface.php  # porta -- sem tipo de Rubix aqui
+│   │   │   ├── Service/RuleBasedFallback.php
+│   │   │   ├── Model/RecommendationResult.php
+│   │   │   ├── Exception/RecommendationException.php
+│   │   │   └── ValueObject/RecommendationSettings.php
+│   │   └── Shared/ValueObject/Money.php
 │   │
-│   ├── Infrastructure/               # Layer 4: External Concerns
-│   │   ├── Persistence/              # Database, ORM
-│   │   ├── Messaging/                # Redis Pub/Sub
-│   │   └── Monitoring/               # Logging, metrics collection
+│   ├── Infrastructure/
+│   │   ├── ML/RubixNeighborFinder.php         # único arquivo que importa Rubix\*
+│   │   └── Persistence/
+│   │       ├── MySQL/ProductRepository.php    # hidrata Product a partir das rows
+│   │       └── Migration/...
 │   │
-│   └── Shared/                       # Cross-cutting utilities
-│       ├── Helper/                   # ResponseFormatter, ErrorBuilder
-│       ├── Middleware/               # HTTP middleware
-│       └── Trait/                    # Reusable traits
+│   └── Shared/
+│       ├── Container/Container.php            # container PSR-11 mínimo
+│       └── Http/{Router,ErrorHandler,MatchedRoute}.php
 │
-├── config/                           # Configuration files
-│   ├── autoload.php                 # PSR-4 autoloading
-│   └── server.php                   # Swoole HTTP server config
+├── config/
+│   ├── bootstrap.php      # monta o Container; único ponto de wiring de dependências
+│   ├── twig.php
+│   └── recommendation.php # lido uma vez pelo bootstrap; vira RecommendationSettings
 │
-├── public/                           # Public web root
-│   └── index.php                    # Application entry point
+├── public/
+│   └── index.php          # estáticos, roteamento, despacho, delega erro pro ErrorHandler
 │
-├── tests/                            # Test suite (PHPUnit)
-│   ├── Unit/                         #   Unit tests (Domain/Application)
-│   ├── Integration/                  #   Integration tests (HTTP + DB + Redis)
-│   └── Feature/                      #   Feature/E2E tests
+├── tests/
+│   ├── Unit/               # sem banco, sem I/O
+│   ├── Integration/        # HTTP + DB (testes que precisam de MySQL usam #[Group('db')])
+│   ├── Support/            # RequiresDatabase (skip gracioso), InMemoryProductRepository
+│   └── docker/             # valida Dockerfile/compose/.env.example/Makefile
 │
-├── views/                            # View templates (if needed)
-│   ├── product/
-│   ├── user/
-│   ├── cart/
-│   ├── recommendation/
-│   └── metrics/
+├── views/
+│   ├── layout/base.html.twig
+│   ├── product/{listing,detail}.html.twig
+│   └── error/{400,404,500}.html.twig
 │
-├── docs/                             # Documentation
-│   ├── STRUCTURE.md                 # This file
-│   └── CODING-STANDARDS.md          # PSR-12 coding standards
+├── docs/
+│   ├── STRUCTURE.md            # este arquivo
+│   ├── architecture.md         # decisões (ADRs)
+│   ├── CODING-STANDARDS.md     # PSR-12 + convenções do projeto
+│   └── remediation-spec.md     # histórico da remediação de consistência
 │
-├── vendor/                           # Composer dependencies (gitignored)
-├── runtime/                          # Runtime files (gitignored)
-│   └── logs/                        # Application logs
-│
-├── .env.example                      # Environment variables template
-├── .gitignore                        # Git ignore rules
-├── .php-cs-fixer.php                # PSR-12 code style configuration
-├── composer.json                     # PHP dependencies
-├── phpunit.xml                       # PHPUnit configuration
-├── Makefile                          # Development commands
-├── docker-compose.yml                # Docker services
-└── Dockerfile                        # PHP-FPM container
+├── .github/workflows/ci.yml
+├── vendor/          # gitignored
+├── runtime/logs/    # gitignored
+├── composer.json / composer.lock (versionado)
+├── phpunit.xml
+├── .php-cs-fixer.php
+├── Makefile
+├── docker-compose.yml
+└── Dockerfile
 ```
 
-## DDD Bounded Contexts
+## Bounded Contexts do Domain
 
-### 1. Product Context (`app/Domain/Product/`)
-**Purpose:** Catalog management and product information
+### Product (`app/Domain/Product/`)
+Catálogo: entidade `Product` (com `Money` para preço, `slug`), `ProductRepositoryInterface` (devolve entidades, não arrays), `CategoryService` (normalização de categoria, contagens).
 
-| Component | Description |
-|-----------|-------------|
-| `Model/Product.php` | Product entity (id, name, price, category) |
-| `Repository/ProductRepositoryInterface.php` | Product data access contract |
-| `Service/ProductService.php` | Product business logic |
+### Recommendation (`app/Domain/Recommendation/`)
+KNN item-a-item + fallback baseado em regras. `KNNService` não sabe nada de Rubix — pede vizinhos a um `NeighborFinderInterface`, calcula score e explicação (regra de negócio, fica no Domain). `RuleBasedFallback` cobre catálogo pequeno demais ou falha do KNN. `RecommendationSettings` (value object) carrega a estratégia de fallback e os ranges de score, injetada no construtor — nenhuma das duas classes lê `config/recommendation.php` do disco diretamente.
 
-**Examples:** Listing products, filtering by category, product details
+### Shared (`app/Domain/Shared/`)
+Só `Money` (centavos como inteiro, evita erro de ponto flutuante). `getDecimal()` para a API/persistência, `getFormatted()` só na fronteira com a view (filtro Twig `BRL`).
 
----
+## O Domain e o Rubix ML
 
-### 2. User Context (`app/Domain/User/`)
-**Purpose:** User management and authentication
-
-| Component | Description |
-|-----------|-------------|
-| `Model/User.php` | User entity (id, email, password_hash) |
-| `Repository/UserRepositoryInterface.php` | User data access contract |
-| `Service/AuthenticationService.php` | Authentication logic |
-
-**Examples:** User registration, login, profile management
-
----
-
-### 3. Cart Context (`app/Domain/Cart/`)
-**Purpose:** Shopping cart and session management
-
-| Component | Description |
-|-----------|-------------|
-| `Model/Cart.php` | Cart entity |
-| `Model/CartItem.php` | Cart item entity |
-| `Repository/CartRepositoryInterface.php` | Cart data access contract |
-| `Service/CartSessionService.php` | Redis-based cart session logic |
-
-**Examples:** Add to cart, remove item, update quantity, persist cart
-
----
-
-### 4. Recommendation Context (`app/Domain/Recommendation/`)
-**Purpose:** ML-based product recommendations
-
-| Component | Description |
-|-----------|-------------|
-| `Service/KNNService.php` | K-Nearest Neighbors using Rubix ML |
-| `Service/RuleBasedFallback.php` | Fallback to rule-based recommendations |
-| `Repository/RecommendationRepositoryInterface.php` | Cache recommendation results |
-
-**Examples:** "Users who viewed X also viewed Y", "Recommended for you"
-
----
-
-### 5. Metrics Context (`app/Domain/Metrics/`)
-**Purpose:** Event tracking and system monitoring
-
-| Component | Description |
-|-----------|-------------|
-| `Service/MetricsCollector.php` | Collect user events |
-| `Service/SystemHealthService.php` | Memory, CPU, Swoole stats |
-| `Repository/MetricsRepositoryInterface.php` | Metrics storage |
-
-**Examples:** Page views, product interactions, session tracking
-
----
-
-## Understanding the Architecture
-
-#### Step 1: Observe as 4 Camadas
-
-```bash
-cd ec-hub
-ls app/
-```
-
-You'll see 4 folders representing Clean Architecture layers:
-1. **Controller** - Receives HTTP requests
-2. **Application** - Orchestrates use cases
-3. **Domain** - Pure business logic (independent!)
-4. **Infrastructure** - Database, Redis, external APIs
-
-#### Step 2: Explore DDD Bounded Contexts
-
-```bash
-ls app/Domain/
-```
-
-Each folder is a **bounded context** - an independent business domain:
-- **Product** - Catalog management
-- **User** - Authentication & users
-- **Cart** - Shopping cart
-- **Recommendation** - ML recommendations (core differentiator!)
-- **Metrics** - Monitoring & analytics
-
-Each context has:
-- `Model/` - Business entities
-- `Repository/` - Data access interfaces (decoupled from implementation!)
-- `Service/` - Domain logic
-
-#### Step 3: Understand Dependency Direction
-
-Open any file in `Controller/`:
-```bash
-cat app/Controller/ProductController.php  # (example)
-```
-
-You'll see it depends on `Application` layer.
-
-Open any file in `Application/`:
-```bash
-cat app/Application/ProductService.php  # (example)
-```
-
-You'll see it depends on `Domain` layer.
-
-**Key Insight:** Dependencies point **inward**. Domain layer has ZERO dependencies on outer layers - making it testable and business-focused.
-
-#### Step 4: Check Repository Interfaces
-
-```bash
-cat app/Domain/Product/Repository/ProductRepositoryInterface.php
-```
-
-Notice it's an **interface**, not implementation! The actual database code lives in `Infrastructure/`. This is **Dependency Inversion Principle** (SOLID).
-
-#### Step 5: Review Code Quality Setup
-
-```bash
-cat .php-cs-fixer.php  # PSR-12 coding standards
-cat phpunit.xml         # 70% test coverage required
-cat Makefile            # Developer-friendly commands
-```
-
----
-
-## Key Architectural Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **Clean Architecture** | Separates business logic from technical concerns |
-| **DDD Bounded Contexts** | Organizes code by business domain, not technical layers |
-| **Repository Interfaces** | Enables testing without database (Dependency Inversion) |
-| **PSR-12 Standards** | Industry-accepted PHP coding style |
-| **70% Test Coverage Target** | Ensures code quality in Domain + Application layers |
-| **Swoole HTTP Server** | High-performance async PHP for production |
-
----
-
-## Request Flow Example
-
-When a user requests `/products/123`:
+`App\Domain\Recommendation\Service\NeighborFinderInterface` é a porta. `App\Infrastructure\ML\RubixNeighborFinder` é a única implementação, e o único arquivo do projeto que importa `Rubix\ML\*`:
 
 ```
-1. public/index.php (Swoole HTTP Server)
-   └─ Receives request
-
-2. app/Controller/ProductController.php
-   └─ Validates HTTP input
-   └─ Calls Application layer
-
-3. app/Application/ProductService.php
-   └─ Orchestrates use case
-   └─ Calls Domain layer
-
-4. app/Domain/Product/Service/ProductService.php
-   └─ Executes business logic
-   └─ Uses Repository interface
-
-5. app/Infrastructure/Persistence/ProductRepository.php
-   └─ Executes SQL query
-   └─ Returns data
-
-6. Response flows back through layers
-   └─ Formatted by app/Shared/Helper/ResponseFormatter.php
-   └─ Returned as JSON (RFC 7807 format for errors)
+Labeled dataset (features: categoria + preço, labels: product_id)
+  -> OneHotEncoder    (categoria -> colunas binárias)
+  -> MinMaxNormalizer (tudo escalado para [0, 1])
+  -> BallTree::nearest($sample, $k)   (busca de k-NN)
 ```
 
----
+`BallTree::nearest()` é a primitiva que todo estimador de k-NN do Rubix usa por baixo; está marcada `@internal` no Rubix, então uma quebra dela em uma atualização de versão fica confinada a este único arquivo — o `Domain` não é afetado.
 
-## Getting Started
+## Container (`app/Shared/Container/Container.php`)
 
-```bash
-# Install dependencies
-make install
+Implementa `Psr\Container\ContainerInterface`. `config/bootstrap.php` registra uma factory por classe/interface (chave = FQCN); a resolução é lazy e memoizada — uma entrada só é construída na primeira vez que alguém chama `get()` para ela. É essa laziness que garante que uma requisição de asset estático ou 404 nunca abre conexão com o MySQL: `PDO::class` só é resolvido se algo na cadeia de dependências de fato pedir por ele.
 
-# Fix code style
-make cs-fix
+## Fluxo de requisição — `GET /products/{slug}`
 
-# Run tests
-make test
+```
+1. public/index.php
+   └─ static file? não → Router::match('GET', '/products/lampada-de-mesa')
+      └─ casa a rota de padrão '/products/([A-Za-z0-9-]+)' → MatchedRoute
 
-# Start Docker containers
-make up
+2. $container->get(ProductController::class)
+   └─ resolve GetProductList, GetProductDetail, Twig\Environment, MetaTagsService
+      (cada um resolvendo suas próprias dependências, até chegar em PDO::class)
 
-# View logs
-make logs
+3. ProductController::show('lampada-de-mesa')
+   └─ GetProductDetail::executeByIdentifier()
+      └─ ProductRepositoryInterface::findBySlug() (Infrastructure hidrata a row em Product)
+      └─ Product::toArray() -- serialização acontece aqui, na borda Application/View
+
+4. MetaTagsService::generateForPage('product.detail', [...])
+   └─ og:title, canonical, JSON-LD Product
+
+5. Twig renderiza product/detail.html.twig com 'product' e 'meta'
 ```
 
----
+## Fluxo de requisição — `GET /api/recommendations?product_id=X`
 
-## References
+```
+1. public/index.php → Router casa a rota exata 'GET /api/recommendations' (api: true)
+
+2. $container->get(RecommendationController::class)
+   └─ resolve GenerateRecommendations
+      └─ resolve KNNService (+ NeighborFinderInterface = RubixNeighborFinder)
+      └─ resolve RuleBasedFallback (+ RecommendationSettings)
+
+3. RecommendationController::getRecommendations()
+   └─ valida product_id e limit (400 se inválidos)
+   └─ GenerateRecommendations::execute()
+      └─ produto não encontrado → RuleBasedFallback::getPopularRecommendations() (cold-start)
+      └─ catálogo pequeno demais → RuleBasedFallback::getRecommendations()
+      └─ senão → KNNService::recommend() (pede limit+1 vizinhos ao NeighborFinder,
+                 exclui o próprio produto, monta RecommendationResult com score+explicação)
+      └─ se o KNN devolver menos que o limit, completa com fallback
+
+4. Exceção de domínio (RecommendationException), se houver, propaga sem
+   tratamento até o ErrorHandler em public/index.php -- mapear pra 500 é
+   responsabilidade da borda, não do Controller nem do caso de uso
+
+5. Resposta JSON: { data: [...], meta: { source, count, response_time_ms } }
+   Headers: X-Recommendation-Source, X-Response-Time
+```
+
+## Testes
+
+Convenções:
+
+- `tests/Unit/` — sem PDO, sem HTTP, sem filesystem
+- `tests/Integration/` — pode tocar banco real (MySQL via Docker) ou SQLite in-memory; classes que exigem MySQL de verdade carregam `Tests\Support\RequiresDatabase` e o atributo `#[Group('db')]`, e fazem skip gracioso (não error) quando o banco está indisponível
+- `tests/Integration/View/` nunca toca banco — usa `Tests\Support\InMemoryProductRepository`
+- `tests/docker/` — scripts shell + testes PHPUnit que validam Dockerfile, docker-compose.yml, `.env.example` e Makefile contra o estado real do projeto
+
+## Referências
 
 - [Clean Architecture by Robert C. Martin](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 - [Domain-Driven Design by Eric Evans](https://www.domainlanguage.com/ddd/)
+- [PSR-11: Container Interface](https://www.php-fig.org/psr/psr-11/)
 - [PSR-12: Extended Coding Style](https://www.php-fig.org/psr/psr-12/)
-- [RFC 7807: Problem Details for HTTP APIs](https://datatracker.ietf.org/doc/html/rfc7807)

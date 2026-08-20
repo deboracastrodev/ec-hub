@@ -23,11 +23,11 @@ make cs-fix    # Auto-fix issues
 ### PHP Code
 | Type | Convention | Example |
 |------|------------|---------|
-| Classes | `PascalCase` | `UserController`, `ProductService`, `ErrorBuilder` |
-| Methods | `camelCase` | `getUserData()`, `createProduct()`, `isValid()` |
-| Variables | `camelCase` | `$userId`, `$productName`, `$isValid` |
-| Constants | `UPPER_SNAKE_CASE` | `MAX_RETRIES`, `DEFAULT_LIMIT` |
-| Properties | `camelCase` (private/protected) | `private $connectionPool` |
+| Classes | `PascalCase` | `ProductController`, `CategoryService`, `KNNService` |
+| Methods | `camelCase` | `getRecommendations()`, `findByCategory()`, `isTrained()` |
+| Variables | `camelCase` | `$productId`, `$categoryLabel`, `$isApiRoute` |
+| Constants | `UPPER_SNAKE_CASE` | `MAX_LIMIT`, `DEFAULT_LIMIT` |
+| Properties | `camelCase` (private/protected) | `private ProductRepositoryInterface $productRepository` |
 
 ### Files
 | Type | Convention | Example |
@@ -48,11 +48,12 @@ declare(strict_types=1);
 
 ### Class Definition
 ```php
-namespace App\Domain\User\Repository;
+namespace App\Domain\Product\Repository;
 
-interface UserRepositoryInterface
+interface ProductRepositoryInterface
 {
-    public function findById(int $id): ?array;
+    // Devolve entidade, não array -- ver "Repositório devolve entidade" abaixo
+    public function findById(int $id): ?Product;
 }
 ```
 
@@ -100,37 +101,71 @@ app/
 │   │   ├── Model/       # Entities, Value Objects
 │   │   ├── Repository/  # Repository interfaces
 │   │   └── Service/     # Domain services
-│   └── ...
-└── Infrastructure/       # Layer 4: External concerns
-    ├── Persistence/
-    ├── Messaging/
-    └── Monitoring/
+│   └── Recommendation/  # Bounded context (KNN + fallback)
+├── Infrastructure/       # Layer 4: External concerns
+│   ├── ML/               # Rubix ML lives only here -- see rule below
+│   └── Persistence/
+└── Shared/                # Container (PSR-11), Http (Router, ErrorHandler)
 ```
+
+Ver [docs/STRUCTURE.md](STRUCTURE.md) para a árvore completa e atualizada.
+
+## Regras estabelecidas na remediação de consistência
+
+Estas regras não eram escritas em lugar nenhum antes da remediação de 2026-08 ([docs/remediation-spec.md](remediation-spec.md)) e causaram inconsistência real no código. Documentadas aqui para não se repetirem.
+
+### O Domain nunca importa biblioteca externa
+
+Nenhuma classe em `app/Domain/` pode ter um `use` de um pacote de terceiros (Rubix, Twig, PDO, Guzzle, etc.). Quando o Domain precisa de uma capacidade externa, ele declara uma interface (`NeighborFinderInterface`, `ProductRepositoryInterface`) e a implementação real fica em `app/Infrastructure/`.
+
+```php
+// ERRADO -- app/Domain/Recommendation/Service/KNNService.php
+use Rubix\ML\Kernels\Distance\Euclidean;
+
+// CERTO -- a interface fica no Domain, a implementação no Infrastructure
+// app/Domain/Recommendation/Service/NeighborFinderInterface.php
+interface NeighborFinderInterface { /* sem tipo de Rubix aqui */ }
+// app/Infrastructure/ML/RubixNeighborFinder.php
+use Rubix\ML\Graph\Trees\BallTree; // só aqui
+```
+
+### Repositório do Domain devolve entidade, não array
+
+`ProductRepositoryInterface::findById()` devolve `?Product`, não `?array`. A hidratação (`Product::fromArray($row)`) acontece dentro da implementação MySQL, em `app/Infrastructure/`. Quando o array precisar sair de novo (para a view, para o JSON), a serialização (`Product::toArray()`) acontece na borda Application → Controller — nunca dentro do Domain.
+
+### Configuração é injetada, nunca lida do disco dentro de Application/Domain
+
+Nenhuma classe fora de `config/bootstrap.php` faz `require 'config/*.php'` ou `getenv()` diretamente. Configuração vira um value object (`RecommendationSettings`) montado uma vez no bootstrap e injetado no construtor de quem precisa dela.
+
+### `Money` até a última fronteira; formatação só na view
+
+`App\Domain\Shared\ValueObject\Money` guarda centavos como inteiro. `getDecimal()` (float) é o que atravessa API, DTO e persistência. `getFormatted()` ("R$ x,xx") só é chamado no filtro Twig `BRL`, na view — nunca dentro de Controller, Application ou Domain. Se você está fazendo parse de string de moeda com regex em algum lugar do código, algo está errado — o valor já deveria estar chegando como `float`.
 
 ## API Response Format
 
 ### Success Response
 ```json
 {
-  "data": {
-    "id": 1,
-    "name": "Produto Exemplo"
-  },
+  "data": [
+    { "id": 1, "name": "Produto Exemplo", "price": 149.9, "score": 91.03, "explanation": "..." }
+  ],
   "meta": {
-    "timestamp": "2025-01-15T10:30:00+00:00",
-    "status": 200
+    "source": "ml",
+    "count": 1,
+    "response_time_ms": 2.34,
+    "generated_at": "2026-08-20T13:50:00+00:00"
   }
 }
 ```
 
-### Error Response (RFC 7807)
+### Error Response
+
+O formato real, usado por `App\Shared\Http\ErrorHandler` (não RFC 7807 -- isso nunca chegou a ser implementado, apesar de citado em versões anteriores desta documentação):
+
 ```json
 {
-  "type": "/errors/validation-error",
-  "title": "Validation Error",
-  "detail": "The product name is required",
-  "status": 400,
-  "instance": "/requests/abc123"
+  "error": "product_id must be a positive integer",
+  "code": 400
 }
 ```
 
@@ -140,3 +175,7 @@ app/
 - Test class names end with `Test`
 - Test method names start with `test_` and describe the behavior
 - Arrange-Act-Assert pattern for test structure
+- Testes que exigem MySQL real carregam `Tests\Support\RequiresDatabase` e o
+  atributo `#[Group('db')]` (skip gracioso se o banco não estiver
+  disponível, nunca error) -- ver `tests/Unit/...` e
+  `tests/Integration/...` para exemplos
