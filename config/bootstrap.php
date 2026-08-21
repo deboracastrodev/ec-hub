@@ -16,6 +16,7 @@ use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\ProductController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Product\Service\CategoryService;
 use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
@@ -25,6 +26,7 @@ use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Infrastructure\ML\RubixNeighborFinder;
+use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
@@ -88,6 +90,10 @@ return new Container([
         'scheme' => 'tcp',
         ...require __DIR__ . '/redis.php',
     ]),
+
+    EventPublisherInterface::class => fn (ContainerInterface $c) => new RedisEventBus(
+        $c->get(Client::class)
+    ),
 
     SessionRepositoryInterface::class => fn (ContainerInterface $c) => new SessionRepository(
         $c->get(Client::class),
