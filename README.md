@@ -11,9 +11,9 @@
 - **Catálogo de produtos** — listagem paginada, filtro por categoria, página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
 - **API de recomendações** — `GET /api/recommendations?product_id=X` devolve produtos similares via KNN (Rubix ML: `OneHotEncoder` + `MinMaxNormalizer` + `BallTree`), com fallback automático baseado em regras (categoria/popularidade) quando o catálogo é pequeno demais ou o ML falha
 - **Clean Architecture** — 4 camadas (Controller/Application/Domain/Infrastructure); o Domain não importa nenhuma biblioteca externa, nem o Rubix ML (fica atrás de uma porta, em `App\Infrastructure\ML`)
-- **PHP 8.4**, MySQL 8, Twig, servidor embutido do PHP (`php -S`) — sem Swoole, sem Redis
-- **137 testes** (PHPUnit 12), cobertura de linhas medida em **~81%**; a suíte sem grupo `db` passa sem Docker
-- **CI** (GitHub Actions): estilo (PSR-12), suíte sem banco, suíte completa com MySQL + cobertura
+- **PHP 8.4**, MySQL 8, Redis 7, Twig, servidor embutido do PHP (`php -S`) — sem Swoole
+- **Mais de 140 testes** (PHPUnit 12), cobertura de linhas medida em **~81%**; a suíte sem grupos `db` e `redis` passa sem Docker
+- **CI** (GitHub Actions): estilo (PSR-12), suíte sem serviços externos, suíte completa com MySQL/Redis + cobertura e integração do Compose
 
 O que o projeto **não** faz ainda está listado no [Roadmap](#roadmap) — não é omissão, é escopo.
 
@@ -31,8 +31,8 @@ cd ec-hub
 
 cp .env.example .env
 
-make up      # sobe os containers (app + mysql)
-make setup   # espera o MySQL, instala dependências, roda migrations e seed
+make up      # sobe os containers (app + mysql + redis)
+make setup   # espera MySQL e Redis, instala dependências, roda migrations e seed
 
 open http://localhost:9501
 ```
@@ -41,14 +41,14 @@ open http://localhost:9501
 
 ```bash
 make logs       # logs da aplicação
-make test       # suíte completa (roda local, sem precisar do container)
+make test       # suíte sem serviços externos (local, sem Docker)
 make cs-check   # estilo PSR-12 (local, sem Docker)
 make shell      # bash dentro do container app
 make db-shell   # MySQL CLI
 make down       # para os containers
 ```
 
-`make test` e `make cs-check` não precisam de Docker no ar — rodam direto com `vendor/bin/`. Alvos de banco (`migrate`, `seed`, `db-shell`) precisam do container do MySQL.
+`make test` e `make cs-check` não precisam de Docker no ar — rodam direto com `vendor/bin/`. A suíte completa roda no CI com MySQL e Redis. Alvos de banco (`migrate`, `seed`, `db-shell`) precisam do container do MySQL.
 
 ## Arquitetura
 
@@ -97,8 +97,8 @@ GET /api/recommendations?product_id={id}&limit={1-50, default 10}
 ## Testes
 
 ```bash
-make test                              # suíte completa
-vendor/bin/phpunit --exclude-group db  # sem MySQL
+make test                                                # sem serviços externos
+vendor/bin/phpunit --exclude-group db --exclude-group redis  # sem MySQL/Redis
 vendor/bin/phpunit --testsuite=Unit    # só unit
 ```
 
@@ -111,7 +111,7 @@ Não implementado — fora do escopo atual, não abandonado no meio:
 - **Captura de eventos / sessão** — recomendações hoje são item-a-item (por `product_id`); personalização por usuário/sessão depende disso existir
 - **Dashboard `/metrics`, `/health`** — visibilidade em tempo real da arquitetura e do KNN
 - **Swoole** — servidor assíncrono com workers e coroutines (hoje: `php -S`)
-- **Redis** — Pub/Sub, cache de sessão
+- **Redis Pub/Sub e cache de sessão** — a infraestrutura Redis já está disponível no stack local; essas funcionalidades de aplicação seguem no roadmap
 - **Autenticação real** — `AUTH_REQUIRED=true` hoje só exige a *presença* do header `Authorization`, sem validar nada; é um placeholder, documentado como tal
 
 ## Troubleshooting
@@ -132,6 +132,12 @@ docker compose up -d
 ### MySQL connection error
 ```bash
 make db-shell   # se entrar, o MySQL está OK
+```
+
+### Redis connection error
+```bash
+docker compose exec redis redis-cli ping
+docker compose exec app vendor/bin/phpunit --group redis
 ```
 
 ## Documentação adicional

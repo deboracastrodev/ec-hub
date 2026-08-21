@@ -11,7 +11,7 @@ help: ## Show this help message
 	@echo "  make down      - Para e remove os containers"
 	@echo "  make restart   - Reinicia os containers"
 	@echo "  make logs      - Mostra logs da aplicação"
-	@echo "  make test      - Executa testes PHPUnit (local, sem Docker)"
+	@echo "  make test      - Executa testes sem serviços externos (local, sem Docker)"
 	@echo "  make cs-fix    - Executa PHP-CS-Fixer (local, sem Docker)"
 	@echo "  make cs-check  - Verifica estilo sem corrigir (local, sem Docker)"
 	@echo "  make stan      - Roda PHPStan nível 5 (local, sem Docker)"
@@ -25,7 +25,7 @@ help: ## Show this help message
 
 # Docker commands
 up: ## Start Docker containers
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d --build
 	@echo "✅ Containers iniciados"
 	@echo "🔧 Execute 'make setup' para configurar o banco de dados"
 
@@ -73,11 +73,10 @@ shell: ## Open shell in app container
 db-shell: ## Access MySQL CLI
 	$(COMPOSE) exec mysql mysql -uroot -psecret ec_hub
 
-# Development tools -- rodam local, sem precisar de Docker (a suíte sem
-# @group db passa sem banco nenhum; testes que exigem MySQL de verdade
-# fazem skip gracioso se não encontrarem conexão)
-test: ## Run all tests
-	vendor/bin/phpunit --testdox
+# Development tools -- rodam local, sem precisar de Docker. Testes que conectam
+# serviços externos pertencem aos grupos db ou redis e ficam nas lanes de CI.
+test: ## Run tests without external services
+	vendor/bin/phpunit --testdox --exclude-group db --exclude-group redis
 
 cs-fix: ## Fix code style issues (PSR-12)
 	vendor/bin/php-cs-fixer fix

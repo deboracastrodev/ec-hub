@@ -81,20 +81,173 @@ class SetupScriptTest extends TestCase
         );
     }
 
-    public function test_setup_script_does_not_wait_for_unused_services(): void
+    public function test_setup_script_waits_for_redis(): void
     {
-        // R5.5: Redis has no consumer in the app -- setup.sh should not
-        // block on a service the app never actually connects to.
         if (! file_exists(self::SETUP_SCRIPT)) {
             $this->markTestSkipped('setup.sh não existe ainda');
         }
 
         $content = file_get_contents(self::SETUP_SCRIPT);
-        $this->assertStringNotContainsString(
+        $this->assertStringContainsString(
             'wait_for_redis',
             $content,
-            'O script não deve esperar por Redis -- nenhum consumidor no app'
+            'O script deve esperar por Redis antes de migrar ou popular o banco'
         );
+        $this->assertStringContainsString('redis-cli --raw ping', $content);
+    }
+
+    public function test_setup_stops_before_migrations_when_redis_is_unavailable(): void
+    {
+        $temporaryDirectory = sys_get_temp_dir() . '/ec-hub-setup-' . bin2hex(random_bytes(8));
+        self::assertTrue(mkdir($temporaryDirectory, 0700));
+
+        $dockerLog = $temporaryDirectory . '/docker.log';
+        $fakeDocker = $temporaryDirectory . '/docker';
+
+        try {
+            file_put_contents($fakeDocker, <<<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$SETUP_DOCKER_LOG"
+
+if [ "$1" = "info" ]; then
+    exit 0
+fi
+
+if [ "$1" = "compose" ] && [ "$2" = "ps" ]; then
+    printf 'app\n'
+    exit 0
+fi
+
+if [ "$1" = "compose" ] && [ "$2" = "exec" ]; then
+    case " $* " in
+        *" redis "*) exit 1 ;;
+        *) exit 0 ;;
+    esac
+fi
+
+exit 1
+SH);
+            chmod($fakeDocker, 0700);
+
+            $path = getenv('PATH') ?: '';
+            $command = sprintf(
+                'PATH=%s SETUP_MAX_ATTEMPTS=2 SETUP_RETRY_INTERVAL_SECONDS=0 SETUP_DOCKER_LOG=%s %s 2>&1',
+                escapeshellarg($temporaryDirectory . ':' . $path),
+                escapeshellarg($dockerLog),
+                escapeshellarg(self::SETUP_SCRIPT)
+            );
+            $output = [];
+            $exitCode = 0;
+            exec($command, $output, $exitCode);
+
+            self::assertNotSame(0, $exitCode);
+            self::assertStringContainsString('Redis não está pronto', implode("\n", $output));
+
+            $commands = file_get_contents($dockerLog);
+            self::assertIsString($commands);
+            self::assertStringContainsString('compose exec -T redis redis-cli --raw ping', $commands);
+            self::assertStringNotContainsString('php bin/migrate.php', $commands);
+            self::assertStringNotContainsString('php bin/seed.php', $commands);
+        } finally {
+            unlink($fakeDocker);
+            if (file_exists($dockerLog)) {
+                unlink($dockerLog);
+            }
+            rmdir($temporaryDirectory);
+        }
+    }
+
+    public function test_setup_runs_initialization_in_order_after_services_are_ready(): void
+    {
+        $temporaryDirectory = sys_get_temp_dir() . '/ec-hub-setup-' . bin2hex(random_bytes(8));
+        self::assertTrue(mkdir($temporaryDirectory, 0700));
+
+        $dockerLog = $temporaryDirectory . '/docker.log';
+        $fakeDocker = $temporaryDirectory . '/docker';
+
+        try {
+            file_put_contents($fakeDocker, <<<'SH'
+#!/bin/sh
+printf '%s\n' "$*" >> "$SETUP_DOCKER_LOG"
+
+if [ "$1" = "info" ]; then
+    exit 0
+fi
+
+if [ "$1" = "compose" ] && [ "$2" = "ps" ]; then
+    printf 'app\n'
+    exit 0
+fi
+
+if [ "$1" = "compose" ] && [ "$2" = "exec" ]; then
+    case " $* " in
+        *" redis-cli --raw ping "*) printf 'PONG\n' ;;
+    esac
+    exit 0
+fi
+
+exit 1
+SH);
+            chmod($fakeDocker, 0700);
+
+            $path = getenv('PATH') ?: '';
+            $command = sprintf(
+                'PATH=%s SETUP_MAX_ATTEMPTS=1 SETUP_RETRY_INTERVAL_SECONDS=0 SETUP_DOCKER_LOG=%s %s 2>&1',
+                escapeshellarg($temporaryDirectory . ':' . $path),
+                escapeshellarg($dockerLog),
+                escapeshellarg(self::SETUP_SCRIPT)
+            );
+            $output = [];
+            $exitCode = 0;
+            exec($command, $output, $exitCode);
+
+            self::assertSame(0, $exitCode, implode("\n", $output));
+            self::assertStringContainsString('Setup completo', implode("\n", $output));
+
+            $commands = file_get_contents($dockerLog);
+            self::assertIsString($commands);
+            $redis = strpos($commands, 'compose exec -T redis redis-cli --raw ping');
+            $composer = strpos($commands, 'compose exec -T app composer install --no-interaction');
+            $migration = strpos($commands, 'compose exec -T app php bin/migrate.php');
+            $seed = strpos($commands, 'compose exec -T app php bin/seed.php');
+            self::assertNotFalse($redis);
+            self::assertNotFalse($composer);
+            self::assertNotFalse($migration);
+            self::assertNotFalse($seed);
+            self::assertTrue($redis < $composer && $composer < $migration && $migration < $seed);
+        } finally {
+            unlink($fakeDocker);
+            if (file_exists($dockerLog)) {
+                unlink($dockerLog);
+            }
+            rmdir($temporaryDirectory);
+        }
+    }
+
+    public function test_setup_rejects_invalid_retry_overrides_before_calling_docker(): void
+    {
+        $cases = [
+            ['SETUP_MAX_ATTEMPTS', '0', 'SETUP_MAX_ATTEMPTS'],
+            ['SETUP_MAX_ATTEMPTS', 'invalid', 'SETUP_MAX_ATTEMPTS'],
+            ['SETUP_RETRY_INTERVAL_SECONDS', '-1', 'SETUP_RETRY_INTERVAL_SECONDS'],
+            ['SETUP_RETRY_INTERVAL_SECONDS', 'invalid', 'SETUP_RETRY_INTERVAL_SECONDS'],
+        ];
+
+        foreach ($cases as [$variable, $value, $expectedDiagnostic]) {
+            $command = sprintf(
+                '%s=%s %s 2>&1',
+                $variable,
+                escapeshellarg($value),
+                escapeshellarg(self::SETUP_SCRIPT)
+            );
+            $output = [];
+            $exitCode = 0;
+            exec($command, $output, $exitCode);
+
+            self::assertNotSame(0, $exitCode);
+            self::assertStringContainsString($expectedDiagnostic, implode("\n", $output));
+            self::assertStringNotContainsString('Docker está rodando', implode("\n", $output));
+        }
     }
 
     public function test_setup_script_runs_composer_install(): void

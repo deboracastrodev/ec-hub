@@ -42,7 +42,21 @@ else
   echo "✅ MySQL 8.x image found"
 fi
 
-# Redis has no consumer in the app (R5.5) -- deliberately not required here.
+redis_service=$(awk '/^  redis:/{in_redis=1; next} in_redis && /^  [[:alnum:]_-]+:/{exit} in_redis {print}' "$COMPOSE_FILE")
+
+if [ -z "$redis_service" ] || ! printf '%s\n' "$redis_service" | grep -qx '    image: redis:7-alpine'; then
+  echo "❌ FAIL: Redis service must use redis:7-alpine"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ Redis 7 Alpine service found"
+fi
+
+if ! printf '%s\n' "$redis_service" | grep -q 'redis-cli.*ping'; then
+  echo "❌ FAIL: Redis service must define a redis-cli ping healthcheck"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ Redis healthcheck found"
+fi
 
 # Check network configuration
 if ! grep -q "networks:" "$COMPOSE_FILE"; then
@@ -60,12 +74,42 @@ else
   echo "✅ Volumes configuration found"
 fi
 
-# Check app service depends_on mysql
-if ! grep -A 20 "app:" "$COMPOSE_FILE" | grep -q "depends_on"; then
+# Check app service depends on MySQL and Redis
+app_service=$(awk '/^  app:/{in_app=1; next} in_app && /^  [[:alnum:]_-]+:/{exit} in_app {print}' "$COMPOSE_FILE")
+
+if ! printf '%s\n' "$app_service" | grep -q "mysql:"; then
+  echo "❌ FAIL: App service must depend on mysql"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ App MySQL dependency found"
+fi
+
+if ! printf '%s\n' "$app_service" | grep -q "depends_on"; then
   echo "❌ FAIL: App service must depend on mysql"
   ERRORS=$((ERRORS + 1))
 else
   echo "✅ App service dependencies found"
+fi
+
+if ! printf '%s\n' "$app_service" | grep -q 'redis:'; then
+  echo "❌ FAIL: App service must depend on redis"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ App Redis dependency found"
+fi
+
+if ! printf '%s\n' "$app_service" | grep -A 2 '^      mysql:' | grep -q 'condition: service_healthy'; then
+  echo "❌ FAIL: App MySQL dependency must wait for service_healthy"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ App MySQL health dependency found"
+fi
+
+if ! printf '%s\n' "$app_service" | grep -A 2 '^      redis:' | grep -q 'condition: service_healthy'; then
+  echo "❌ FAIL: App Redis dependency must wait for service_healthy"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ App Redis health dependency found"
 fi
 
 if [ $ERRORS -gt 0 ]; then

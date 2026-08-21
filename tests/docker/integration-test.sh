@@ -67,6 +67,7 @@ run_test "docker-compose.yml exists" "[ -f docker-compose.yml ]"
 run_test "docker-compose.yml is valid" "docker compose config > /dev/null 2>&1"
 run_test "App service defined" "grep -q 'app:' docker-compose.yml"
 run_test "MySQL service defined" "grep -q 'mysql:' docker-compose.yml"
+run_test "Redis 7 Alpine service defined" "grep -q 'redis:7-alpine' docker-compose.yml"
 echo ""
 
 # Test 3: Port mappings
@@ -87,6 +88,7 @@ echo "📋 Test Group 5: Environment Configuration"
 run_test ".env.example exists" "[ -f .env.example ]"
 run_test "APP_ENV=local in .env.example" "grep -q '^APP_ENV=local' .env.example"
 run_test "DB configuration in .env.example" "grep -q '^DB_HOST=' .env.example"
+run_test "Redis configuration in .env.example" "grep -q '^REDIS_HOST=' .env.example && grep -q '^REDIS_PORT=' .env.example"
 echo ""
 
 # Test 6: Network configuration
@@ -97,7 +99,10 @@ echo ""
 
 # Test 7: Dependencies
 echo "📋 Test Group 7: Service Dependencies"
-run_test "App depends on MySQL" "grep -A 20 'app:' docker-compose.yml | grep -q 'mysql'"
+run_test "App depends on MySQL" "awk '/^  app:/{in_app=1; next} in_app && /^  [[:alnum:]_-]+:/{exit} in_app {print}' docker-compose.yml | grep -q 'mysql'"
+run_test "App depends on Redis" "awk '/^  app:/{in_app=1; next} in_app && /^  [[:alnum:]_-]+:/{exit} in_app {print}' docker-compose.yml | grep -q 'redis'"
+run_test "MySQL dependency waits for health" "awk '/^  app:/{in_app=1; next} in_app && /^  [[:alnum:]_-]+:/{exit} in_app {print}' docker-compose.yml | grep -A 2 '^      mysql:' | grep -q 'condition: service_healthy'"
+run_test "Redis dependency waits for health" "awk '/^  app:/{in_app=1; next} in_app && /^  [[:alnum:]_-]+:/{exit} in_app {print}' docker-compose.yml | grep -A 2 '^      redis:' | grep -q 'condition: service_healthy'"
 echo ""
 
 # Test 8: Docker Build test - ALWAYS build to validate Dockerfile
@@ -127,7 +132,7 @@ fi
 
 # Start containers
 CONTAINERS_STARTED=true
-docker compose up -d mysql app
+docker compose up -d --build mysql redis app
 
 # Wait for MySQL
 MAX_RETRIES=30
@@ -139,6 +144,21 @@ until docker exec ec-hub-mysql mysql -h"${DB_HOST:-localhost}" -u"${DB_USERNAME:
     echo -e " ${RED}TIMEOUT${NC}"
     TESTS_FAILED=$((TESTS_FAILED + 1))
     cleanup_containers
+    exit 1
+  fi
+  echo -n "."
+  sleep 2
+done
+echo -e " ${GREEN}READY${NC}"
+
+# Wait for Redis
+RETRY_COUNT=0
+echo -n "Waiting for Redis..."
+until [ "$(docker exec ec-hub-redis redis-cli --raw ping 2>/dev/null)" = "PONG" ]; do
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+    echo -e " ${RED}TIMEOUT${NC}"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
     exit 1
   fi
   echo -n "."
@@ -165,6 +185,12 @@ echo -e " ${GREEN}READY${NC}"
 echo ""
 
 # Test app -> MySQL connectivity
+MYSQL_PASSED=false
+REDIS_PASSED=false
+
+run_test "App receives Redis environment" \
+  "docker exec ec-hub-app php -r \"exit(getenv('REDIS_HOST') === 'redis' && getenv('REDIS_PORT') === '6379' ? 0 : 1);\""
+
 echo -n "Testing: App → MySQL connectivity... "
 if docker exec ec-hub-app php -r "
 try {
@@ -178,10 +204,37 @@ try {
 " 2>/dev/null; then
   echo -e "${GREEN}PASS${NC}"
   TESTS_PASSED=$((TESTS_PASSED + 1))
+  MYSQL_PASSED=true
 else
   echo -e "${RED}FAIL${NC}"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
+
+echo -n "Testing: App → Redis connectivity through Predis... "
+if docker exec ec-hub-app php -r "
+require 'vendor/autoload.php';
+\$config = require 'config/redis.php';
+\$redis = new Predis\\Client(\$config);
+\$key = 'ec-hub:integration-test:' . bin2hex(random_bytes(8));
+\$keyWritten = false;
+try {
+    if (\$redis->ping()->getPayload() !== 'PONG') { throw new RuntimeException('Redis PING failed'); }
+    \$redis->set(\$key, 'predis');
+    \$keyWritten = true;
+    if (\$redis->get(\$key) !== 'predis') { throw new RuntimeException('Redis read/write failed'); }
+} finally {
+    if (\$keyWritten) { try { \$redis->del([\$key]); } catch (Throwable) {} }
+}
+" 2>/dev/null; then
+  echo -e "${GREEN}PASS${NC}"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  REDIS_PASSED=true
+else
+  echo -e "${RED}FAIL${NC}"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+
+run_test "Redis Compose smoke check" "./tests/docker/check-redis.sh"
 
 echo ""
 
@@ -201,6 +254,7 @@ if [ $TESTS_FAILED -eq 0 ]; then
   echo "  - docker-compose.yml is valid"
   echo "  - All containers start correctly"
   echo "  - App connects to MySQL"
+  echo "  - App connects to Redis through Predis"
   echo ""
   echo "Next steps:"
   echo "  1. Run 'docker compose up -d' to start all services"
@@ -209,6 +263,13 @@ if [ $TESTS_FAILED -eq 0 ]; then
   exit 0
 else
   echo -e "${RED}❌ SOME TESTS FAILED${NC}"
+  echo ""
+  if [ "$MYSQL_PASSED" = false ]; then
+    echo "Failure: MySQL is unreachable from app container"
+  fi
+  if [ "$REDIS_PASSED" = false ]; then
+    echo "Failure: Redis is unreachable from app container"
+  fi
   echo ""
   echo "The infrastructure test found issues that must be addressed"
   echo "before the story can be marked as complete."

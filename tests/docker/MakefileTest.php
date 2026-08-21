@@ -58,6 +58,11 @@ class MakefileTest extends TestCase
         $content = file_get_contents(self::MAKEFILE);
         $this->assertStringContainsString('test:', $content, 'O Makefile deve ter target "test"');
         $this->assertStringContainsString('phpunit', $content, 'O target "test" deve executar PHPUnit');
+        $this->assertMatchesRegularExpression(
+            '/^test:.*\n\s*vendor\/bin\/phpunit.*--exclude-group db.*--exclude-group redis/m',
+            $content,
+            'O target "test" deve excluir os grupos que dependem de MySQL e Redis'
+        );
     }
 
     public function test_makefile_has_cs_fix_target(): void
@@ -88,11 +93,10 @@ class MakefileTest extends TestCase
         $this->assertStringContainsString('mysql -uroot -psecret ec_hub', $content, 'O target "db-shell" deve acessar MySQL com credenciais corretas');
     }
 
-    public function test_makefile_has_no_redis_target(): void
+    public function test_makefile_does_not_restore_a_redis_extension_target(): void
     {
-        // R5.5: Redis has no consumer in the app -- no Makefile target for it.
         $content = file_get_contents(self::MAKEFILE);
-        $this->assertStringNotContainsString('redis-cli:', $content, 'Redis não tem consumidor no app; sem target dedicado');
+        $this->assertStringNotContainsString('new Redis()', $content, 'Redis deve usar Predis, nunca a extensão redis');
     }
 
     public function test_makefile_has_ps_target(): void

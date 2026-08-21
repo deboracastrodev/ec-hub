@@ -2,8 +2,10 @@
   "name": "ec-hub/app",
   "description": "E-commerce com ML em PHP 8.4 + Clean Architecture",
   "type": "project",
+  "license": "MIT",
   "require": {
     "php": "^8.4",
+    "predis/predis": "^3.3",
     "psr/container": "^2.0",
     "psr/log": "^3.0",
     "vlucas/phpdotenv": "^5.6",
