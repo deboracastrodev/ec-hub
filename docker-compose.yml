@@ -29,6 +29,7 @@ services:
       - DB_PASSWORD=secret
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - SESSION_TTL=1800
     depends_on:
       mysql:
         condition: service_healthy
