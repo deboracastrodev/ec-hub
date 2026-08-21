@@ -87,7 +87,6 @@ class ProductController
         $userId = isset($queryParams['user_id']) && is_string($queryParams['user_id']) && trim($queryParams['user_id']) !== ''
             ? trim($queryParams['user_id'])
             : null;
-
         if ($this->tracker !== null && $this->session !== null) {
             try {
                 $this->tracker->track('view', $this->session->id(), (int) $product['id'], $userId);
@@ -109,7 +108,7 @@ class ProductController
         return $this->twig->render('product/detail.html.twig', [
             'product' => $product,
             'meta' => $meta,
-            'user_id' => $userId ?? null,
+            'user_id' => $userId,
         ]);
     }
 }

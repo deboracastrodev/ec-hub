@@ -22,7 +22,9 @@ final class ProductInteractionController
             throw new InvalidRequestException('interaction must be click');
         }
 
-        return ['data' => $this->tracker->track($interaction, $this->session->id(), $this->productId($payload), $this->userId($payload))];
+        $event = $this->tracker->track('click', $this->session->id(), $this->productId($payload), $this->userId($payload));
+
+        return ['data' => $this->publicEvent($event)];
     }
 
     /** @param array<string, mixed> $payload @return array<string, mixed> */
@@ -33,7 +35,33 @@ final class ProductInteractionController
             throw new InvalidRequestException('quantity must be a positive integer');
         }
 
-        return ['data' => $this->tracker->track('cart', $this->session->id(), $this->productId($payload), $this->userId($payload), (int) $quantity)];
+        $event = $this->tracker->track(
+            'cart',
+            $this->session->id(),
+            $this->productId($payload),
+            $this->userId($payload),
+            (int) $quantity
+        );
+
+        return ['data' => $this->publicEvent($event)];
+    }
+
+    /** @param array<string, mixed> $event @return array<string, mixed> */
+    private function publicEvent(array $event): array
+    {
+        $public = [
+            'event' => $event['event'],
+            'product_id' => $event['product_id'],
+            'timestamp' => $event['timestamp'],
+        ];
+        if (isset($event['quantity'])) {
+            $public['quantity'] = $event['quantity'];
+        }
+        if (isset($event['user_id'])) {
+            $public['user_id'] = $event['user_id'];
+        }
+
+        return $public;
     }
 
     /** @param array<string, mixed> $payload */
@@ -50,7 +78,7 @@ final class ProductInteractionController
     /** @param array<string, mixed> $payload */
     private function userId(array $payload): ?string
     {
-        if (! isset($payload['user_id'])) {
+        if (! array_key_exists('user_id', $payload)) {
             return null;
         }
         if (! is_string($payload['user_id']) || trim($payload['user_id']) === '') {

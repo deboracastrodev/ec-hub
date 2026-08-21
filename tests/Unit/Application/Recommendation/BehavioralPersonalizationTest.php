@@ -10,13 +10,13 @@ use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
-use App\Domain\Shared\ValueObject\Money;
+use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
 final class BehavioralPersonalizationTest extends TestCase
 {
-    public function testReordersBaselineFromSessionAndUserHistory(): void
+    public function testPublicPipelineChangesBaselineForSessionAndUserWithoutDuplicates(): void
     {
         $history = new class () implements EventHistoryRepositoryInterface {
             public function append(string $sessionId, ?string $userId, array $event): void
@@ -30,19 +30,38 @@ final class BehavioralPersonalizationTest extends TestCase
 
             public function getByUserId(string $userId): array
             {
-                return $userId === 'user-1' ? [['event' => 'product.clicked', 'product_id' => 8], ['event' => 'cart.item_added', 'product_id' => 9]] : [];
+                return $userId === 'user-1' ? [['event' => 'cart.item_added', 'product_id' => 9]] : [];
             }
         };
+        $productsById = [
+            1 => Product::fromArray(['id' => 1, 'name' => 'Target', 'category' => 'Target', 'price' => 10]),
+            9 => Product::fromArray(['id' => 9, 'name' => 'Interest', 'category' => 'A', 'price' => 10]),
+        ];
         $products = $this->createMock(ProductRepositoryInterface::class);
-        $products->method('findById')->willReturnCallback(static function (int $id): Product {
-            return new Product('P' . $id, '', Money::fromDecimal(1), $id === 8 ? 'B' : 'A');
-        });
-        $service = new GenerateRecommendations($products, $this->createMock(KNNService::class), $this->createMock(RuleBasedFallback::class), new NullLogger(), null, null, $history);
-        $method = new \ReflectionMethod($service, 'personalize');
-        $baseline = [['product_id' => 1, 'category' => 'B'], ['product_id' => 2, 'category' => 'A']];
+        $products->method('findAll')->willReturn([$productsById[1]]);
+        $products->method('findById')->willReturnCallback(static fn (int $id): ?Product => $productsById[$id] ?? null);
+        $fallback = $this->createMock(RuleBasedFallback::class);
+        $fallback->method('getRecommendations')->willReturn([
+            ['product_id' => 2, 'product_name' => 'B', 'category' => 'B', 'score' => 1],
+            ['product_id' => 3, 'product_name' => 'A', 'category' => 'A', 'score' => 1],
+        ]);
+        $service = new GenerateRecommendations(
+            $products,
+            $this->createMock(KNNService::class),
+            $fallback,
+            new NullLogger(),
+            RecommendationSettings::fromArray(['min_products_for_ml' => 5]),
+            null,
+            $history
+        );
 
-        self::assertSame($baseline, $method->invoke($service, $baseline, 'empty', null));
-        self::assertSame([2, 1], array_column($method->invoke($service, $baseline, 'session-1', null), 'product_id'));
-        self::assertSame([2, 1], array_column($method->invoke($service, $baseline, null, 'user-1'), 'product_id'));
+        $baseline = $service->execute(1, 2);
+        $sessionResult = $service->execute(1, 2, false, null, 'session-1');
+        $userResult = $service->execute(1, 2, false, null, null, 'user-1');
+
+        self::assertSame([2, 3], array_column($baseline, 'product_id'));
+        self::assertSame([3, 2], array_column($sessionResult, 'product_id'));
+        self::assertSame([3, 2], array_column($userResult, 'product_id'));
+        self::assertSame(array_unique(array_column($userResult, 'product_id')), array_column($userResult, 'product_id'));
     }
 }

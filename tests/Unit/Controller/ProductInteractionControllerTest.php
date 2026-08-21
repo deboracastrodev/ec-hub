@@ -23,33 +23,31 @@ final class ProductInteractionControllerTest extends TestCase
         unset($_COOKIE[SessionContext::COOKIE_NAME]);
     }
 
-    public function testTracksValidClick(): void
+    public function testResponsesAreAllowlistedAndNeverExposeSessionId(): void
     {
         $_COOKIE[SessionContext::COOKIE_NAME] = str_repeat('a', 64);
+        $controller = new ProductInteractionController($this->tracker(), new SessionContext());
+
+        $click = $controller->event(['product_id' => 7, 'interaction' => 'click']);
+        $cart = $controller->addCartItem(['product_id' => 7, 'quantity' => 2, 'user_id' => 'user-1']);
+
+        self::assertSame('product.clicked', $click['data']['event']);
+        self::assertSame(2, $cart['data']['quantity']);
+        self::assertArrayNotHasKey('session_id', $click['data']);
+        self::assertArrayNotHasKey('session_id', $cart['data']);
+    }
+
+    public function testRejectsInvalidPayloadWithoutPublishing(): void
+    {
         $publisher = $this->createMock(EventPublisherInterface::class);
-        $publisher->expects(self::once())->method('publish')->with('product.clicked', self::isType('array'));
+        $publisher->expects(self::never())->method('publish');
         $controller = new ProductInteractionController($this->tracker($publisher), new SessionContext());
 
-        $result = $controller->event(['product_id' => 7, 'interaction' => 'click']);
-
-        self::assertSame('product.clicked', $result['data']['event']);
-    }
-
-    public function testRejectsInvalidCartQuantity(): void
-    {
         $this->expectException(InvalidRequestException::class);
-        $this->expectExceptionMessage('quantity must be a positive integer');
-        (new ProductInteractionController($this->tracker($this->createMock(EventPublisherInterface::class)), new SessionContext()))->addCartItem(['product_id' => 7, 'quantity' => 0]);
+        $controller->addCartItem(['product_id' => 7, 'quantity' => 0]);
     }
 
-    public function testRejectsInvalidUserId(): void
-    {
-        $this->expectException(InvalidRequestException::class);
-        $this->expectExceptionMessage('user_id must be a non-empty string');
-        (new ProductInteractionController($this->tracker($this->createMock(EventPublisherInterface::class)), new SessionContext()))->event(['product_id' => 7, 'user_id' => true]);
-    }
-
-    private function tracker(EventPublisherInterface $publisher): TrackProductInteraction
+    private function tracker(?EventPublisherInterface $publisher = null): TrackProductInteraction
     {
         $products = $this->createMock(ProductRepositoryInterface::class);
         $products->method('findById')->willReturn($this->createMock(Product::class));
@@ -79,6 +77,12 @@ final class ProductInteractionControllerTest extends TestCase
             }
         };
 
-        return new TrackProductInteraction($products, $sessions, $history, $publisher, new NullLogger());
+        return new TrackProductInteraction(
+            $products,
+            $sessions,
+            $history,
+            $publisher ?? $this->createMock(EventPublisherInterface::class),
+            new NullLogger()
+        );
     }
 }

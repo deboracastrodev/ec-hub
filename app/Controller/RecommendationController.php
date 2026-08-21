@@ -69,7 +69,13 @@ class RecommendationController
         $limit = $this->validateAndParseLimit($queryParams);
 
         // Generate recommendations
-        $userId = isset($queryParams['user_id']) && is_scalar($queryParams['user_id']) ? (string) $queryParams['user_id'] : null;
+        $userId = null;
+        if (array_key_exists('user_id', $queryParams)) {
+            if (! is_string($queryParams['user_id']) || trim($queryParams['user_id']) === '') {
+                throw new InvalidRequestException('user_id must be a non-empty string');
+            }
+            $userId = trim($queryParams['user_id']);
+        }
         $recommendations = ($sessionId === null && $userId === null)
             ? $this->generateRecommendations->execute($productId, $limit)
             : $this->generateRecommendations->execute($productId, $limit, false, null, $sessionId, $userId);

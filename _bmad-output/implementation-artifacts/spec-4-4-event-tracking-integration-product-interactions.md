@@ -2,8 +2,9 @@
 title: 'Event Tracking Integration (Product Interactions)'
 type: 'feature'
 created: '2026-08-21'
-status: 'done'
-baseline_revision: '9a3f901fb209ce2511d6927bb88162e1ae940543'
+status: 'in-review'
+baseline_revision: '70af8a34d2d28a8e73b2a0e20640fc29b0d9ea4b'
+baseline_commit: '70af8a34d2d28a8e73b2a0e20640fc29b0d9ea4b'
 review_loop_iteration: 1
 followup_review_recommended: true
 context:
@@ -53,11 +54,11 @@ deferred: []
 ## Tasks & Acceptance
 
 **Execution:**
-- `app/Application/Event/TrackProductInteraction.php` e portas de domínio necessárias -- validar produto e payload, montar os três eventos, atualizar histórico limitado por sessão e por `user_id` quando informado, atualizar `cart.items`, e tratar publicação como best-effort.
-- `app/Shared/Http/SessionContext.php`, `app/Controller/ProductController.php`, novo controlador de interação e `public/index.php` -- criar/ler cookie seguro, emitir visualização e expor `POST /api/events` e `POST /api/cart/items` com respostas HTTP validadas.
-- `views/product/detail.html.twig` -- adicionar controles acessíveis que disparem os endpoints de clique e carrinho sem interferir no detalhe.
-- `app/Application/Recommendation/GenerateRecommendations.php`, `app/Controller/RecommendationController.php` e `config/bootstrap.php` -- consultar o índice de `user_id` quando informado, ou de sessão caso contrário; reordenar deterministicamente resultados elegíveis e preservar o contrato atual e o fallback sem histórico.
-- `tests/Unit/Application/Event/TrackProductInteractionTest.php`, testes de contexto de sessão, controlador/HTTP e integração Redis/recomendação -- cobrir cada linha da matriz, retenção exata de 50 eventos, validações de payload e baseline versus pós-interação por sessão e `user_id`.
+- [x] `app/Application/Event/TrackProductInteraction.php` e portas de domínio necessárias -- validar produto e payload, montar os três eventos, atualizar histórico limitado por sessão e por `user_id` quando informado, atualizar `cart.items` em uma operação protegida independente da telemetria e tratar persistência/publicação de tracking como best-effort; uma falha no histórico nunca pode pular nem desfazer a mutação válida do carrinho.
+- [x] `app/Shared/Http/SessionContext.php`, `app/Controller/ProductController.php`, novo controlador de interação e `public/index.php` -- criar/ler cookie seguro, emitir visualização e expor `POST /api/events` e `POST /api/cart/items` com respostas HTTP validadas; os DTOs/respostas públicas podem confirmar o evento, mas devem remover `session_id` e qualquer outro identificador interno de sessão.
+- [x] `views/product/detail.html.twig` -- adicionar controles acessíveis que disparem os endpoints de clique e carrinho sem interferir no detalhe.
+- [x] `app/Application/Recommendation/GenerateRecommendations.php`, `app/Controller/RecommendationController.php` e `config/bootstrap.php` -- consultar o índice de `user_id` quando informado, ou de sessão caso contrário; reordenar deterministicamente resultados elegíveis e preservar o contrato atual e o fallback sem histórico.
+- [x] `tests/Unit/Application/Event/TrackProductInteractionTest.php`, testes de contexto de sessão, controlador/HTTP e integração Redis/recomendação -- cobrir cada linha da matriz; verificar a implementação Redis real quanto a índices de sessão/`user_id`, ordem, retenção exata de 50 e renovação de TTL; exercitar geração e atributos do cookie; chamar os dois endpoints POST pela borda HTTP; comprovar 400/404 sem publicação; comprovar resposta sem `session_id`; comprovar que falha de histórico/publicação não impede uma mutação válida do carrinho; e comparar baseline versus pós-interação pelo pipeline público de recomendações, sem reflexão sobre método privado.
 
 **Acceptance Criteria:**
 - Given uma pessoa navega até um produto existente, when a página é exibida, then `product.viewed` é publicado com `product_id`, sessão e timestamp, com `user_id` quando informado.
@@ -67,7 +68,7 @@ deferred: []
 
 ## Design Notes
 
-O evento precisa ser recuperável no fluxo síncrono da aplicação mesmo que não exista um worker Pub/Sub no request. Por isso, o caso de uso registra o histórico limitado antes da publicação best-effort; o Pub/Sub continua sendo a integração de eventos exigida. A fonte de consulta é indexada pelo `session_id` e, quando a borda recebe uma identidade opcional, também por `user_id`, para que o contrato `?user_id={id}` não dependa do cookie atual. Empates de prioridade preservam deterministicamente a ordem base das recomendações.
+O evento precisa ser recuperável no fluxo síncrono da aplicação mesmo que não exista um worker Pub/Sub no request. Por isso, o caso de uso registra o histórico limitado antes da publicação best-effort; o Pub/Sub continua sendo a integração de eventos exigida. A mutação funcional do carrinho é isolada das escritas de telemetria: indisponibilidade do histórico ou do barramento não pode transformar uma resposta de sucesso em carrinho não atualizado. A fonte de consulta é indexada pelo `session_id` e, quando a borda recebe uma identidade opcional, também por `user_id`, para que o contrato `?user_id={id}` não dependa do cookie atual. Empates de prioridade preservam deterministicamente a ordem base das recomendações. O evento interno pode conter `session_id`, mas toda resposta HTTP deve ser construída por allowlist e nunca serializar esse campo.
 
 ## Spec Change Log
 
@@ -76,6 +77,12 @@ O evento precisa ser recuperável no fluxo síncrono da aplicação mesmo que n�
 - Alteração: tarefas e notas de design agora exigem um índice limitado consultável por sessão e por `user_id`, com seleção explícita da fonte no pipeline de recomendações e ordenação determinística.
 - Estado ruim evitado: uma consulta `GET /api/recommendations?user_id={id}` sem o cookie original ignoraria as próprias interações da pessoa.
 - KEEP: preservar o cookie opaco HttpOnly/SameSite, o transporte Pub/Sub existente, a publicação best-effort e o limite de retenção de 50 eventos.
+
+### 2026-08-21 — revisão 2
+- Gatilho: os endpoints serializavam o evento interno com `session_id`, uma falha ao gravar histórico podia pular a atualização do carrinho, e os testes comprovavam retenção/personalização apenas em fakes ou métodos privados.
+- Alteração: tarefas e notas agora exigem DTO HTTP por allowlist sem sessão, isolamento da mutação do carrinho e evidência na implementação Redis e nas superfícies HTTP/públicas de recomendação.
+- Estado ruim evitado: uma resposta poderia vazar o identificador opaco, reportar carrinho atualizado quando a telemetria impediu a mutação, ou passar a suíte sem que rotas, cookie, TTL e personalização ponta a ponta funcionassem.
+- KEEP: preservar os três nomes de evento, o envelope Pub/Sub existente, o cookie HttpOnly/SameSite, o índice por sessão e `user_id`, o limite de 50, a ordenação determinística, o fallback sem histórico e a publicação best-effort.
 
 ## Suggested Review Order
 
@@ -119,21 +126,25 @@ O evento precisa ser recuperável no fluxo síncrono da aplicação mesmo que n�
 - addressed_findings:
   - `[high]` `[bad_spec]` O histórico por `user_id` não era consultável fora da sessão atual; a especificação passou a exigir índice limitado por identidade e seleção de fonte no pipeline.
 
+### 2026-08-21 — Review pass
+- intent_gap: 0
+- bad_spec: 8 (high 6, medium 2, low 0)
+- patch: 10 (high 1, medium 8, low 1)
+- defer: 0
+- reject: 7
+- addressed_findings:
+  - `[high]` `[bad_spec]` As respostas dos POSTs expunham `session_id`; a especificação agora exige DTO público por allowlist sem identificador de sessão.
+  - `[high]` `[bad_spec]` Uma falha no histórico pulava a atualização do carrinho; a especificação agora isola a mutação funcional das escritas de telemetria.
+  - `[high]` `[bad_spec]` Retenção, TTL e índice Redis eram verificados apenas por fake; a verificação agora deve usar a implementação Redis real.
+  - `[high]` `[bad_spec]` A personalização era testada por reflexão no método privado; a verificação agora deve atravessar o pipeline público de recomendações.
+  - `[high]` `[bad_spec]` Geração e atributos obrigatórios do cookie não tinham evidência; a verificação agora deve observar o cabeçalho emitido e a reutilização subsequente.
+  - `[high]` `[bad_spec]` As novas rotas POST não eram exercitadas pela borda HTTP; a verificação agora deve cobrir despacho, JSON, status e resposta redigida.
+  - `[medium]` `[bad_spec]` Falhas de persistência não eram testadas como best-effort; a verificação agora exige sucesso funcional e registro do erro.
+  - `[medium]` `[bad_spec]` Produto inexistente não comprovava 404 sem publicação; a verificação agora exige essa observação na borda.
+
 ## Verification
 
 **Commands:**
 - `vendor/bin/phpunit tests/Unit/Application/Event/TrackProductInteractionTest.php tests/Unit/Controller tests/Integration/Controller --testdox` -- expected: todos os cenários HTTP e de domínio passam.
 - `vendor/bin/phpunit --group redis tests/Integration/Infrastructure/Messaging/RedisEventPubSubTest.php tests/Integration/Infrastructure/Redis/SessionRepositoryTest.php tests/Integration --testdox` -- expected: Pub/Sub, sessão e integração de personalização passam com Redis disponível.
 - `make test-unit && make cs-check` -- expected: suíte unitária e estilo passam.
-
-## Auto Run Result
-
-Implementação: captura `product.viewed`, `product.clicked` e `cart.item_added` com sessão HTTP opaca; registra histórico Redis limitado por sessão e por `user_id`; mantém o carrinho na sessão; e personaliza as recomendações por histórico, com desempate estável.
-
-Arquivos alterados: casos de uso e portas de evento/histórico, repositório Redis, controladores/rotas, composição de dependências, detalhe do produto e testes unitários de tracking, controller e personalização.
-
-Revisão: 1 correção de especificação (índice por `user_id`) e 5 patches aplicados, incluindo ordenação determinística e cobertura de validação, retenção e baseline pós-interação. Itens adiados: 0. Itens rejeitados: 14. Recomendação de nova revisão: `true` (patches: high 1, medium 3, low 1; score 10).
-
-Verificação: `make test-unit` (86 testes) passou; testes focados de tracking/personalização/controller (7 testes, 23 asserções) passaram; Redis Pub/Sub e repositório de sessão no container (19 testes, 112 asserções) passaram; `make cs-check` e `git diff --check` passaram.
-
-Risco residual: a suíte ampla de integração requer schema MySQL local de produtos; no ambiente atual ela falha por tabela ausente, sem evidência de regressão desta história.

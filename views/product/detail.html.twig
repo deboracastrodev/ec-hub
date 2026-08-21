@@ -82,12 +82,19 @@ document.addEventListener('click', async (event) => {
     const click = event.target.closest('[data-track-product]');
     const cart = event.target.closest('[data-add-cart]');
     if (!click && !cart) return;
-    const productId = (click || cart).dataset.trackProduct || (click || cart).dataset.addCart;
-    const url = cart ? '/api/cart/items' : '/api/events';
-    const userId = (click || cart).closest('.product-detail__actions').dataset.userId;
+    const button = click || cart;
+    const productId = button.dataset.trackProduct || button.dataset.addCart;
     const payload = cart ? {product_id: productId, quantity: 1} : {product_id: productId, interaction: 'click'};
+    const userId = button.closest('.product-detail__actions').dataset.userId;
     if (userId) payload.user_id = userId;
-    try { await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), credentials: 'same-origin'}); } catch (_) {}
+    try {
+        await fetch(cart ? '/api/cart/items' : '/api/events', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+            credentials: 'same-origin'
+        });
+    } catch (_) {}
 });
 </script>
 {% endblock %}

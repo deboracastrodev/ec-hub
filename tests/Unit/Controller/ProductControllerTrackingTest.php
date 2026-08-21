@@ -25,23 +25,27 @@ final class ProductControllerTrackingTest extends TestCase
         unset($_COOKIE[SessionContext::COOKIE_NAME]);
     }
 
-    public function testShowTracksProductViewWithCookieSession(): void
+    public function testShowTracksViewAndStillRendersWhenRedisFails(): void
     {
-        $_COOKIE[SessionContext::COOKIE_NAME] = str_repeat('b', 64);
         $detail = $this->createMock(GetProductDetail::class);
-        $detail->expects(self::once())->method('executeByIdentifier')->with('prod')->willReturn([
-            'id' => 7,
-            'name' => 'Produto',
-            'description' => '',
-            'category' => 'A',
-            'price' => 10,
-            'image_url' => '',
-            'slug' => 'prod',
+        $detail->method('executeByIdentifier')->willReturn([
+            'id' => 7, 'name' => 'Produto', 'description' => '', 'category' => 'A',
+            'price' => 10, 'image_url' => '', 'slug' => 'prod',
         ]);
         $publisher = $this->createMock(EventPublisherInterface::class);
-        $publisher->expects(self::once())->method('publish')->with('product.viewed', self::callback(
-            static fn (array $event): bool => $event['session_id'] === str_repeat('b', 64) && $event['product_id'] === 7
-        ));
+        $publishedEvent = null;
+        $publisher->expects(self::once())->method('publish')->with('product.viewed', self::isArray())
+            ->willReturnCallback(static function (string $event, array $payload) use (&$publishedEvent): void {
+                $publishedEvent = $payload;
+
+                throw new \RuntimeException('Redis indisponível');
+            });
+        $cookie = null;
+        $session = new SessionContext(static function (string $name, string $value, array $options) use (&$cookie): bool {
+            $cookie = compact('name', 'value', 'options');
+
+            return true;
+        });
         $twig = $this->createMock(Environment::class);
         $twig->method('render')->willReturn('<html></html>');
         $controller = new ProductController(
@@ -50,16 +54,22 @@ final class ProductControllerTrackingTest extends TestCase
             $twig,
             null,
             $this->tracker($publisher),
-            new SessionContext()
+            $session
         );
 
-        self::assertSame('<html></html>', $controller->show('prod'));
+        self::assertSame('<html></html>', $controller->show('prod', ['user_id' => 'user-1']));
+        self::assertSame($cookie['value'], $publishedEvent['session_id']);
+        self::assertSame('user-1', $publishedEvent['user_id']);
+        self::assertSame(7, $publishedEvent['product_id']);
+        self::assertArrayHasKey('timestamp', $publishedEvent);
+        self::assertTrue($cookie['options']['httponly']);
+        self::assertSame('Lax', $cookie['options']['samesite']);
     }
 
     private function tracker(EventPublisherInterface $publisher): TrackProductInteraction
     {
         $products = $this->createMock(ProductRepositoryInterface::class);
-        $products->method('findById')->with(7)->willReturn($this->createMock(Product::class));
+        $products->method('findById')->willReturn($this->createMock(Product::class));
         $sessions = new class () implements SessionRepositoryInterface {
             public function save(string $sessionId, string $field, mixed $value): void
             {

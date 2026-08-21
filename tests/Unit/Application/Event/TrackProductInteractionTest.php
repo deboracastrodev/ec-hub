@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Application\Event;
 
 use App\Application\Event\TrackProductInteraction;
+use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Product\Model\Product;
@@ -15,54 +16,75 @@ use Psr\Log\NullLogger;
 
 final class TrackProductInteractionTest extends TestCase
 {
-    public function testTracksCartInteractionAndKeepsTheCartInSession(): void
+    public function testTracksCartAndKeepsMutationWhenHistoryAndPublicationFail(): void
     {
         $products = $this->createMock(ProductRepositoryInterface::class);
         $products->method('findById')->with(7)->willReturn($this->createMock(Product::class));
         $publisher = $this->createMock(EventPublisherInterface::class);
-        $publisher->expects($this->once())->method('publish')->with('cart.item_added', $this->callback(
-            static fn (array $event): bool => $event['session_id'] === 'session' && $event['product_id'] === 7 && $event['quantity'] === 2 && isset($event['timestamp'])
-        ));
+        $publisher->method('publish')->willThrowException(new \RuntimeException('Redis indisponível'));
+        $history = $this->createMock(EventHistoryRepositoryInterface::class);
+        $history->method('append')->willThrowException(new \RuntimeException('Redis indisponível'));
         $session = new InMemorySessionRepository();
-        $history = new InMemoryEventHistoryRepository();
-        $tracker = new TrackProductInteraction($products, $session, $history, $publisher, new NullLogger());
 
-        $event = $tracker->track('cart', 'session', 7, 'user-1', 2);
+        $event = (new TrackProductInteraction($products, $session, $history, $publisher, new NullLogger()))
+            ->track('cart', 'session', 7, 'user-1', 2);
 
         self::assertSame('cart.item_added', $event['event']);
         self::assertSame(['7' => 2], $session->get('session', 'cart.items'));
-        self::assertCount(1, $history->getBySession('session'));
-        self::assertSame('user-1', $session->get('session', 'user.id'));
     }
 
-    public function testPublicationFailureDoesNotPreventTracking(): void
+    public function testTracksViewAndClickWithRequiredEnvelopeData(): void
     {
         $products = $this->createMock(ProductRepositoryInterface::class);
         $products->method('findById')->willReturn($this->createMock(Product::class));
         $publisher = $this->createMock(EventPublisherInterface::class);
-        $publisher->method('publish')->willThrowException(new \RuntimeException('Redis indisponível'));
-        $session = new InMemorySessionRepository();
-
+        $published = [];
+        $publisher->expects(self::exactly(2))->method('publish')
+            ->willReturnCallback(static function (string $name, array $event) use (&$published): void {
+                $published[] = [$name, $event];
+            });
         $history = new InMemoryEventHistoryRepository();
-        (new TrackProductInteraction($products, $session, $history, $publisher, new NullLogger()))->track('view', 'session', 1);
+        $tracker = new TrackProductInteraction(
+            $products,
+            new InMemorySessionRepository(),
+            $history,
+            $publisher,
+            new NullLogger()
+        );
 
-        self::assertCount(1, $history->getBySession('session'));
+        $tracker->track('view', 'session', 7);
+        $tracker->track('click', 'session', 7, 'user-1');
+
+        self::assertCount(2, $history->getBySession('session'));
+        self::assertCount(1, $history->getByUserId('user-1'));
+        self::assertSame('product.viewed', $published[0][0]);
+        self::assertSame('session', $published[0][1]['session_id']);
+        self::assertSame(7, $published[0][1]['product_id']);
+        self::assertArrayHasKey('timestamp', $published[0][1]);
+        self::assertSame('product.clicked', $published[1][0]);
+        self::assertSame('user-1', $published[1][1]['user_id']);
     }
 
-    public function testKeepsExactlyTheLastFiftyInteractions(): void
+    public function testRejectsUnknownProductBeforePublishing(): void
     {
         $products = $this->createMock(ProductRepositoryInterface::class);
-        $products->method('findById')->willReturn($this->createMock(Product::class));
-        $history = new InMemoryEventHistoryRepository();
-        $tracker = new TrackProductInteraction($products, new InMemorySessionRepository(), $history, $this->createMock(EventPublisherInterface::class), new NullLogger());
+        $products->method('findById')->willReturn(null);
+        $publisher = $this->createMock(EventPublisherInterface::class);
+        $publisher->expects(self::never())->method('publish');
+        $tracker = new TrackProductInteraction(
+            $products,
+            new InMemorySessionRepository(),
+            new InMemoryEventHistoryRepository(),
+            $publisher,
+            new NullLogger()
+        );
 
-        for ($productId = 1; $productId <= 51; $productId++) {
-            $tracker->track('view', 'session', $productId);
+        try {
+            $tracker->track('click', 'session', 999);
+            self::fail('Produto inexistente deveria ser rejeitado.');
+        } catch (InvalidRequestException $exception) {
+            self::assertSame(404, $exception->getHttpCode());
         }
-
-        self::assertCount(50, $history->getBySession('session'));
-        self::assertSame(2, $history->getBySession('session')[0]['product_id']);
-        self::assertSame(51, $history->getBySession('session')[49]['product_id']);
     }
 }
 

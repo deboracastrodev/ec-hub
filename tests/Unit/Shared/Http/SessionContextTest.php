@@ -11,17 +11,40 @@ final class SessionContextTest extends TestCase
 {
     protected function tearDown(): void
     {
-        unset($_COOKIE[SessionContext::COOKIE_NAME]);
+        unset($_COOKIE[SessionContext::COOKIE_NAME], $_SERVER['HTTPS']);
     }
 
-    public function testReusesValidCookieValue(): void
+    public function testGeneratesOpaqueCookieWithRequiredAttributes(): void
     {
-        $sessionId = str_repeat('c', 64);
-        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $emitted = [];
+        $context = new SessionContext(static function (string $name, string $value, array $options) use (&$emitted): bool {
+            $emitted = compact('name', 'value', 'options');
 
-        $context = new SessionContext();
+            return true;
+        });
 
-        self::assertSame($sessionId, $context->id());
-        self::assertSame($sessionId, $context->id());
+        $id = $context->id();
+
+        self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $id);
+        self::assertSame(SessionContext::COOKIE_NAME, $emitted['name']);
+        self::assertSame($id, $emitted['value']);
+        self::assertTrue($emitted['options']['httponly']);
+        self::assertSame('Lax', $emitted['options']['samesite']);
+        self::assertSame('/', $emitted['options']['path']);
+    }
+
+    public function testReusesOnlyAValidServerCookie(): void
+    {
+        $id = str_repeat('c', 64);
+        $_COOKIE[SessionContext::COOKIE_NAME] = $id;
+        $emissions = 0;
+        $context = new SessionContext(static function () use (&$emissions): bool {
+            ++$emissions;
+
+            return true;
+        });
+
+        self::assertSame($id, $context->id());
+        self::assertSame(0, $emissions);
     }
 }

@@ -346,54 +346,69 @@ class GenerateRecommendations
     /** @param array<array<string, mixed>> $recommendations @return array<array<string, mixed>> */
     private function personalize(array $recommendations, ?string $sessionId, ?string $userId): array
     {
-        if ($this->history === null || (($sessionId === null || $sessionId === '') && ($userId === null || $userId === ''))) {
+        if ($this->history === null) {
+            return $recommendations;
+        }
+
+        $normalizedUserId = $userId !== null ? trim($userId) : '';
+        $normalizedSessionId = $sessionId !== null ? trim($sessionId) : '';
+        if ($normalizedUserId === '' && $normalizedSessionId === '') {
             return $recommendations;
         }
 
         try {
-            $history = $userId !== null && $userId !== ''
-                ? $this->history->getByUserId($userId)
-                : $this->history->getBySession((string) $sessionId);
+            $events = $normalizedUserId !== ''
+                ? $this->history->getByUserId($normalizedUserId)
+                : $this->history->getBySession($normalizedSessionId);
         } catch (\Throwable $exception) {
-            $this->logger->warning('Não foi possível ler histórico de recomendações.', ['error' => $exception->getMessage()]);
+            $this->logger->warning('Não foi possível ler histórico de recomendações.', [
+                'error' => $exception->getMessage(),
+            ]);
 
             return $recommendations;
         }
-        if (! is_array($history)) {
-            return $recommendations;
-        }
-        $weights = [];
-        $categories = [];
-        foreach ($history as $event) {
-            if (! is_array($event)) {
+
+        $productWeights = [];
+        $categoryWeights = [];
+        foreach ($events as $event) {
+            $productId = isset($event['product_id']) ? (int) $event['product_id'] : 0;
+            if ($productId < 1) {
                 continue;
             }
-            $id = isset($event['product_id']) ? (int) $event['product_id'] : 0;
-            if ($id > 0) {
-                $weights[$id] = ($weights[$id] ?? 0) + (($event['event'] ?? '') === 'cart.item_added' ? 3 : 1);
-                $product = $this->productRepository->findById($id);
-                if ($product !== null) {
-                    $category = $product->getCategory();
-                    $categories[$category] = ($categories[$category] ?? 0) + (($event['event'] ?? '') === 'cart.item_added' ? 3 : 1);
-                }
+            $weight = ($event['event'] ?? '') === 'cart.item_added' ? 3 : 1;
+            $productWeights[$productId] = ($productWeights[$productId] ?? 0) + $weight;
+
+            try {
+                $product = $this->productRepository->findById($productId);
+            } catch (\Throwable $exception) {
+                $this->logger->warning('Não foi possível carregar produto do histórico.', [
+                    'product_id' => $productId,
+                    'error' => $exception->getMessage(),
+                ]);
+
+                continue;
+            }
+            if ($product !== null) {
+                $category = $product->getCategory();
+                $categoryWeights[$category] = ($categoryWeights[$category] ?? 0) + $weight;
             }
         }
-        if ($weights === [] && $categories === []) {
+        if ($productWeights === [] && $categoryWeights === []) {
             return $recommendations;
         }
-        $indexed = [];
+
+        $ranked = [];
         foreach ($recommendations as $index => $recommendation) {
-            $indexed[] = ['index' => $index, 'recommendation' => $recommendation];
+            $score = ($productWeights[(int) ($recommendation['product_id'] ?? 0)] ?? 0)
+                + ($categoryWeights[(string) ($recommendation['category'] ?? '')] ?? 0);
+            $ranked[] = ['base_index' => $index, 'score' => $score, 'recommendation' => $recommendation];
         }
-        usort($indexed, static function (array $left, array $right) use ($weights, $categories): int {
-            $leftRecommendation = $left['recommendation'];
-            $rightRecommendation = $right['recommendation'];
-            $leftWeight = ($weights[(int) ($leftRecommendation['product_id'] ?? 0)] ?? 0) + ($categories[(string) ($leftRecommendation['category'] ?? '')] ?? 0);
-            $rightWeight = ($weights[(int) ($rightRecommendation['product_id'] ?? 0)] ?? 0) + ($categories[(string) ($rightRecommendation['category'] ?? '')] ?? 0);
+        usort(
+            $ranked,
+            static fn (array $left, array $right): int =>
+                ($right['score'] <=> $left['score']) ?: ($left['base_index'] <=> $right['base_index'])
+        );
 
-            return ($rightWeight <=> $leftWeight) ?: ($left['index'] <=> $right['index']);
-        });
-
-        return array_column($indexed, 'recommendation');
+        return array_column($ranked, 'recommendation');
     }
 }

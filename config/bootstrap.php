@@ -9,8 +9,8 @@ declare(strict_types=1);
  * public/index.php should only call this and delegate to the router.
  */
 
-use App\Application\Product\GetProductDetail;
 use App\Application\Event\TrackProductInteraction;
+use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\SEO\Service\MetaTagsService;

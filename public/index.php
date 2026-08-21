@@ -6,10 +6,10 @@ use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
-use App\Shared\Http\SessionContext;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Shared\Http\ErrorHandler;
 use App\Shared\Http\Router;
+use App\Shared\Http\SessionContext;
 use Psr\Container\ContainerInterface;
 use Twig\Environment;
 
@@ -94,8 +94,10 @@ try {
     if ($matchedRoute->params !== []) {
         $output = $controller->$action((string) $matchedRoute->params[0], $_GET);
     } elseif ($isApiRoute && $method === 'POST') {
-        $body = file_get_contents('php://input');
-        $payload = json_decode($body ?: '', true);
+        $rawBody = isset($GLOBALS['EC_HUB_TEST_JSON_BODY']) && is_string($GLOBALS['EC_HUB_TEST_JSON_BODY'])
+            ? $GLOBALS['EC_HUB_TEST_JSON_BODY']
+            : (file_get_contents('php://input') ?: '');
+        $payload = json_decode($rawBody, true);
         if (! is_array($payload)) {
             throw new InvalidRequestException('JSON body is required');
         }

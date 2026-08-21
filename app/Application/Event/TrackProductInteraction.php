@@ -27,8 +27,13 @@ final class TrackProductInteraction
     }
 
     /** @return array<string, mixed> */
-    public function track(string $interaction, string $sessionId, int $productId, ?string $userId = null, ?int $quantity = null): array
-    {
+    public function track(
+        string $interaction,
+        string $sessionId,
+        int $productId,
+        ?string $userId = null,
+        ?int $quantity = null
+    ): array {
         if (! isset(self::EVENTS[$interaction])) {
             throw new InvalidRequestException('interaction must be view, click or cart');
         }
@@ -39,40 +44,69 @@ final class TrackProductInteraction
             throw new InvalidRequestException('quantity must be a positive integer');
         }
 
+        $normalizedUserId = $userId !== null ? trim($userId) : '';
         $event = [
             'event' => self::EVENTS[$interaction],
             'session_id' => $sessionId,
             'product_id' => $productId,
             'timestamp' => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format(DATE_ATOM),
         ];
-        if ($userId !== null && trim($userId) !== '') {
-            $event['user_id'] = trim($userId);
+        if ($normalizedUserId !== '') {
+            $event['user_id'] = $normalizedUserId;
         }
-        if ($quantity !== null) {
+        if ($interaction === 'cart') {
             $event['quantity'] = $quantity;
+            $this->persistCart($sessionId, $productId, (int) $quantity);
         }
 
-        try {
-            if (isset($event['user_id'])) {
-                $this->sessions->save($sessionId, 'user.id', $event['user_id']);
-            }
-            $this->history->append($sessionId, $event['user_id'] ?? null, $event);
-            if ($interaction === 'cart') {
-                $items = $this->sessions->get($sessionId, 'cart.items');
-                $items = is_array($items) ? $items : [];
-                $items[(string) $productId] = ((int) ($items[(string) $productId] ?? 0)) + $quantity;
-                $this->sessions->save($sessionId, 'cart.items', $items);
-            }
-        } catch (\Throwable $exception) {
-            $this->logger->error('Não foi possível persistir interação de produto.', ['event' => $event['event'], 'error' => $exception->getMessage()]);
-        }
-
-        try {
-            $this->publisher->publish($event['event'], $event);
-        } catch (\Throwable $exception) {
-            $this->logger->error('Não foi possível publicar interação de produto.', ['event' => $event['event'], 'error' => $exception->getMessage()]);
-        }
+        $this->persistTracking($sessionId, $event);
+        $this->publish($event);
 
         return $event;
+    }
+
+    private function persistCart(string $sessionId, int $productId, int $quantity): void
+    {
+        $items = $this->sessions->get($sessionId, 'cart.items');
+        $items = is_array($items) ? $items : [];
+        $items[(string) $productId] = ((int) ($items[(string) $productId] ?? 0)) + $quantity;
+        $this->sessions->save($sessionId, 'cart.items', $items);
+    }
+
+    /** @param array<string, mixed> $event */
+    private function persistTracking(string $sessionId, array $event): void
+    {
+        if (isset($event['user_id'])) {
+            try {
+                $this->sessions->save($sessionId, 'user.id', $event['user_id']);
+            } catch (\Throwable $exception) {
+                $this->logger->error('Não foi possível associar identidade à sessão.', [
+                    'event' => $event['event'],
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            $this->history->append($sessionId, $event['user_id'] ?? null, $event);
+        } catch (\Throwable $exception) {
+            $this->logger->error('Não foi possível persistir interação de produto.', [
+                'event' => $event['event'],
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /** @param array<string, mixed> $event */
+    private function publish(array $event): void
+    {
+        try {
+            $this->publisher->publish((string) $event['event'], $event);
+        } catch (\Throwable $exception) {
+            $this->logger->error('Não foi possível publicar interação de produto.', [
+                'event' => $event['event'],
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }
