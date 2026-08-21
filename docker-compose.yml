@@ -27,8 +27,13 @@ services:
       - DB_DATABASE=ec_hub
       - DB_USERNAME=root
       - DB_PASSWORD=secret
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - ec-hub-network
 
@@ -42,6 +47,22 @@ services:
       - MYSQL_DATABASE=ec_hub
     volumes:
       - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ec-hub-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ec-hub-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - ec-hub-network
 

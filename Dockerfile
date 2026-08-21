@@ -22,7 +22,13 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy application files (will be mounted via volume)
+# Install the locked dependencies before copying the application. This keeps
+# the image self-contained for a clean `docker compose up` and caches the
+# Composer layer until composer.json or composer.lock changes.
+COPY composer.json composer.lock /var/www/html/
+RUN composer install --no-interaction --prefer-dist --no-progress
+
+# Copy application files (source directories are mounted by Compose in local development)
 COPY . /var/www/html/
 
 # Set permissions

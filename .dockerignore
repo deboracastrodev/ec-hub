@@ -1,0 +1,9 @@
+# Keep dependencies installed by the Dockerfile in the image. Copying a host
+# vendor directory would otherwise overwrite that cached Composer layer.
+vendor/
+
+# Build context noise
+.git/
+.env
+coverage.xml
+coverage.txt

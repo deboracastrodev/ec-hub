@@ -25,7 +25,7 @@ help: ## Show this help message
 
 # Docker commands
 up: ## Start Docker containers
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d --build
 	@echo "✅ Containers iniciados"
 	@echo "🔧 Execute 'make setup' para configurar o banco de dados"
 

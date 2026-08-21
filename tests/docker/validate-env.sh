@@ -28,6 +28,8 @@ REQUIRED_VARS=(
   "DB_DATABASE"
   "DB_USERNAME"
   "DB_PASSWORD"
+  "REDIS_HOST"
+  "REDIS_PORT"
 )
 
 for var in "${REQUIRED_VARS[@]}"; do
@@ -45,6 +47,13 @@ if ! grep -q "^APP_ENV=local" "$ENV_EXAMPLE"; then
   ERRORS=$((ERRORS + 1))
 else
   echo "✅ APP_ENV=local configured"
+fi
+
+if ! grep -q "REDIS_HOST" "$COMPOSE_FILE" || ! grep -q "REDIS_PORT" "$COMPOSE_FILE"; then
+  echo "❌ FAIL: Redis variables not configured for app in docker-compose.yml"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ Redis variables found in docker-compose.yml"
 fi
 
 # Check database credentials

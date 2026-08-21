@@ -11,7 +11,7 @@
 - **Catálogo de produtos** — listagem paginada, filtro por categoria, página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
 - **API de recomendações** — `GET /api/recommendations?product_id=X` devolve produtos similares via KNN (Rubix ML: `OneHotEncoder` + `MinMaxNormalizer` + `BallTree`), com fallback automático baseado em regras (categoria/popularidade) quando o catálogo é pequeno demais ou o ML falha
 - **Clean Architecture** — 4 camadas (Controller/Application/Domain/Infrastructure); o Domain não importa nenhuma biblioteca externa, nem o Rubix ML (fica atrás de uma porta, em `App\Infrastructure\ML`)
-- **PHP 8.4**, MySQL 8, Twig, servidor embutido do PHP (`php -S`) — sem Swoole, sem Redis
+- **PHP 8.4**, MySQL 8, Redis 7, Twig, servidor embutido do PHP (`php -S`) — sem Swoole
 - **137 testes** (PHPUnit 12), cobertura de linhas medida em **~81%**; a suíte sem grupo `db` passa sem Docker
 - **CI** (GitHub Actions): estilo (PSR-12), suíte sem banco, suíte completa com MySQL + cobertura
 
@@ -31,8 +31,8 @@ cd ec-hub
 
 cp .env.example .env
 
-make up      # sobe os containers (app + mysql)
-make setup   # espera o MySQL, instala dependências, roda migrations e seed
+make up      # sobe os containers (app + mysql + redis)
+make setup   # espera MySQL e Redis, instala dependências, roda migrations e seed
 
 open http://localhost:9501
 ```
@@ -111,7 +111,7 @@ Não implementado — fora do escopo atual, não abandonado no meio:
 - **Captura de eventos / sessão** — recomendações hoje são item-a-item (por `product_id`); personalização por usuário/sessão depende disso existir
 - **Dashboard `/metrics`, `/health`** — visibilidade em tempo real da arquitetura e do KNN
 - **Swoole** — servidor assíncrono com workers e coroutines (hoje: `php -S`)
-- **Redis** — Pub/Sub, cache de sessão
+- **Redis Pub/Sub e cache de sessão** — a infraestrutura Redis já está disponível no stack local; essas funcionalidades de aplicação seguem no roadmap
 - **Autenticação real** — `AUTH_REQUIRED=true` hoje só exige a *presença* do header `Authorization`, sem validar nada; é um placeholder, documentado como tal
 
 ## Troubleshooting
