@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\ProductController;
+use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
+use App\Shared\Http\SessionContext;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Shared\Http\ErrorHandler;
 use App\Shared\Http\Router;
@@ -67,6 +69,8 @@ $router = new Router(
         'GET /' => ['controller' => ProductController::class, 'action' => 'index'],
         'GET /products' => ['controller' => ProductController::class, 'action' => 'index'],
         'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
+        'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
+        'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
     ],
     [
         '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => ProductController::class, 'action' => 'show'],
@@ -88,19 +92,28 @@ $errorHandler = new ErrorHandler($container->get(Environment::class));
 
 try {
     if ($matchedRoute->params !== []) {
-        $output = $controller->$action((string) $matchedRoute->params[0]);
+        $output = $controller->$action((string) $matchedRoute->params[0], $_GET);
+    } elseif ($isApiRoute && $method === 'POST') {
+        $body = file_get_contents('php://input');
+        $payload = json_decode($body ?: '', true);
+        if (! is_array($payload)) {
+            throw new InvalidRequestException('JSON body is required');
+        }
+        $output = $controller->$action($payload);
     } else {
         $headers = function_exists('getallheaders') ? (array) getallheaders() : [];
-        $output = $controller->$action($_GET, $headers);
+        $sessionId = $container->has(SessionContext::class) ? $container->get(SessionContext::class)->id() : null;
+        $output = $controller->$action($_GET, $headers, $sessionId);
     }
 
     if ($isApiRoute) {
-        $responseTimeMs = $output['meta']['response_time_ms'] ?? 0;
-        $source = $output['meta']['source'] ?? 'unknown';
-
         header('Content-Type: application/json');
-        header('X-Recommendation-Source: ' . $source);
-        header('X-Response-Time: ' . round($responseTimeMs, 2) . 'ms');
+        if ($matchedRoute->controller === RecommendationController::class) {
+            $responseTimeMs = $output['meta']['response_time_ms'] ?? 0;
+            $source = $output['meta']['source'] ?? 'unknown';
+            header('X-Recommendation-Source: ' . $source);
+            header('X-Response-Time: ' . round($responseTimeMs, 2) . 'ms');
+        }
         echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     } else {
         header('Content-Type: text/html; charset=utf-8');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Recommendation;
 
+use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
@@ -43,7 +44,8 @@ class GenerateRecommendations
         RuleBasedFallback $fallbackService,
         LoggerInterface $logger,
         ?RecommendationSettings $settings = null,
-        ?ExplanationGenerator $explanationGenerator = null
+        ?ExplanationGenerator $explanationGenerator = null,
+        private readonly ?EventHistoryRepositoryInterface $history = null,
     ) {
         $this->productRepository = $productRepository;
         $this->knnService = $knnService;
@@ -64,7 +66,9 @@ class GenerateRecommendations
         int $targetProductId,
         int $limit = 10,
         bool $insufficientData = false,
-        ?string $fallbackStrategy = null
+        ?string $fallbackStrategy = null,
+        ?string $sessionId = null,
+        ?string $userId = null,
     ): array {
         $strategy = $fallbackStrategy ?? $this->settings->getFallbackStrategy();
 
@@ -81,7 +85,7 @@ class GenerateRecommendations
                 $fallbackResults = $this->fallbackService->getPopularRecommendations($limit);
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
 
-                return $fallbackResults;
+                return $this->personalize($fallbackResults, $sessionId, $userId);
             }
 
             // Check if we should use fallback
@@ -97,7 +101,7 @@ class GenerateRecommendations
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
                 $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
 
-                return $fallbackResults;
+                return $this->personalize($fallbackResults, $sessionId, $userId);
             }
 
             // Ensure KNN model is trained
@@ -122,7 +126,7 @@ class GenerateRecommendations
                 $formatted = $this->mergeRecommendations($formatted, $fallbackResults, $limit);
             }
 
-            return $formatted;
+            return $this->personalize($formatted, $sessionId, $userId);
 
         } catch (RecommendationException $e) {
             throw $e;
@@ -146,7 +150,7 @@ class GenerateRecommendations
             $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
             $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
 
-            return $fallbackResults;
+            return $this->personalize($fallbackResults, $sessionId, $userId);
         }
     }
 
@@ -337,5 +341,59 @@ class GenerateRecommendations
     {
         $this->productsCache = null;
         $this->modelTrained = false;
+    }
+
+    /** @param array<array<string, mixed>> $recommendations @return array<array<string, mixed>> */
+    private function personalize(array $recommendations, ?string $sessionId, ?string $userId): array
+    {
+        if ($this->history === null || (($sessionId === null || $sessionId === '') && ($userId === null || $userId === ''))) {
+            return $recommendations;
+        }
+
+        try {
+            $history = $userId !== null && $userId !== ''
+                ? $this->history->getByUserId($userId)
+                : $this->history->getBySession((string) $sessionId);
+        } catch (\Throwable $exception) {
+            $this->logger->warning('Não foi possível ler histórico de recomendações.', ['error' => $exception->getMessage()]);
+
+            return $recommendations;
+        }
+        if (! is_array($history)) {
+            return $recommendations;
+        }
+        $weights = [];
+        $categories = [];
+        foreach ($history as $event) {
+            if (! is_array($event)) {
+                continue;
+            }
+            $id = isset($event['product_id']) ? (int) $event['product_id'] : 0;
+            if ($id > 0) {
+                $weights[$id] = ($weights[$id] ?? 0) + (($event['event'] ?? '') === 'cart.item_added' ? 3 : 1);
+                $product = $this->productRepository->findById($id);
+                if ($product !== null) {
+                    $category = $product->getCategory();
+                    $categories[$category] = ($categories[$category] ?? 0) + (($event['event'] ?? '') === 'cart.item_added' ? 3 : 1);
+                }
+            }
+        }
+        if ($weights === [] && $categories === []) {
+            return $recommendations;
+        }
+        $indexed = [];
+        foreach ($recommendations as $index => $recommendation) {
+            $indexed[] = ['index' => $index, 'recommendation' => $recommendation];
+        }
+        usort($indexed, static function (array $left, array $right) use ($weights, $categories): int {
+            $leftRecommendation = $left['recommendation'];
+            $rightRecommendation = $right['recommendation'];
+            $leftWeight = ($weights[(int) ($leftRecommendation['product_id'] ?? 0)] ?? 0) + ($categories[(string) ($leftRecommendation['category'] ?? '')] ?? 0);
+            $rightWeight = ($weights[(int) ($rightRecommendation['product_id'] ?? 0)] ?? 0) + ($categories[(string) ($rightRecommendation['category'] ?? '')] ?? 0);
+
+            return ($rightWeight <=> $leftWeight) ?: ($left['index'] <=> $right['index']);
+        });
+
+        return array_column($indexed, 'recommendation');
     }
 }

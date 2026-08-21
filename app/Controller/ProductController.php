@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Application\Event\TrackProductInteraction;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\SEO\Service\MetaTagsService;
+use App\Shared\Http\SessionContext;
 
 /**
  * Product Controller
@@ -25,7 +27,9 @@ class ProductController
         GetProductList $getProductList,
         GetProductDetail $getProductDetail,
         \Twig\Environment $twig,
-        ?MetaTagsService $metaTagsService = null
+        ?MetaTagsService $metaTagsService = null,
+        private readonly ?TrackProductInteraction $tracker = null,
+        private readonly ?SessionContext $session = null,
     ) {
         $this->getProductList = $getProductList;
         $this->getProductDetail = $getProductDetail;
@@ -67,7 +71,7 @@ class ProductController
      * @param string $productIdentifier Product slug or numeric ID
      * @return string Rendered HTML
      */
-    public function show(string $productIdentifier): string
+    public function show(string $productIdentifier, array $queryParams = []): string
     {
         $product = $this->getProductDetail->executeByIdentifier($productIdentifier);
 
@@ -78,6 +82,18 @@ class ProductController
             return $this->twig->render('error/404.html.twig', [
                 'message' => 'Produto não encontrado',
             ]);
+        }
+
+        $userId = isset($queryParams['user_id']) && is_string($queryParams['user_id']) && trim($queryParams['user_id']) !== ''
+            ? trim($queryParams['user_id'])
+            : null;
+
+        if ($this->tracker !== null && $this->session !== null) {
+            try {
+                $this->tracker->track('view', $this->session->id(), (int) $product['id'], $userId);
+            } catch (\Throwable $exception) {
+                error_log('[ProductController] Falha ao registrar visualização: ' . $exception->getMessage());
+            }
         }
 
         $meta = $this->metaTagsService->generateForPage('product.detail', [
@@ -93,6 +109,7 @@ class ProductController
         return $this->twig->render('product/detail.html.twig', [
             'product' => $product,
             'meta' => $meta,
+            'user_id' => $userId ?? null,
         ]);
     }
 }

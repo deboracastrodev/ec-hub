@@ -63,6 +63,11 @@
                 </section>
                 {% endif %}
 
+                <div class="product-detail__actions" aria-label="Ações do produto"{% if user_id %} data-user-id="{{ user_id }}"{% endif %}>
+                    <button type="button" data-track-product="{{ product.id }}">Registrar interesse</button>
+                    <button type="button" data-add-cart="{{ product.id }}">Adicionar ao carrinho</button>
+                </div>
+
                 <footer class="product-detail__meta">
                     <time class="product-detail__date" datetime="{{ product.created_at|date('c') }}">
                         Cadastrado em {{ product.created_at|date('d/m/Y') }}
@@ -72,4 +77,17 @@
         </div>
     </article>
 </main>
+<script>
+document.addEventListener('click', async (event) => {
+    const click = event.target.closest('[data-track-product]');
+    const cart = event.target.closest('[data-add-cart]');
+    if (!click && !cart) return;
+    const productId = (click || cart).dataset.trackProduct || (click || cart).dataset.addCart;
+    const url = cart ? '/api/cart/items' : '/api/events';
+    const userId = (click || cart).closest('.product-detail__actions').dataset.userId;
+    const payload = cart ? {product_id: productId, quantity: 1} : {product_id: productId, interaction: 'click'};
+    if (userId) payload.user_id = userId;
+    try { await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload), credentials: 'same-origin'}); } catch (_) {}
+});
+</script>
 {% endblock %}

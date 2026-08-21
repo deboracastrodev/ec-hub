@@ -10,13 +10,16 @@ declare(strict_types=1);
  */
 
 use App\Application\Product\GetProductDetail;
+use App\Application\Event\TrackProductInteraction;
 use App\Application\Product\GetProductList;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\ProductController;
+use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
+use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
 use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
@@ -29,7 +32,9 @@ use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Infrastructure\Redis\SessionRepository;
+use App\Infrastructure\Redis\RedisEventHistoryRepository;
 use App\Shared\Container\Container;
+use App\Shared\Http\SessionContext;
 use Predis\Client;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
@@ -100,6 +105,21 @@ return new Container([
         (require __DIR__ . '/session.php')['ttl']
     ),
 
+    EventHistoryRepositoryInterface::class => fn (ContainerInterface $c) => new RedisEventHistoryRepository(
+        $c->get(Client::class),
+        (require __DIR__ . '/session.php')['ttl']
+    ),
+
+    SessionContext::class => fn () => new SessionContext(),
+
+    TrackProductInteraction::class => fn (ContainerInterface $c) => new TrackProductInteraction(
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(SessionRepositoryInterface::class),
+        $c->get(EventHistoryRepositoryInterface::class),
+        $c->get(EventPublisherInterface::class),
+        $c->get(LoggerInterface::class)
+    ),
+
     ProductRepositoryInterface::class => fn (ContainerInterface $c) => new ProductRepository(
         $c->get(PDO::class)
     ),
@@ -123,7 +143,14 @@ return new Container([
         $c->get(GetProductList::class),
         $c->get(GetProductDetail::class),
         $c->get(Environment::class),
-        $c->get(MetaTagsService::class)
+        $c->get(MetaTagsService::class),
+        $c->get(TrackProductInteraction::class),
+        $c->get(SessionContext::class)
+    ),
+
+    ProductInteractionController::class => fn (ContainerInterface $c) => new ProductInteractionController(
+        $c->get(TrackProductInteraction::class),
+        $c->get(SessionContext::class)
     ),
 
     NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
@@ -152,7 +179,8 @@ return new Container([
         $c->get(RuleBasedFallback::class),
         $c->get(LoggerInterface::class),
         $c->get(RecommendationSettings::class),
-        $c->get(ExplanationGenerator::class)
+        $c->get(ExplanationGenerator::class),
+        $c->get(EventHistoryRepositoryInterface::class)
     ),
 
     RecommendationController::class => fn (ContainerInterface $c) => new RecommendationController(

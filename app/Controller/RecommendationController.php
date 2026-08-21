@@ -59,7 +59,7 @@ class RecommendationController
      *         uncaught here; mapping a domain failure to an HTTP status is the
      *         edge's job (public/index.php), not the controller's
      */
-    public function getRecommendations(array $queryParams, ?array $headers = null): array
+    public function getRecommendations(array $queryParams, ?array $headers = null, ?string $sessionId = null): array
     {
         $startTime = microtime(true);
 
@@ -69,7 +69,10 @@ class RecommendationController
         $limit = $this->validateAndParseLimit($queryParams);
 
         // Generate recommendations
-        $recommendations = $this->generateRecommendations->execute($productId, $limit);
+        $userId = isset($queryParams['user_id']) && is_scalar($queryParams['user_id']) ? (string) $queryParams['user_id'] : null;
+        $recommendations = ($sessionId === null && $userId === null)
+            ? $this->generateRecommendations->execute($productId, $limit)
+            : $this->generateRecommendations->execute($productId, $limit, false, null, $sessionId, $userId);
 
         $responseTime = (microtime(true) - $startTime) * 1000;
 
