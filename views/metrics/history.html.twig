@@ -1,0 +1,26 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}Histórico de eventos | ec-hub{% endblock %}
+
+{% block content %}
+    <section aria-labelledby="event-history-title">
+        <h1 id="event-history-title">Histórico de eventos</h1>
+        <p id="event-history-count" aria-live="polite">Total de eventos: {{ total }}</p>
+
+        {% if events is empty %}
+            <p role="status">Nenhum evento foi registrado nesta sessão.</p>
+        {% else %}
+            <ol aria-label="Eventos da sessão, do mais recente ao mais antigo">
+                {% for item in events %}
+                    <li>
+                        <p>{{ item.event }}</p>
+                        <time datetime="{{ item.timestamp }}">{{ item.timestamp }}</time>
+                        {% if item.product_id is not null %}
+                            <p>Produto: {{ item.product_id }}</p>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ol>
+        {% endif %}
+    </section>
+{% endblock %}

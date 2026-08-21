@@ -16,6 +16,7 @@ use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
+use App\Controller\MetricsController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
@@ -151,6 +152,11 @@ return new Container([
     ProductInteractionController::class => fn (ContainerInterface $c) => new ProductInteractionController(
         $c->get(TrackProductInteraction::class),
         $c->get(SessionContext::class)
+    ),
+
+    MetricsController::class => fn (ContainerInterface $c) => new MetricsController(
+        $c->get(EventHistoryRepositoryInterface::class),
+        $c->get(Environment::class)
     ),
 
     NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),

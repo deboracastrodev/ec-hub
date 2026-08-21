@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
+use App\Controller\MetricsController;
 use App\Controller\RecommendationController;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Shared\Http\ErrorHandler;
@@ -68,6 +69,7 @@ $router = new Router(
     [
         'GET /' => ['controller' => ProductController::class, 'action' => 'index'],
         'GET /products' => ['controller' => ProductController::class, 'action' => 'index'],
+        'GET /metrics' => ['controller' => MetricsController::class, 'action' => 'index'],
         'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
         'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
         'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
