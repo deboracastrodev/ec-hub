@@ -88,7 +88,7 @@ echo "📋 Test Group 5: Environment Configuration"
 run_test ".env.example exists" "[ -f .env.example ]"
 run_test "APP_ENV=local in .env.example" "grep -q '^APP_ENV=local' .env.example"
 run_test "DB configuration in .env.example" "grep -q '^DB_HOST=' .env.example"
-run_test "Redis and session configuration in .env.example" "grep -q '^REDIS_HOST=' .env.example && grep -q '^REDIS_PORT=' .env.example && grep -q '^SESSION_TTL=' .env.example"
+run_test "Redis configuration in .env.example" "grep -q '^REDIS_HOST=' .env.example && grep -q '^REDIS_PORT=' .env.example"
 echo ""
 
 # Test 6: Network configuration
@@ -188,8 +188,8 @@ echo ""
 MYSQL_PASSED=false
 REDIS_PASSED=false
 
-run_test "App receives Redis and session environment" \
-  "docker exec ec-hub-app php -r \"exit(getenv('REDIS_HOST') === 'redis' && getenv('REDIS_PORT') === '6379' && getenv('SESSION_TTL') === '1800' ? 0 : 1);\""
+run_test "App receives Redis environment" \
+  "docker exec ec-hub-app php -r \"exit(getenv('REDIS_HOST') === 'redis' && getenv('REDIS_PORT') === '6379' ? 0 : 1);\""
 
 echo -n "Testing: App → MySQL connectivity... "
 if docker exec ec-hub-app php -r "

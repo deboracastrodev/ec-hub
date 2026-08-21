@@ -23,12 +23,9 @@ use App\Domain\Recommendation\Service\NeighborFinderInterface;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
-use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
-use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
-use Predis\Client;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -83,16 +80,6 @@ return new Container([
     ),
 
     LoggerInterface::class => fn () => new NullLogger(),
-
-    Client::class => fn () => new Client([
-        'scheme' => 'tcp',
-        ...require __DIR__ . '/redis.php',
-    ]),
-
-    SessionRepositoryInterface::class => fn (ContainerInterface $c) => new SessionRepository(
-        $c->get(Client::class),
-        (require __DIR__ . '/session.php')['ttl']
-    ),
 
     ProductRepositoryInterface::class => fn (ContainerInterface $c) => new ProductRepository(
         $c->get(PDO::class)
