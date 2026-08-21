@@ -98,6 +98,13 @@ else
   echo "✅ App Redis dependency found"
 fi
 
+if ! printf '%s\n' "$app_service" | grep -q 'SESSION_TTL=${SESSION_TTL:-1800}'; then
+  echo "❌ FAIL: App service must allow SESSION_TTL override with a default of 1800"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ App SESSION_TTL override found"
+fi
+
 if ! printf '%s\n' "$app_service" | grep -A 2 '^      mysql:' | grep -q 'condition: service_healthy'; then
   echo "❌ FAIL: App MySQL dependency must wait for service_healthy"
   ERRORS=$((ERRORS + 1))

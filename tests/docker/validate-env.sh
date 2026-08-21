@@ -30,6 +30,7 @@ REQUIRED_VARS=(
   "DB_PASSWORD"
   "REDIS_HOST"
   "REDIS_PORT"
+  "SESSION_TTL"
 )
 
 for var in "${REQUIRED_VARS[@]}"; do
@@ -52,11 +53,12 @@ fi
 app_service=$(awk '/^  app:/{in_app=1; next} in_app && /^  [[:alnum:]_-]+:/{exit} in_app {print}' "$COMPOSE_FILE")
 
 if ! printf '%s\n' "$app_service" | grep -qx '      - REDIS_HOST=redis' \
-  || ! printf '%s\n' "$app_service" | grep -qx '      - REDIS_PORT=6379'; then
-  echo "❌ FAIL: Redis variables not configured for app in docker-compose.yml"
+  || ! printf '%s\n' "$app_service" | grep -qx '      - REDIS_PORT=6379' \
+  || ! printf '%s\n' "$app_service" | grep -qx '      - SESSION_TTL=${SESSION_TTL:-1800}'; then
+  echo "❌ FAIL: Redis/session variables not configured for app in docker-compose.yml"
   ERRORS=$((ERRORS + 1))
 else
-  echo "✅ Redis variables found in docker-compose.yml"
+  echo "✅ Redis/session variables found in docker-compose.yml"
 fi
 
 # Check database credentials

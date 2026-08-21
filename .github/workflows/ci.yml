@@ -119,7 +119,7 @@ jobs:
         run: php bin/seed.php
 
       - name: PHPUnit (full suite) + coverage
-        run: vendor/bin/phpunit --coverage-clover=coverage.xml --coverage-text=coverage.txt
+        run: vendor/bin/phpunit --exclude-group redis --coverage-clover=coverage.xml --coverage-text=coverage.txt
 
       - name: PHPUnit (Redis infrastructure)
         run: vendor/bin/phpunit --group redis
