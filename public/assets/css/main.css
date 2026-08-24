@@ -277,6 +277,10 @@ a {
     grid-column: 1 / -1;
 }
 
+.dashboard__panel--impact {
+    grid-column: 1 / -1;
+}
+
 .dashboard__panel-header {
     display: flex;
     flex-wrap: wrap;
@@ -296,6 +300,36 @@ a {
 .dashboard__event-timestamp {
     color: var(--color-text-light);
     font-size: var(--font-size-sm);
+}
+
+.dashboard__panel-description {
+    color: var(--color-text-light);
+    font-size: var(--font-size-sm);
+}
+
+.dashboard__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+}
+
+.dashboard__metric {
+    min-width: 0;
+    padding: var(--spacing-sm);
+    background: var(--color-bg);
+    border-radius: calc(var(--border-radius) / 2);
+}
+
+.dashboard__metric dt {
+    color: var(--color-text-light);
+    font-size: var(--font-size-sm);
+}
+
+.dashboard__metric dd {
+    margin: var(--spacing-xs) 0 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
 }
 
 .dashboard__empty {

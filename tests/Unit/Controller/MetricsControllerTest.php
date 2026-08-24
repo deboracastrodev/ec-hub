@@ -6,6 +6,7 @@ namespace Tests\Unit\Controller;
 
 use App\Controller\MetricsController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
 use PHPUnit\Framework\TestCase;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
@@ -60,15 +61,103 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('class="dashboard"', $html);
         self::assertStringContainsString('Total de eventos: 0', $html);
         self::assertStringContainsString('Nenhum evento foi registrado nesta sessão.', $html);
+        self::assertStringContainsString('ML: indisponível', $html);
+        self::assertStringContainsString('Latência: —', $html);
+        self::assertStringContainsString('Confiança média: —', $html);
+        self::assertStringContainsString('Recomendações: 0', $html);
     }
 
-    private function controller(EventHistoryRepositoryInterface $history): MetricsController
+    public function testItRendersRecordedRecommendationSnapshot(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository([
+            'recommendation.snapshot' => [
+                'source' => 'ml',
+                'latency_ms' => 12.34,
+                'avg_confidence' => 87.5,
+                'count' => 2,
+                'generated_at' => '2026-08-24T12:00:00+00:00',
+            ],
+        ]);
+        $controller = $this->controller(new MetricsInMemoryHistoryRepository([
+            ['event' => 'product.viewed', 'timestamp' => '2026-08-24T11:00:00+00:00'],
+        ]), $sessions);
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertSame('current-session', $sessions->queriedSessionId);
+        self::assertStringContainsString('ML: ativo', $html);
+        self::assertStringContainsString('12,34 ms', $html);
+        self::assertStringContainsString('87,50%', $html);
+        self::assertStringContainsString('Total de eventos: 1', $html);
+        self::assertStringContainsString('Recomendações: 2', $html);
+    }
+
+    public function testItTreatsUnreadableSnapshotAsUnavailable(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            new MetricsInMemorySessionRepository([], true)
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('ML: indisponível', $html);
+        self::assertStringContainsString('Recomendações: 0', $html);
+    }
+
+    public function testItTreatsInvalidSnapshotFieldsAsUnavailable(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            new MetricsInMemorySessionRepository([
+                'recommendation.snapshot' => [
+                    'source' => 'unknown',
+                    'latency_ms' => -1,
+                    'avg_confidence' => 101,
+                    'count' => 1,
+                    'generated_at' => '2026-08-24T12:00:00+00:00',
+                ],
+            ])
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('ML: indisponível', $html);
+        self::assertStringContainsString('Latência: —', $html);
+    }
+
+    private function controller(EventHistoryRepositoryInterface $history, ?SessionRepositoryInterface $sessions = null): MetricsController
     {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
             'strict_variables' => true,
         ]);
 
-        return new MetricsController($history, $twig);
+        return new MetricsController($history, $twig, $sessions);
+    }
+}
+
+final class MetricsInMemorySessionRepository implements SessionRepositoryInterface
+{
+    public ?string $queriedSessionId = null;
+
+    /** @param array<string, mixed> $data */
+    public function __construct(private array $data, private readonly bool $throwsOnGet = false)
+    {
+    }
+
+    public function save(string $sessionId, string $field, mixed $value): void
+    {
+        $this->data[$field] = $value;
+    }
+
+    public function get(string $sessionId, string $field): mixed
+    {
+        $this->queriedSessionId = $sessionId;
+        if ($this->throwsOnGet) {
+            throw new \UnexpectedValueException('Snapshot inválido.');
+        }
+
+        return $this->data[$field] ?? null;
     }
 }
 

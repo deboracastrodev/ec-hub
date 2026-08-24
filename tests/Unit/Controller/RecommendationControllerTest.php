@@ -8,6 +8,7 @@ use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\RecommendationController;
 use App\Domain\Recommendation\Exception\RecommendationException;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -352,6 +353,52 @@ class RecommendationControllerTest extends TestCase
         $this->assertSame(2, $firstRec['product_id']);
     }
 
+    public function testItPersistsRecommendationSnapshotForSession(): void
+    {
+        $sessions = new RecommendationInMemorySessionRepository();
+        $controller = new RecommendationController(
+            $this->mockGenerateRecommendations,
+            $this->mockLogger,
+            $sessions
+        );
+        $this->mockGenerateRecommendations->expects($this->once())
+            ->method('execute')
+            ->with(1, 10, false, null, 'current-session', null)
+            ->willReturn([
+                ['product_id' => 2, 'score' => 80.0],
+                ['product_id' => 3, 'score' => 60.0],
+            ]);
+
+        $response = $controller->getRecommendations(['product_id' => '1'], null, 'current-session');
+
+        self::assertSame('current-session', $sessions->savedSessionId);
+        self::assertSame('recommendation.snapshot', $sessions->savedField);
+        self::assertSame('ml', $sessions->savedValue['source']);
+        self::assertSame(70.0, $sessions->savedValue['avg_confidence']);
+        self::assertSame($response['meta']['count'], $sessions->savedValue['count']);
+        self::assertSame($response['meta']['generated_at'], $sessions->savedValue['generated_at']);
+    }
+
+    public function testSnapshotPersistenceFailureDoesNotPreventResponse(): void
+    {
+        $sessions = new RecommendationInMemorySessionRepository(true);
+        $controller = new RecommendationController(
+            $this->mockGenerateRecommendations,
+            $this->mockLogger,
+            $sessions
+        );
+        $this->mockGenerateRecommendations->expects($this->once())
+            ->method('execute')
+            ->willReturn([]);
+        $this->mockLogger->expects($this->once())
+            ->method('error')
+            ->with('Não foi possível persistir o snapshot de recomendação.', $this->arrayHasKey('error'));
+
+        $response = $controller->getRecommendations(['product_id' => '1'], null, 'current-session');
+
+        self::assertSame(0, $response['meta']['count']);
+    }
+
     public function testGetRecommendationsThrowsUnauthorizedWhenAuthRequired(): void
     {
         putenv('AUTH_REQUIRED=true');
@@ -364,5 +411,32 @@ class RecommendationControllerTest extends TestCase
         } finally {
             putenv('AUTH_REQUIRED'); // cleanup
         }
+    }
+}
+
+final class RecommendationInMemorySessionRepository implements SessionRepositoryInterface
+{
+    public ?string $savedSessionId = null;
+    public ?string $savedField = null;
+    /** @var array<string, mixed> */
+    public array $savedValue = [];
+
+    public function __construct(private readonly bool $throwsOnSave = false)
+    {
+    }
+
+    public function save(string $sessionId, string $field, mixed $value): void
+    {
+        if ($this->throwsOnSave) {
+            throw new \RuntimeException('Redis indisponível.');
+        }
+        $this->savedSessionId = $sessionId;
+        $this->savedField = $field;
+        $this->savedValue = $value;
+    }
+
+    public function get(string $sessionId, string $field): mixed
+    {
+        return null;
     }
 }

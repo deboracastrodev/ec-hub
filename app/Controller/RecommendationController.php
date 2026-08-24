@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Recommendation\Exception\RecommendationException;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -37,7 +38,8 @@ class RecommendationController
 
     public function __construct(
         GenerateRecommendations $generateRecommendations,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        private readonly ?SessionRepositoryInterface $sessions = null,
     ) {
         $this->generateRecommendations = $generateRecommendations;
         $this->logger = $logger;
@@ -91,7 +93,13 @@ class RecommendationController
         }
 
         // Format response (AC1, AC8)
-        return $this->formatResponse($recommendations, $responseTime);
+        $response = $this->formatResponse($recommendations, $responseTime);
+
+        if ($sessionId !== null) {
+            $this->persistRecommendationSnapshot($sessionId, $response);
+        }
+
+        return $response;
     }
 
     /**
@@ -212,6 +220,39 @@ class RecommendationController
                 'generated_at' => date('c'),
             ],
         ];
+    }
+
+    /** @param array<string, mixed> $response */
+    private function persistRecommendationSnapshot(string $sessionId, array $response): void
+    {
+        if ($this->sessions === null) {
+            return;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $scores = [];
+        foreach ($data as $recommendation) {
+            if (is_array($recommendation) && is_numeric($recommendation['score'] ?? null)) {
+                $scores[] = (float) $recommendation['score'];
+            }
+        }
+
+        $meta = is_array($response['meta'] ?? null) ? $response['meta'] : [];
+        $snapshot = [
+            'source' => is_string($meta['source'] ?? null) ? $meta['source'] : 'unknown',
+            'latency_ms' => is_numeric($meta['response_time_ms'] ?? null) ? (float) $meta['response_time_ms'] : 0.0,
+            'avg_confidence' => $scores === [] ? 0.0 : round(array_sum($scores) / count($scores), 2),
+            'count' => is_int($meta['count'] ?? null) ? $meta['count'] : count($data),
+            'generated_at' => is_string($meta['generated_at'] ?? null) ? $meta['generated_at'] : date(DATE_ATOM),
+        ];
+
+        try {
+            $this->sessions->save($sessionId, 'recommendation.snapshot', $snapshot);
+        } catch (\Throwable $exception) {
+            $this->logger->error('Não foi possível persistir o snapshot de recomendação.', [
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**

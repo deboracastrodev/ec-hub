@@ -134,6 +134,9 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('<header class="dashboard__header">', $output);
         $this->assertStringContainsString('ec-hub - System Metrics Dashboard', $output);
         $this->assertStringContainsString('<h2 class="dashboard__panel-title" id="event-history-title">Histórico de eventos</h2>', $output);
+        $this->assertStringContainsString('<section class="dashboard__panel dashboard__panel--impact" aria-labelledby="impact-panel-title">', $output);
+        $this->assertStringContainsString('<dl class="dashboard__metrics" aria-label="Indicadores da recomendação">', $output);
+        $this->assertStringContainsString('ML: indisponível', $output);
         $this->assertStringContainsString('class="dashboard__event-list"', $output);
         $this->assertStringContainsString('.dashboard__grid {', $stylesheet);
         $this->assertStringContainsString('grid-template-columns: minmax(0, 1fr);', $stylesheet);
@@ -141,6 +144,8 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('grid-template-columns: repeat(2, minmax(0, 1fr));', $stylesheet);
         $this->assertStringContainsString("@media (min-width: 1024px) {\n    .dashboard__grid {", $stylesheet);
         $this->assertStringContainsString('grid-template-columns: repeat(3, minmax(0, 1fr));', $stylesheet);
+        $this->assertStringContainsString('.dashboard__metrics {', $stylesheet);
+        $this->assertStringContainsString('grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));', $stylesheet);
     }
 }
 

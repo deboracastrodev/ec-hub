@@ -6,6 +6,7 @@ namespace Tests\Integration\Controller;
 
 use App\Controller\MetricsController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
 use App\Shared\Http\SessionContext;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -80,9 +81,48 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('ec-hub - System Metrics Dashboard', $html);
         self::assertStringContainsString('Total de eventos: 0', $html);
         self::assertStringContainsString('<p class="dashboard__empty" role="status">Nenhum evento foi registrado nesta sessão.</p>', $html);
+        self::assertStringContainsString('ML: indisponível', $html);
+        self::assertStringContainsString('Latência: —', $html);
+        self::assertStringContainsString('Confiança média: —', $html);
+        self::assertStringContainsString('Recomendações: 0', $html);
     }
 
-    private function installContainer(EventHistoryRepositoryInterface $history): void
+    #[RunInSeparateProcess]
+    public function testMetricsRouteRendersCurrentSessionRecommendationSnapshot(): void
+    {
+        $sessionId = str_repeat('d', 64);
+        $sessions = new HttpMetricsSessionRepository([
+            $sessionId => [
+                'recommendation.snapshot' => [
+                    'source' => 'rules',
+                    'latency_ms' => 14.5,
+                    'avg_confidence' => 64.0,
+                    'count' => 3,
+                    'generated_at' => '2026-08-24T12:00:00+00:00',
+                ],
+            ],
+        ]);
+        $this->installContainer(new HttpMetricsHistoryRepository([$sessionId => []]), $sessions);
+        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/metrics';
+        $_GET = [];
+        header_remove();
+        http_response_code(200);
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $html = (string) ob_get_clean();
+
+        self::assertSame($sessionId, $sessions->queriedSessionId);
+        self::assertStringContainsString('ML: inativo (fallback)', $html);
+        self::assertStringContainsString('14,50 ms', $html);
+        self::assertStringContainsString('64,00%', $html);
+        self::assertStringContainsString('Recomendações: 3', $html);
+    }
+
+    private function installContainer(EventHistoryRepositoryInterface $history, ?SessionRepositoryInterface $sessions = null): void
     {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
             'strict_variables' => true,
@@ -90,8 +130,30 @@ final class MetricsHttpEndpointTest extends TestCase
         $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
             Environment::class => fn () => $twig,
             SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
-            MetricsController::class => fn () => new MetricsController($history, $twig),
+            MetricsController::class => fn () => new MetricsController($history, $twig, $sessions),
         ]);
+    }
+}
+
+final class HttpMetricsSessionRepository implements SessionRepositoryInterface
+{
+    public ?string $queriedSessionId = null;
+
+    /** @param array<string, array<string, mixed>> $sessions */
+    public function __construct(private array $sessions)
+    {
+    }
+
+    public function save(string $sessionId, string $field, mixed $value): void
+    {
+        $this->sessions[$sessionId][$field] = $value;
+    }
+
+    public function get(string $sessionId, string $field): mixed
+    {
+        $this->queriedSessionId = $sessionId;
+
+        return $this->sessions[$sessionId][$field] ?? null;
     }
 }
 

@@ -6,7 +6,9 @@ namespace Tests\Integration\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\RecommendationController;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
+use App\Shared\Http\SessionContext;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -67,5 +69,97 @@ class RecommendationHttpEndpointTest extends TestCase
         $this->assertArrayHasKey('response_time_ms', $decoded['meta']);
 
         unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testApiEndpointPersistsSnapshotForCurrentSession(): void
+    {
+        header_remove();
+        http_response_code(200);
+        $generateRecommendations = $this->createMock(GenerateRecommendations::class);
+        $generateRecommendations->expects($this->once())
+            ->method('execute')
+            ->with(1, 10, false, null, str_repeat('e', 64), null)
+            ->willReturn([['product_id' => 22, 'score' => 75.0]]);
+        $sessions = new HttpRecommendationSessionRepository();
+        $controller = new RecommendationController($generateRecommendations, new NullLogger(), $sessions);
+        $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'));
+        $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
+            Environment::class => fn () => $twig,
+            SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
+            RecommendationController::class => fn () => $controller,
+        ]);
+        $sessionId = str_repeat('e', 64);
+        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api/recommendations?product_id=1';
+        $_GET = ['product_id' => '1'];
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $decoded = json_decode((string) ob_get_clean(), true);
+
+        self::assertSame(200, http_response_code());
+        self::assertSame('recommendation.snapshot', $sessions->savedField);
+        self::assertSame('ml', $sessions->savedValue['source']);
+        self::assertSame(75.0, $sessions->savedValue['avg_confidence']);
+        self::assertSame(1, $decoded['meta']['count']);
+        unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
+    }
+
+    #[RunInSeparateProcess]
+    public function testApiEndpointReturns200WhenSnapshotPersistenceFails(): void
+    {
+        header_remove();
+        http_response_code(200);
+        $generateRecommendations = $this->createMock(GenerateRecommendations::class);
+        $generateRecommendations->expects($this->once())->method('execute')->willReturn([]);
+        $controller = new RecommendationController($generateRecommendations, new NullLogger(), new HttpRecommendationSessionRepository(true));
+        $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'));
+        $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
+            Environment::class => fn () => $twig,
+            SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
+            RecommendationController::class => fn () => $controller,
+        ]);
+        $sessionId = str_repeat('f', 64);
+        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api/recommendations?product_id=1';
+        $_GET = ['product_id' => '1'];
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $decoded = json_decode((string) ob_get_clean(), true);
+
+        self::assertSame(200, http_response_code());
+        self::assertSame(0, $decoded['meta']['count']);
+        unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
+    }
+}
+
+final class HttpRecommendationSessionRepository implements SessionRepositoryInterface
+{
+    public ?string $savedField = null;
+    /** @var array<string, mixed> */
+    public array $savedValue = [];
+
+    public function __construct(private readonly bool $throwsOnSave = false)
+    {
+    }
+
+    public function save(string $sessionId, string $field, mixed $value): void
+    {
+        if ($this->throwsOnSave) {
+            throw new \RuntimeException('Redis indisponível.');
+        }
+        $this->savedField = $field;
+        $this->savedValue = $value;
+    }
+
+    public function get(string $sessionId, string $field): mixed
+    {
+        return null;
     }
 }

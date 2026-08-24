@@ -11,6 +11,36 @@
         </header>
 
         <div class="dashboard__grid">
+            <section class="dashboard__panel dashboard__panel--impact" aria-labelledby="impact-panel-title">
+                <header class="dashboard__panel-header">
+                    <h2 class="dashboard__panel-title" id="impact-panel-title">Impacto da recomendação</h2>
+                    <p class="dashboard__panel-description">Última recomendação registrada nesta sessão.</p>
+                </header>
+
+                <dl class="dashboard__metrics" aria-label="Indicadores da recomendação">
+                    <div class="dashboard__metric">
+                        <dt>Status do ML</dt>
+                        <dd>{% if recommendation is null %}ML: indisponível{% elseif recommendation.source == 'ml' %}ML: ativo{% else %}ML: inativo (fallback){% endif %}</dd>
+                    </div>
+                    <div class="dashboard__metric">
+                        <dt>Latência</dt>
+                        <dd>{% if recommendation is null %}Latência: —{% else %}{{ recommendation.latency_ms|number_format(2, ',', '.') }} ms{% endif %}</dd>
+                    </div>
+                    <div class="dashboard__metric">
+                        <dt>Confiança média</dt>
+                        <dd>{% if recommendation is null or recommendation.count == 0 %}Confiança média: —{% else %}{{ recommendation.avg_confidence|number_format(2, ',', '.') }}%{% endif %}</dd>
+                    </div>
+                    <div class="dashboard__metric">
+                        <dt>Total de eventos</dt>
+                        <dd>Total de eventos: {{ total }}</dd>
+                    </div>
+                    <div class="dashboard__metric">
+                        <dt>Recomendações</dt>
+                        <dd>{% if recommendation is null %}Recomendações: 0{% else %}Recomendações: {{ recommendation.count }}{% endif %}</dd>
+                    </div>
+                </dl>
+            </section>
+
             <section class="dashboard__panel dashboard__panel--history" aria-labelledby="event-history-title">
                 <header class="dashboard__panel-header">
                     <h2 class="dashboard__panel-title" id="event-history-title">Histórico de eventos</h2>

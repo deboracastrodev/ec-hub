@@ -158,7 +158,8 @@ return new Container([
 
     MetricsController::class => fn (ContainerInterface $c) => new MetricsController(
         $c->get(EventHistoryRepositoryInterface::class),
-        $c->get(Environment::class)
+        $c->get(Environment::class),
+        $c->get(SessionRepositoryInterface::class)
     ),
 
     NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
@@ -193,6 +194,7 @@ return new Container([
 
     RecommendationController::class => fn (ContainerInterface $c) => new RecommendationController(
         $c->get(GenerateRecommendations::class),
-        $c->get(LoggerInterface::class)
+        $c->get(LoggerInterface::class),
+        $c->get(SessionRepositoryInterface::class)
     ),
 ]);

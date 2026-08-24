@@ -6,6 +6,7 @@ namespace Tests\Integration\Controller;
 
 use App\Controller\MetricsController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
 use PDO;
 use PHPUnit\Framework\TestCase;
@@ -32,6 +33,7 @@ final class MetricsBootstrapConfigurationTest extends TestCase
                 Client::class,
                 EventHistoryRepositoryInterface::class,
                 Environment::class,
+                SessionRepositoryInterface::class,
                 MetricsController::class,
             ], array_keys($this->instancesOf($container)));
             self::assertArrayNotHasKey(PDO::class, $this->instancesOf($container));
