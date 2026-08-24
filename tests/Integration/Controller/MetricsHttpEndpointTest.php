@@ -53,6 +53,8 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('cart.item_added', $html);
         self::assertStringContainsString('product.clicked', $html);
         self::assertStringContainsString('Produto: 8', $html);
+        self::assertStringContainsString('<h2 class="dashboard__panel-title" id="current-session-title">Current Session</h2>', $html);
+        self::assertStringContainsString('Produto: 7', $html);
         self::assertStringNotContainsString('Produto: 999', $html);
         self::assertStringNotContainsString('2026-08-21T13:00:00+00:00', $html);
         self::assertLessThan(strpos($html, 'product.clicked'), strpos($html, 'cart.item_added'));
@@ -94,11 +96,14 @@ final class MetricsHttpEndpointTest extends TestCase
         $sessions = new HttpMetricsSessionRepository([
             $sessionId => [
                 'recommendation.snapshot' => [
-                    'source' => 'rules',
-                    'latency_ms' => 14.5,
-                    'avg_confidence' => 64.0,
-                    'count' => 3,
-                    'generated_at' => '2026-08-24T12:00:00+00:00',
+                    'current' => [
+                        'source' => 'rules',
+                        'latency_ms' => 14.5,
+                        'avg_confidence' => 64.0,
+                        'count' => 3,
+                        'generated_at' => '2026-08-24T12:00:00+00:00',
+                        'product_ids' => [2, 3, 4],
+                    ],
                 ],
             ],
         ]);
@@ -120,6 +125,7 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('14,50 ms', $html);
         self::assertStringContainsString('64,00%', $html);
         self::assertStringContainsString('Recomendações: 3', $html);
+        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
     }
 
     private function installContainer(EventHistoryRepositoryInterface $history, ?SessionRepositoryInterface $sessions = null): void

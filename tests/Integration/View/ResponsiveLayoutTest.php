@@ -138,6 +138,9 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('<dl class="dashboard__metrics" aria-label="Indicadores da recomendação">', $output);
         $this->assertStringContainsString('ML: indisponível', $output);
         $this->assertStringContainsString('class="dashboard__event-list"', $output);
+        $this->assertStringContainsString('<details class="dashboard__disclosure">', $output);
+        $this->assertStringContainsString('Current Session', $output);
+        $this->assertStringContainsString('.dashboard__disclosure-control {', $stylesheet);
         $this->assertStringContainsString('.dashboard__grid {', $stylesheet);
         $this->assertStringContainsString('grid-template-columns: minmax(0, 1fr);', $stylesheet);
         $this->assertStringContainsString("@media (min-width: 768px) {\n    .dashboard {", $stylesheet);

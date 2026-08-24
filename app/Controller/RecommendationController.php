@@ -238,15 +238,41 @@ class RecommendationController
         }
 
         $meta = is_array($response['meta'] ?? null) ? $response['meta'] : [];
-        $snapshot = [
+        $productIds = [];
+        foreach ($data as $recommendation) {
+            $productId = is_array($recommendation) ? ($recommendation['product_id'] ?? null) : null;
+            if (is_int($productId) || is_string($productId)) {
+                $productIds[] = $productId;
+            }
+        }
+
+        $current = [
             'source' => is_string($meta['source'] ?? null) ? $meta['source'] : 'unknown',
             'latency_ms' => is_numeric($meta['response_time_ms'] ?? null) ? (float) $meta['response_time_ms'] : 0.0,
             'avg_confidence' => $scores === [] ? 0.0 : round(array_sum($scores) / count($scores), 2),
             'count' => is_int($meta['count'] ?? null) ? $meta['count'] : count($data),
             'generated_at' => is_string($meta['generated_at'] ?? null) ? $meta['generated_at'] : date(DATE_ATOM),
+            'product_ids' => $productIds,
         ];
 
+        $previous = null;
+
         try {
+            $existing = $this->sessions->get($sessionId, 'recommendation.snapshot');
+            $previous = is_array($existing) && is_array($existing['current'] ?? null)
+                ? $existing['current']
+                : null;
+        } catch (\Throwable) {
+            // Uma leitura indisponível não deve impedir o registro da nova recomendação.
+        }
+
+        $snapshot = ['current' => $current];
+        if ($previous !== null) {
+            $snapshot['previous'] = $previous;
+        }
+
+        try {
+            // O par inteiro é salvo de uma só vez no mesmo campo de sessão.
             $this->sessions->save($sessionId, 'recommendation.snapshot', $snapshot);
         } catch (\Throwable $exception) {
             $this->logger->error('Não foi possível persistir o snapshot de recomendação.', [
