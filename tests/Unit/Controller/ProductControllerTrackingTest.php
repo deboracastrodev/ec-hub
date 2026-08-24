@@ -22,7 +22,7 @@ final class ProductControllerTrackingTest extends TestCase
 {
     protected function tearDown(): void
     {
-        unset($_COOKIE[SessionContext::COOKIE_NAME]);
+        unset($_COOKIE[SessionContext::COOKIE_NAME], $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME]);
     }
 
     public function testShowTracksViewAndStillRendersWhenRedisFails(): void
@@ -40,9 +40,9 @@ final class ProductControllerTrackingTest extends TestCase
 
                 throw new \RuntimeException('Redis indisponível');
             });
-        $cookie = null;
-        $session = new SessionContext(static function (string $name, string $value, array $options) use (&$cookie): bool {
-            $cookie = compact('name', 'value', 'options');
+        $cookies = [];
+        $session = new SessionContext('phpunit-only-session-cookie-secret-32', static function (string $name, string $value, array $options) use (&$cookies): bool {
+            $cookies[$name] = compact('name', 'value', 'options');
 
             return true;
         });
@@ -58,12 +58,13 @@ final class ProductControllerTrackingTest extends TestCase
         );
 
         self::assertSame('<html></html>', $controller->show('prod', ['user_id' => 'user-1']));
-        self::assertSame($cookie['value'], $publishedEvent['session_id']);
+        self::assertSame($cookies[SessionContext::COOKIE_NAME]['value'], $publishedEvent['session_id']);
         self::assertSame('user-1', $publishedEvent['user_id']);
         self::assertSame(7, $publishedEvent['product_id']);
         self::assertArrayHasKey('timestamp', $publishedEvent);
-        self::assertTrue($cookie['options']['httponly']);
-        self::assertSame('Lax', $cookie['options']['samesite']);
+        self::assertTrue($cookies[SessionContext::COOKIE_NAME]['options']['httponly']);
+        self::assertSame('Lax', $cookies[SessionContext::COOKIE_NAME]['options']['samesite']);
+        self::assertArrayHasKey(SessionContext::SIGNATURE_COOKIE_NAME, $cookies);
     }
 
     private function tracker(EventPublisherInterface $publisher): TrackProductInteraction

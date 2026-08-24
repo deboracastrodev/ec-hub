@@ -31,6 +31,7 @@ REQUIRED_VARS=(
   "REDIS_HOST"
   "REDIS_PORT"
   "SESSION_TTL"
+  "SESSION_COOKIE_SECRET"
 )
 
 for var in "${REQUIRED_VARS[@]}"; do
@@ -59,6 +60,13 @@ if ! printf '%s\n' "$app_service" | grep -qx '      - REDIS_HOST=redis' \
   ERRORS=$((ERRORS + 1))
 else
   echo "✅ Redis/session variables found in docker-compose.yml"
+fi
+
+if ! printf '%s\n' "$app_service" | grep -qx '      - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:?SESSION_COOKIE_SECRET must be configured}'; then
+  echo "❌ FAIL: Session cookie secret is not configured for app in docker-compose.yml"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "✅ Session cookie secret found in docker-compose.yml"
 fi
 
 # Check database credentials

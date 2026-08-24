@@ -19,7 +19,10 @@ final class SessionRepositoryConfigurationTest extends TestCase
         putenv('SESSION_TTL');
 
         try {
-            self::assertSame(['ttl' => 1800], require dirname(__DIR__, 4) . '/config/session.php');
+            $config = require dirname(__DIR__, 4) . '/config/session.php';
+
+            self::assertSame(1800, $config['ttl']);
+            self::assertSame('phpunit-only-session-cookie-secret-32', $config['cookie_secret']);
         } finally {
             putenv($previousTtl === false ? 'SESSION_TTL' : "SESSION_TTL={$previousTtl}");
         }
@@ -42,6 +45,26 @@ final class SessionRepositoryConfigurationTest extends TestCase
             }
         } finally {
             putenv($previousTtl === false ? 'SESSION_TTL' : "SESSION_TTL={$previousTtl}");
+        }
+    }
+
+    public function test_session_configuration_rejects_a_missing_or_short_cookie_secret(): void
+    {
+        $previousSecret = getenv('SESSION_COOKIE_SECRET');
+
+        try {
+            foreach (['', 'short-secret'] as $invalidSecret) {
+                putenv("SESSION_COOKIE_SECRET={$invalidSecret}");
+
+                try {
+                    require dirname(__DIR__, 4) . '/config/session.php';
+                    self::fail('SESSION_COOKIE_SECRET inválido deveria ser rejeitado.');
+                } catch (\InvalidArgumentException) {
+                    self::addToAssertionCount(1);
+                }
+            }
+        } finally {
+            putenv($previousSecret === false ? 'SESSION_COOKIE_SECRET' : "SESSION_COOKIE_SECRET={$previousSecret}");
         }
     }
 

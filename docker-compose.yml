@@ -30,6 +30,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - SESSION_TTL=${SESSION_TTL:-1800}
+      - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:?SESSION_COOKIE_SECRET must be configured}
     depends_on:
       mysql:
         condition: service_healthy

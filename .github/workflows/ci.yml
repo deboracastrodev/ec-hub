@@ -60,8 +60,16 @@ jobs:
   docker-compose-integration:
     name: Docker Compose integration
     runs-on: ubuntu-latest
+    env:
+      SESSION_COOKIE_SECRET: ci-docker-compose-session-cookie-secret-32
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: ./tests/docker/validate-docker-compose.sh
+
+      - name: Validate .env.example
+        run: ./tests/docker/validate-env.sh
 
       - name: Run Docker Compose integration verification
         run: ./tests/docker/integration-test.sh

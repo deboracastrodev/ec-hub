@@ -132,8 +132,13 @@ final class ProductInteractionHttpEndpointTest extends TestCase
             new NullLogger()
         );
         $_COOKIE[SessionContext::COOKIE_NAME] = str_repeat('d', 64);
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac(
+            'sha256',
+            $_COOKIE[SessionContext::COOKIE_NAME],
+            'phpunit-only-session-cookie-secret-32'
+        );
 
-        return new ProductInteractionController($tracker, new SessionContext());
+        return new ProductInteractionController($tracker, new SessionContext('phpunit-only-session-cookie-secret-32'));
     }
 
     private function installContainer(ProductInteractionController $controller): void

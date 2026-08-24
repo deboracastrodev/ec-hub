@@ -32,6 +32,7 @@ final class MetricsHttpEndpointTest extends TestCase
         ]);
         $this->installContainer($history);
         $_COOKIE[SessionContext::COOKIE_NAME] = $sessionOne;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionOne, 'phpunit-only-session-cookie-secret-32');
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/metrics';
         $_GET = [];
@@ -60,6 +61,7 @@ final class MetricsHttpEndpointTest extends TestCase
         $history = new HttpMetricsHistoryRepository([$sessionId => []]);
         $this->installContainer($history);
         $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/metrics';
         $_GET = [];
@@ -83,7 +85,7 @@ final class MetricsHttpEndpointTest extends TestCase
         ]);
         $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
             Environment::class => fn () => $twig,
-            SessionContext::class => fn () => new SessionContext(),
+            SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
             MetricsController::class => fn () => new MetricsController($history, $twig),
         ]);
     }

@@ -57,6 +57,8 @@ $envRepository = \Dotenv\Repository\RepositoryBuilder::createWithDefaultAdapters
 
 \Dotenv\Dotenv::create($envRepository, dirname(__DIR__))->safeLoad();
 
+$sessionConfig = require __DIR__ . '/session.php';
+
 // A PSR-11 container (R5.7): every entry is a factory keyed by FQCN,
 // resolved lazily and memoized on first use. This is what keeps a request
 // that never needs the database (static assets, 404s) from opening a PDO
@@ -103,15 +105,15 @@ return new Container([
 
     SessionRepositoryInterface::class => fn (ContainerInterface $c) => new SessionRepository(
         $c->get(Client::class),
-        (require __DIR__ . '/session.php')['ttl']
+        $sessionConfig['ttl']
     ),
 
     EventHistoryRepositoryInterface::class => fn (ContainerInterface $c) => new RedisEventHistoryRepository(
         $c->get(Client::class),
-        (require __DIR__ . '/session.php')['ttl']
+        $sessionConfig['ttl']
     ),
 
-    SessionContext::class => fn () => new SessionContext(),
+    SessionContext::class => fn () => new SessionContext($sessionConfig['cookie_secret']),
 
     TrackProductInteraction::class => fn (ContainerInterface $c) => new TrackProductInteraction(
         $c->get(ProductRepositoryInterface::class),
