@@ -6,7 +6,9 @@ namespace Tests\Integration\View;
 
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
+use App\Controller\MetricsController;
 use App\Controller\ProductController;
+use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
 use PHPUnit\Framework\TestCase;
@@ -116,5 +118,50 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('class="product-listing__title"', $output);
         $this->assertStringContainsString('class="product-listing__count"', $output);
         $this->assertStringContainsString('class="product-grid"', $output);
+    }
+
+    public function test_metrics_dashboard_is_semantic_and_uses_responsive_grid(): void
+    {
+        $history = new ResponsiveMetricsHistoryRepository([
+            ['event' => 'product.viewed', 'product_id' => 7, 'timestamp' => '2026-08-21T10:00:00+00:00'],
+        ]);
+        $controller = new MetricsController($history, $this->twig);
+
+        $output = $controller->index([], [], 'current-session');
+        $stylesheet = (string) file_get_contents(__DIR__ . '/../../../public/assets/css/main.css');
+
+        $this->assertStringContainsString('<section class="dashboard" aria-labelledby="metrics-dashboard-title">', $output);
+        $this->assertStringContainsString('<header class="dashboard__header">', $output);
+        $this->assertStringContainsString('ec-hub - System Metrics Dashboard', $output);
+        $this->assertStringContainsString('<h2 class="dashboard__panel-title" id="event-history-title">Histórico de eventos</h2>', $output);
+        $this->assertStringContainsString('class="dashboard__event-list"', $output);
+        $this->assertStringContainsString('.dashboard__grid {', $stylesheet);
+        $this->assertStringContainsString('grid-template-columns: minmax(0, 1fr);', $stylesheet);
+        $this->assertStringContainsString("@media (min-width: 768px) {\n    .dashboard {", $stylesheet);
+        $this->assertStringContainsString('grid-template-columns: repeat(2, minmax(0, 1fr));', $stylesheet);
+        $this->assertStringContainsString("@media (min-width: 1024px) {\n    .dashboard__grid {", $stylesheet);
+        $this->assertStringContainsString('grid-template-columns: repeat(3, minmax(0, 1fr));', $stylesheet);
+    }
+}
+
+final class ResponsiveMetricsHistoryRepository implements EventHistoryRepositoryInterface
+{
+    /** @param list<array<string, mixed>> $events */
+    public function __construct(private readonly array $events)
+    {
+    }
+
+    public function append(string $sessionId, ?string $userId, array $event): void
+    {
+    }
+
+    public function getBySession(string $sessionId): array
+    {
+        return $this->events;
+    }
+
+    public function getByUserId(string $userId): array
+    {
+        return [];
     }
 }

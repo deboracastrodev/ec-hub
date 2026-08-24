@@ -24,6 +24,8 @@ final class MetricsControllerTest extends TestCase
         $html = $controller->index([], [], 'current-session');
 
         self::assertSame('current-session', $history->queriedSessionId);
+        self::assertStringContainsString('ec-hub - System Metrics Dashboard', $html);
+        self::assertStringContainsString('class="dashboard__panel dashboard__panel--history"', $html);
         self::assertStringContainsString('Total de eventos: 3', $html);
         self::assertLessThan(
             strpos($html, 'cart.item_added'),
@@ -55,6 +57,7 @@ final class MetricsControllerTest extends TestCase
         $html = $controller->index([], [], 'empty-session');
 
         self::assertSame('empty-session', $history->queriedSessionId);
+        self::assertStringContainsString('class="dashboard"', $html);
         self::assertStringContainsString('Total de eventos: 0', $html);
         self::assertStringContainsString('Nenhum evento foi registrado nesta sessão.', $html);
     }

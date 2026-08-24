@@ -45,6 +45,9 @@ final class MetricsHttpEndpointTest extends TestCase
 
         self::assertSame(200, http_response_code());
         self::assertSame($sessionOne, $history->queriedSessionId);
+        self::assertStringContainsString('<title>ec-hub - System Metrics Dashboard</title>', $html);
+        self::assertStringContainsString('<h1 class="dashboard__title" id="metrics-dashboard-title">ec-hub - System Metrics Dashboard</h1>', $html);
+        self::assertStringContainsString('<section class="dashboard__panel dashboard__panel--history"', $html);
         self::assertStringContainsString('Total de eventos: 3', $html);
         self::assertStringContainsString('cart.item_added', $html);
         self::assertStringContainsString('product.clicked', $html);
@@ -74,8 +77,9 @@ final class MetricsHttpEndpointTest extends TestCase
 
         self::assertSame(200, http_response_code());
         self::assertSame($sessionId, $history->queriedSessionId);
+        self::assertStringContainsString('ec-hub - System Metrics Dashboard', $html);
         self::assertStringContainsString('Total de eventos: 0', $html);
-        self::assertStringContainsString('Nenhum evento foi registrado nesta sessão.', $html);
+        self::assertStringContainsString('<p class="dashboard__empty" role="status">Nenhum evento foi registrado nesta sessão.</p>', $html);
     }
 
     private function installContainer(EventHistoryRepositoryInterface $history): void
