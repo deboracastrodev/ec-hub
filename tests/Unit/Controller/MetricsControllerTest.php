@@ -98,6 +98,27 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
     }
 
+    public function testItRendersLevelOneForALegacyFlatSnapshotWithoutComparison(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository([
+            'recommendation.snapshot' => [
+                'source' => 'rules',
+                'latency_ms' => 14.5,
+                'avg_confidence' => 64.0,
+                'count' => 3,
+                'generated_at' => '2026-08-24T12:00:00+00:00',
+            ],
+        ]);
+
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
+
+        self::assertStringContainsString('ML: inativo', $html);
+        self::assertStringContainsString('14,50 ms', $html);
+        self::assertStringContainsString('64,00%', $html);
+        self::assertStringContainsString('Recomendações: 3', $html);
+        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
+    }
+
     public function testItRendersViewedProductsAndChangedRecommendationEvidence(): void
     {
         $sessions = new MetricsInMemorySessionRepository([

@@ -51,7 +51,7 @@ final class MetricsController
         return $this->twig->render('metrics/history.html.twig', [
             'events' => $history,
             'total' => count($history),
-            'recommendation' => $this->snapshotSide($recommendationPair['current']),
+            'recommendation' => $this->levelOneSnapshot($recommendationPair['current']),
             'viewed_products' => $this->viewedProducts($history),
             'recommendation_comparison' => $this->recommendationComparison($recommendationPair),
         ]);
@@ -92,13 +92,13 @@ final class MetricsController
         }
 
         return [
-            'current' => $snapshot['current'] ?? null,
+            'current' => $snapshot['current'] ?? $snapshot,
             'previous' => $snapshot['previous'] ?? null,
         ];
     }
 
-    /** @return array{source: string, latency_ms: float, avg_confidence: float, count: int, generated_at: string, product_ids: list<int|string>}|null */
-    private function snapshotSide(mixed $snapshot): ?array
+    /** @return array{source: string, latency_ms: float, avg_confidence: float, count: int, generated_at: string}|null */
+    private function levelOneSnapshot(mixed $snapshot): ?array
     {
         if (! is_array($snapshot)
             || ! is_string($snapshot['source'] ?? null)
@@ -113,6 +113,25 @@ final class MetricsController
             || ! is_int($snapshot['count'] ?? null)
             || $snapshot['count'] < 0
             || ! is_string($snapshot['generated_at'] ?? null)
+        ) {
+            return null;
+        }
+
+        return [
+            'source' => $snapshot['source'],
+            'latency_ms' => (float) $snapshot['latency_ms'],
+            'avg_confidence' => (float) $snapshot['avg_confidence'],
+            'count' => $snapshot['count'],
+            'generated_at' => $snapshot['generated_at'],
+        ];
+    }
+
+    /** @return array{source: string, latency_ms: float, avg_confidence: float, count: int, generated_at: string, product_ids: list<int|string>}|null */
+    private function snapshotSide(mixed $snapshot): ?array
+    {
+        $levelOne = $this->levelOneSnapshot($snapshot);
+
+        if ($levelOne === null
             || ! is_array($snapshot['product_ids'] ?? null)
             || ! array_is_list($snapshot['product_ids'])
         ) {
@@ -127,14 +146,7 @@ final class MetricsController
             $productIds[] = $productId;
         }
 
-        return [
-            'source' => $snapshot['source'],
-            'latency_ms' => (float) $snapshot['latency_ms'],
-            'avg_confidence' => (float) $snapshot['avg_confidence'],
-            'count' => $snapshot['count'],
-            'generated_at' => $snapshot['generated_at'],
-            'product_ids' => $productIds,
-        ];
+        return [...$levelOne, 'product_ids' => $productIds];
     }
 
     /** @param list<array{event: string, timestamp: string, product_id: int|string|null}> $history
