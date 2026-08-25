@@ -138,6 +138,8 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('<dl class="dashboard__metrics" aria-label="Indicadores da recomendação">', $output);
         $this->assertStringContainsString('ML: indisponível', $output);
         $this->assertStringContainsString('class="dashboard__event-list"', $output);
+        $this->assertStringContainsString('<details class="dashboard__session">', $output);
+        $this->assertStringContainsString('class="dashboard__session-toggle"', $output);
         $this->assertStringContainsString('.dashboard__grid {', $stylesheet);
         $this->assertStringContainsString('grid-template-columns: minmax(0, 1fr);', $stylesheet);
         $this->assertStringContainsString("@media (min-width: 768px) {\n    .dashboard {", $stylesheet);
@@ -146,6 +148,8 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('grid-template-columns: repeat(3, minmax(0, 1fr));', $stylesheet);
         $this->assertStringContainsString('.dashboard__metrics {', $stylesheet);
         $this->assertStringContainsString('grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));', $stylesheet);
+        $this->assertStringContainsString('.dashboard__session-toggle:focus-visible {', $stylesheet);
+        $this->assertStringContainsString('min-height: 44px;', $stylesheet);
     }
 }
 

@@ -92,6 +92,51 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Recomendações: 2', $html);
     }
 
+    public function testItRendersViewedProductsAndChangedRecommendationEvidence(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository(['recommendation.snapshot' => [
+            'current' => $this->snapshot([5, 6]),
+            'previous' => $this->snapshot([2, 3]),
+        ]]);
+        $controller = $this->controller(new MetricsInMemoryHistoryRepository([
+            ['event' => 'product.viewed', 'product_id' => 9, 'timestamp' => '2026-08-24T11:00:00+00:00'],
+            ['event' => 'product.clicked', 'product_id' => 10, 'timestamp' => '2026-08-24T10:00:00+00:00'],
+        ]), $sessions);
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('<details class="dashboard__session">', $html);
+        self::assertStringContainsString('Current Session', $html);
+        self::assertStringContainsString('Produto: 9', $html);
+        self::assertStringContainsString('A recomendação mudou nesta sessão.', $html);
+        self::assertStringContainsString('5, 6', $html);
+        self::assertStringContainsString('2, 3', $html);
+        self::assertSame(1, preg_match('/<ol class="dashboard__product-list">(?<products>.*?)<\/ol>/s', $html, $matches));
+        self::assertStringContainsString('Produto: 9', $matches['products']);
+        self::assertStringNotContainsString('Produto: 10', $matches['products']);
+    }
+
+    public function testItRendersUnchangedRecommendationEvidence(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository(['recommendation.snapshot' => [
+            'current' => $this->snapshot([5, 6]), 'previous' => $this->snapshot([5, 6]),
+        ]]);
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
+
+        self::assertStringContainsString('A recomendação não mudou nesta sessão.', $html);
+    }
+
+    public function testItRendersExplicitUnavailableComparisonAndNoViewedProducts(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository(['recommendation.snapshot' => [
+            'current' => $this->snapshot([5, 6]),
+        ]]);
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
+
+        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
+        self::assertStringContainsString('Nenhum produto foi visualizado nesta sessão.', $html);
+    }
+
     public function testItTreatsUnreadableSnapshotAsUnavailable(): void
     {
         $controller = $this->controller(
@@ -133,6 +178,12 @@ final class MetricsControllerTest extends TestCase
         ]);
 
         return new MetricsController($history, $twig, $sessions);
+    }
+
+    /** @return array<string, mixed> */
+    private function snapshot(array $productIds): array
+    {
+        return ['source' => 'ml', 'latency_ms' => 12.34, 'avg_confidence' => 87.5, 'count' => count($productIds), 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => $productIds];
     }
 }
 
