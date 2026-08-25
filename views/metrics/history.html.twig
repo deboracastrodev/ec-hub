@@ -41,44 +41,6 @@
                 </dl>
             </section>
 
-            <details class="dashboard__disclosure">
-                <summary class="dashboard__disclosure-control">Ver detalhes da sessão atual</summary>
-                <section class="dashboard__panel dashboard__panel--session" aria-labelledby="current-session-title">
-                    <header class="dashboard__panel-header">
-                        <h2 class="dashboard__panel-title" id="current-session-title">Current Session</h2>
-                        <p class="dashboard__panel-description">Dados registrados nesta sessão, sem executar uma nova recomendação.</p>
-                    </header>
-
-                    <div class="dashboard__session-content">
-                        <section aria-labelledby="viewed-products-title">
-                            <h3 class="dashboard__session-title" id="viewed-products-title">Produtos visualizados</h3>
-                            {% if viewed_products is empty %}
-                                <p class="dashboard__empty" role="status">Nenhum produto foi visualizado nesta sessão.</p>
-                            {% else %}
-                                <ol class="dashboard__product-list" aria-label="Produtos visualizados nesta sessão">
-                                    {% for product_id in viewed_products %}
-                                        <li>Produto: {{ product_id }}</li>
-                                    {% endfor %}
-                                </ol>
-                            {% endif %}
-                        </section>
-
-                        <section aria-labelledby="recommendation-comparison-title">
-                            <h3 class="dashboard__session-title" id="recommendation-comparison-title">Alteração da recomendação</h3>
-                            {% if recommendation_comparison.state == 'changed' %}
-                                <p class="dashboard__comparison" role="status">A recomendação mudou nesta sessão.</p>
-                                <p class="dashboard__comparison-evidence">Anterior: {{ recommendation_comparison.previous|join(', ') }}. Atual: {{ recommendation_comparison.current|join(', ') }}.</p>
-                            {% elseif recommendation_comparison.state == 'unchanged' %}
-                                <p class="dashboard__comparison" role="status">A recomendação não mudou nesta sessão.</p>
-                                <p class="dashboard__comparison-evidence">Produtos recomendados: {{ recommendation_comparison.current|join(', ') }}.</p>
-                            {% else %}
-                                <p class="dashboard__empty" role="status">Ainda sem comparação nesta sessão.</p>
-                            {% endif %}
-                        </section>
-                    </div>
-                </section>
-            </details>
-
             <section class="dashboard__panel dashboard__panel--history" aria-labelledby="event-history-title">
                 <header class="dashboard__panel-header">
                     <h2 class="dashboard__panel-title" id="event-history-title">Histórico de eventos</h2>

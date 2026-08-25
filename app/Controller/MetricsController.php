@@ -46,60 +46,26 @@ final class MetricsController
         }
         unset($event);
 
-        $recommendationPair = $this->recommendationPair($sessionId);
-
         return $this->twig->render('metrics/history.html.twig', [
             'events' => $history,
             'total' => count($history),
-            'recommendation' => $this->levelOneSnapshot($recommendationPair['current']),
-            'viewed_products' => $this->viewedProducts($history),
-            'recommendation_comparison' => $this->recommendationComparison($recommendationPair),
+            'recommendation' => $this->recommendationSnapshot($sessionId),
         ]);
     }
 
-    /** @return array{state: 'changed'|'unchanged'|'unavailable', current: list<int|string>, previous: list<int|string>} */
-    private function recommendationComparison(array $snapshot): array
-    {
-        $current = $this->snapshotSide($snapshot['current']);
-        $previous = $this->snapshotSide($snapshot['previous']);
-
-        if ($current === null || $previous === null) {
-            return ['state' => 'unavailable', 'current' => [], 'previous' => []];
-        }
-
-        return [
-            'state' => $current['product_ids'] === $previous['product_ids'] ? 'unchanged' : 'changed',
-            'current' => $current['product_ids'],
-            'previous' => $previous['product_ids'],
-        ];
-    }
-
-    /** @return array{current: mixed, previous: mixed} */
-    private function recommendationPair(?string $sessionId): array
+    /** @return array{source: string, latency_ms: float, avg_confidence: float, count: int, generated_at: string}|null */
+    private function recommendationSnapshot(?string $sessionId): ?array
     {
         if ($sessionId === null || $this->sessions === null) {
-            return ['current' => null, 'previous' => null];
+            return null;
         }
 
         try {
             $snapshot = $this->sessions->get($sessionId, 'recommendation.snapshot');
         } catch (\Throwable) {
-            return ['current' => null, 'previous' => null];
+            return null;
         }
 
-        if (! is_array($snapshot)) {
-            return ['current' => null, 'previous' => null];
-        }
-
-        return [
-            'current' => $snapshot['current'] ?? $snapshot,
-            'previous' => $snapshot['previous'] ?? null,
-        ];
-    }
-
-    /** @return array{source: string, latency_ms: float, avg_confidence: float, count: int, generated_at: string}|null */
-    private function levelOneSnapshot(mixed $snapshot): ?array
-    {
         if (! is_array($snapshot)
             || ! is_string($snapshot['source'] ?? null)
             || ! in_array($snapshot['source'], ['ml', 'rules', 'popular'], true)
@@ -124,44 +90,6 @@ final class MetricsController
             'count' => $snapshot['count'],
             'generated_at' => $snapshot['generated_at'],
         ];
-    }
-
-    /** @return array{source: string, latency_ms: float, avg_confidence: float, count: int, generated_at: string, product_ids: list<int|string>}|null */
-    private function snapshotSide(mixed $snapshot): ?array
-    {
-        $levelOne = $this->levelOneSnapshot($snapshot);
-
-        if ($levelOne === null
-            || ! is_array($snapshot['product_ids'] ?? null)
-            || ! array_is_list($snapshot['product_ids'])
-        ) {
-            return null;
-        }
-
-        $productIds = [];
-        foreach ($snapshot['product_ids'] as $productId) {
-            if (! is_int($productId) && ! is_string($productId)) {
-                return null;
-            }
-            $productIds[] = $productId;
-        }
-
-        return [...$levelOne, 'product_ids' => $productIds];
-    }
-
-    /** @param list<array{event: string, timestamp: string, product_id: int|string|null}> $history
-     *  @return list<int|string>
-     */
-    private function viewedProducts(array $history): array
-    {
-        $products = [];
-        foreach ($history as $event) {
-            if ($event['event'] === 'product.viewed' && $event['product_id'] !== null) {
-                $products[] = $event['product_id'];
-            }
-        }
-
-        return $products;
     }
 
     /** @param array<string, mixed> $event */

@@ -65,22 +65,17 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Latência: —', $html);
         self::assertStringContainsString('Confiança média: —', $html);
         self::assertStringContainsString('Recomendações: 0', $html);
-        self::assertStringContainsString('Nenhum produto foi visualizado nesta sessão.', $html);
-        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
     }
 
     public function testItRendersRecordedRecommendationSnapshot(): void
     {
         $sessions = new MetricsInMemorySessionRepository([
             'recommendation.snapshot' => [
-                'current' => [
-                    'source' => 'ml',
-                    'latency_ms' => 12.34,
-                    'avg_confidence' => 87.5,
-                    'count' => 2,
-                    'generated_at' => '2026-08-24T12:00:00+00:00',
-                    'product_ids' => [2, 3],
-                ],
+                'source' => 'ml',
+                'latency_ms' => 12.34,
+                'avg_confidence' => 87.5,
+                'count' => 2,
+                'generated_at' => '2026-08-24T12:00:00+00:00',
             ],
         ]);
         $controller = $this->controller(new MetricsInMemoryHistoryRepository([
@@ -95,81 +90,6 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('87,50%', $html);
         self::assertStringContainsString('Total de eventos: 1', $html);
         self::assertStringContainsString('Recomendações: 2', $html);
-        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
-    }
-
-    public function testItRendersLevelOneForALegacyFlatSnapshotWithoutComparison(): void
-    {
-        $sessions = new MetricsInMemorySessionRepository([
-            'recommendation.snapshot' => [
-                'source' => 'rules',
-                'latency_ms' => 14.5,
-                'avg_confidence' => 64.0,
-                'count' => 3,
-                'generated_at' => '2026-08-24T12:00:00+00:00',
-            ],
-        ]);
-
-        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
-
-        self::assertStringContainsString('ML: inativo', $html);
-        self::assertStringContainsString('14,50 ms', $html);
-        self::assertStringContainsString('64,00%', $html);
-        self::assertStringContainsString('Recomendações: 3', $html);
-        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
-    }
-
-    public function testItRendersViewedProductsAndChangedRecommendationEvidence(): void
-    {
-        $sessions = new MetricsInMemorySessionRepository([
-            'recommendation.snapshot' => [
-                'current' => ['source' => 'ml', 'latency_ms' => 10.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:01:00+00:00', 'product_ids' => [2, 3]],
-                'previous' => ['source' => 'ml', 'latency_ms' => 9.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [2, 4]],
-            ],
-        ]);
-        $controller = $this->controller(new MetricsInMemoryHistoryRepository([
-            ['event' => 'product.viewed', 'product_id' => 7, 'timestamp' => '2026-08-24T11:00:00+00:00'],
-            ['event' => 'product.viewed', 'product_id' => 8, 'timestamp' => '2026-08-24T11:01:00+00:00'],
-            ['event' => 'product.viewed', 'timestamp' => '2026-08-24T11:02:00+00:00'],
-        ]), $sessions);
-
-        $html = $controller->index([], [], 'current-session');
-
-        self::assertStringContainsString('<details class="dashboard__disclosure">', $html);
-        self::assertStringContainsString('Current Session', $html);
-        self::assertStringContainsString('Produto: 7', $html);
-        self::assertStringContainsString('Produto: 8', $html);
-        self::assertStringContainsString('A recomendação mudou nesta sessão.', $html);
-        self::assertStringContainsString('Anterior: 2, 4. Atual: 2, 3.', $html);
-    }
-
-    public function testItRendersUnchangedRecommendationState(): void
-    {
-        $sessions = new MetricsInMemorySessionRepository([
-            'recommendation.snapshot' => [
-                'current' => ['source' => 'rules', 'latency_ms' => 10.0, 'avg_confidence' => 60.0, 'count' => 2, 'generated_at' => '2026-08-24T12:01:00+00:00', 'product_ids' => [2, 3]],
-                'previous' => ['source' => 'ml', 'latency_ms' => 9.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [2, 3]],
-            ],
-        ]);
-        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
-
-        self::assertStringContainsString('A recomendação não mudou nesta sessão.', $html);
-        self::assertStringContainsString('Produtos recomendados: 2, 3.', $html);
-    }
-
-    public function testItTreatsAProductIdOrderChangeAsChangedRecommendation(): void
-    {
-        $sessions = new MetricsInMemorySessionRepository([
-            'recommendation.snapshot' => [
-                'current' => ['source' => 'ml', 'latency_ms' => 10.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:01:00+00:00', 'product_ids' => [3, 2]],
-                'previous' => ['source' => 'ml', 'latency_ms' => 10.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [2, 3]],
-            ],
-        ]);
-
-        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
-
-        self::assertStringContainsString('A recomendação mudou nesta sessão.', $html);
-        self::assertStringContainsString('Anterior: 2, 3. Atual: 3, 2.', $html);
     }
 
     public function testItTreatsUnreadableSnapshotAsUnavailable(): void
