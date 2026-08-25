@@ -244,50 +244,15 @@ class RecommendationController
             'avg_confidence' => $scores === [] ? 0.0 : round(array_sum($scores) / count($scores), 2),
             'count' => is_int($meta['count'] ?? null) ? $meta['count'] : count($data),
             'generated_at' => is_string($meta['generated_at'] ?? null) ? $meta['generated_at'] : date(DATE_ATOM),
-            'product_ids' => array_values(array_filter(array_map(
-                static fn (mixed $recommendation): int|string|null => is_array($recommendation)
-                    && (is_int($recommendation['product_id'] ?? null) || is_string($recommendation['product_id'] ?? null))
-                    ? $recommendation['product_id']
-                    : null,
-                $data
-            ), static fn (mixed $productId): bool => is_int($productId) || is_string($productId))),
         ];
 
         try {
-            $existing = $this->sessions->get($sessionId, 'recommendation.snapshot');
-        } catch (\Throwable $exception) {
-            $this->logger->error('Não foi possível ler o snapshot de recomendação anterior.', [
-                'error' => $exception->getMessage(),
-            ]);
-            $existing = null;
-        }
-
-        $value = ['current' => $snapshot];
-        if ($this->isComparableSnapshot($existing)) {
-            $value['previous'] = $existing['current'];
-        }
-
-        try {
-            $this->sessions->save($sessionId, 'recommendation.snapshot', $value);
+            $this->sessions->save($sessionId, 'recommendation.snapshot', $snapshot);
         } catch (\Throwable $exception) {
             $this->logger->error('Não foi possível persistir o snapshot de recomendação.', [
                 'error' => $exception->getMessage(),
             ]);
         }
-    }
-
-    /** @param mixed $snapshot */
-    private function isComparableSnapshot(mixed $snapshot): bool
-    {
-        if (! is_array($snapshot) || ! is_array($snapshot['current'] ?? null)) {
-            return false;
-        }
-
-        $productIds = $snapshot['current']['product_ids'] ?? null;
-
-        return is_array($productIds)
-            && array_is_list($productIds)
-            && array_all($productIds, static fn (mixed $productId): bool => is_int($productId) || is_string($productId));
     }
 
     /**

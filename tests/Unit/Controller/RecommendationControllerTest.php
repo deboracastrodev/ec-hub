@@ -373,66 +373,10 @@ class RecommendationControllerTest extends TestCase
 
         self::assertSame('current-session', $sessions->savedSessionId);
         self::assertSame('recommendation.snapshot', $sessions->savedField);
-        self::assertSame('ml', $sessions->savedValue['current']['source']);
-        self::assertSame(70.0, $sessions->savedValue['current']['avg_confidence']);
-        self::assertSame([2, 3], $sessions->savedValue['current']['product_ids']);
-        self::assertSame($response['meta']['count'], $sessions->savedValue['current']['count']);
-        self::assertSame($response['meta']['generated_at'], $sessions->savedValue['current']['generated_at']);
-        self::assertArrayNotHasKey('previous', $sessions->savedValue);
-    }
-
-    public function testItAtomicallyShiftsComparableCurrentSnapshotToPrevious(): void
-    {
-        $sessions = new RecommendationInMemorySessionRepository([
-            'recommendation.snapshot' => ['current' => [
-                'source' => 'ml', 'latency_ms' => 1.0, 'avg_confidence' => 80.0,
-                'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [2, 3],
-            ]],
-        ]);
-        $controller = new RecommendationController($this->mockGenerateRecommendations, $this->mockLogger, $sessions);
-        $this->mockGenerateRecommendations->expects($this->once())
-            ->method('execute')->willReturn([['product_id' => 4, 'score' => 90.0]]);
-
-        $controller->getRecommendations(['product_id' => '1'], null, 'current-session');
-
-        self::assertSame([4], $sessions->savedValue['current']['product_ids']);
-        self::assertSame([2, 3], $sessions->savedValue['previous']['product_ids']);
-        self::assertSame(1, $sessions->saveCount);
-    }
-
-    public function testItDoesNotPromoteLegacyFlatSnapshotToPrevious(): void
-    {
-        $sessions = new RecommendationInMemorySessionRepository([
-            'recommendation.snapshot' => [
-                'source' => 'ml', 'latency_ms' => 1.0, 'avg_confidence' => 80.0,
-                'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00',
-            ],
-        ]);
-        $controller = new RecommendationController($this->mockGenerateRecommendations, $this->mockLogger, $sessions);
-        $this->mockGenerateRecommendations->expects($this->once())
-            ->method('execute')->willReturn([['product_id' => 4, 'score' => 90.0]]);
-
-        $controller->getRecommendations(['product_id' => '1'], null, 'current-session');
-
-        self::assertArrayNotHasKey('previous', $sessions->savedValue);
-    }
-
-    public function testSnapshotReadFailureDoesNotPreventResponseOrCurrentWrite(): void
-    {
-        $sessions = new RecommendationInMemorySessionRepository([], false, true);
-        $controller = new RecommendationController($this->mockGenerateRecommendations, $this->mockLogger, $sessions);
-        $this->mockGenerateRecommendations->expects($this->once())
-            ->method('execute')->willReturn([['product_id' => 4, 'score' => 90.0]]);
-        $this->mockLogger->expects($this->once())
-            ->method('error')
-            ->with('Não foi possível ler o snapshot de recomendação anterior.', $this->arrayHasKey('error'));
-
-        $response = $controller->getRecommendations(['product_id' => '1'], null, 'current-session');
-
-        self::assertSame(1, $response['meta']['count']);
-        self::assertSame([4], $sessions->savedValue['current']['product_ids']);
-        self::assertArrayNotHasKey('previous', $sessions->savedValue);
-        self::assertSame(1, $sessions->saveCount);
+        self::assertSame('ml', $sessions->savedValue['source']);
+        self::assertSame(70.0, $sessions->savedValue['avg_confidence']);
+        self::assertSame($response['meta']['count'], $sessions->savedValue['count']);
+        self::assertSame($response['meta']['generated_at'], $sessions->savedValue['generated_at']);
     }
 
     public function testSnapshotPersistenceFailureDoesNotPreventResponse(): void
@@ -477,17 +421,8 @@ final class RecommendationInMemorySessionRepository implements SessionRepository
     /** @var array<string, mixed> */
     public array $savedValue = [];
 
-    /** @var array<string, mixed> */
-    private array $data;
-    private bool $throwsOnSave;
-    private bool $throwsOnGet;
-
-    /** @param array<string, mixed>|bool $dataOrThrowsOnSave */
-    public function __construct(array|bool $dataOrThrowsOnSave = false, bool $throwsOnSave = false, bool $throwsOnGet = false)
+    public function __construct(private readonly bool $throwsOnSave = false)
     {
-        $this->data = is_array($dataOrThrowsOnSave) ? $dataOrThrowsOnSave : [];
-        $this->throwsOnSave = is_bool($dataOrThrowsOnSave) ? $dataOrThrowsOnSave : $throwsOnSave;
-        $this->throwsOnGet = $throwsOnGet;
     }
 
     public function save(string $sessionId, string $field, mixed $value): void
@@ -498,17 +433,10 @@ final class RecommendationInMemorySessionRepository implements SessionRepository
         $this->savedSessionId = $sessionId;
         $this->savedField = $field;
         $this->savedValue = $value;
-        $this->saveCount++;
     }
 
     public function get(string $sessionId, string $field): mixed
     {
-        if ($this->throwsOnGet) {
-            throw new \RuntimeException('Redis indisponível.');
-        }
-
-        return $this->data[$field] ?? null;
+        return null;
     }
-
-    public int $saveCount = 0;
 }

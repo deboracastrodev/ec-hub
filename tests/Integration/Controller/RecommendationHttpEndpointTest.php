@@ -102,47 +102,9 @@ class RecommendationHttpEndpointTest extends TestCase
 
         self::assertSame(200, http_response_code());
         self::assertSame('recommendation.snapshot', $sessions->savedField);
-        self::assertSame('ml', $sessions->savedValue['current']['source']);
-        self::assertSame(75.0, $sessions->savedValue['current']['avg_confidence']);
-        self::assertSame([22], $sessions->savedValue['current']['product_ids']);
+        self::assertSame('ml', $sessions->savedValue['source']);
+        self::assertSame(75.0, $sessions->savedValue['avg_confidence']);
         self::assertSame(1, $decoded['meta']['count']);
-        unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
-    }
-
-    #[RunInSeparateProcess]
-    public function testApiEndpointShiftsComparableSnapshotInOneSave(): void
-    {
-        header_remove();
-        http_response_code(200);
-        $generateRecommendations = $this->createMock(GenerateRecommendations::class);
-        $generateRecommendations->expects($this->once())->method('execute')
-            ->willReturn([['product_id' => 23, 'score' => 80.0]]);
-        $sessions = new HttpRecommendationSessionRepository();
-        $sessions->stored['recommendation.snapshot'] = ['current' => [
-            'source' => 'ml', 'latency_ms' => 1.0, 'avg_confidence' => 80.0,
-            'count' => 1, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [22],
-        ]];
-        $controller = new RecommendationController($generateRecommendations, new NullLogger(), $sessions);
-        $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'));
-        $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
-            Environment::class => fn () => $twig,
-            SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
-            RecommendationController::class => fn () => $controller,
-        ]);
-        $sessionId = str_repeat('a', 64);
-        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
-        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
-        $_SERVER['REQUEST_METHOD'] = 'GET';
-        $_SERVER['REQUEST_URI'] = '/api/recommendations?product_id=1';
-        $_GET = ['product_id' => '1'];
-
-        ob_start();
-        require dirname(__DIR__, 3) . '/public/index.php';
-        ob_end_clean();
-
-        self::assertSame(1, $sessions->saveCount);
-        self::assertSame([23], $sessions->savedValue['current']['product_ids']);
-        self::assertSame([22], $sessions->savedValue['previous']['product_ids']);
         unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
     }
 
@@ -182,9 +144,6 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
     public ?string $savedField = null;
     /** @var array<string, mixed> */
     public array $savedValue = [];
-    /** @var array<string, mixed> */
-    public array $stored = [];
-    public int $saveCount = 0;
 
     public function __construct(private readonly bool $throwsOnSave = false)
     {
@@ -197,12 +156,10 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
         }
         $this->savedField = $field;
         $this->savedValue = $value;
-        $this->stored[$field] = $value;
-        $this->saveCount++;
     }
 
     public function get(string $sessionId, string $field): mixed
     {
-        return $this->stored[$field] ?? null;
+        return null;
     }
 }

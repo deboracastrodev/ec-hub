@@ -122,38 +122,6 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('Recomendações: 3', $html);
     }
 
-    #[RunInSeparateProcess]
-    public function testMetricsRouteRendersSessionDisclosureAndComparisonEvidence(): void
-    {
-        $sessionId = str_repeat('e', 64);
-        $snapshot = static fn (array $productIds): array => [
-            'source' => 'ml', 'latency_ms' => 14.5, 'avg_confidence' => 64.0,
-            'count' => count($productIds), 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => $productIds,
-        ];
-        $sessions = new HttpMetricsSessionRepository([$sessionId => [
-            'recommendation.snapshot' => ['current' => $snapshot([4, 5]), 'previous' => $snapshot([2, 3])],
-        ]]);
-        $this->installContainer(new HttpMetricsHistoryRepository([$sessionId => [
-            ['event' => 'product.viewed', 'product_id' => 7, 'timestamp' => '2026-08-24T11:00:00+00:00'],
-        ]]), $sessions);
-        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
-        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
-        $_SERVER['REQUEST_METHOD'] = 'GET';
-        $_SERVER['REQUEST_URI'] = '/metrics';
-        $_GET = [];
-
-        ob_start();
-        require dirname(__DIR__, 3) . '/public/index.php';
-        $html = (string) ob_get_clean();
-
-        self::assertStringContainsString('<details class="dashboard__session">', $html);
-        self::assertStringContainsString('Current Session', $html);
-        self::assertStringContainsString('Produto: 7', $html);
-        self::assertStringContainsString('A recomendação mudou nesta sessão.', $html);
-        self::assertStringContainsString('4, 5', $html);
-        self::assertStringContainsString('2, 3', $html);
-    }
-
     private function installContainer(EventHistoryRepositoryInterface $history, ?SessionRepositoryInterface $sessions = null): void
     {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
