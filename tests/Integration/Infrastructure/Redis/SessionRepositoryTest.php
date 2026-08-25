@@ -131,6 +131,28 @@ final class SessionRepositoryTest extends TestCase
         self::assertNull($repository->get($sessionId, 'user.id'));
     }
 
+    public function test_it_compare_and_swaps_a_single_json_value_and_renews_ttl(): void
+    {
+        [$repository, $sessionId, $key] = $this->repository(30);
+        $initial = ['current' => ['product_ids' => [1]]];
+        $next = ['current' => ['product_ids' => [2]], 'previous' => ['product_ids' => [1]]];
+        $repository->save($sessionId, 'recommendation.snapshot', $initial);
+
+        self::assertTrue($repository->compareAndSwap($sessionId, 'recommendation.snapshot', $initial, $next));
+        self::assertSame($next, $repository->get($sessionId, 'recommendation.snapshot'));
+        self::assertFalse($repository->compareAndSwap($sessionId, 'recommendation.snapshot', $initial, $initial));
+        self::assertGreaterThan(0, $this->client->ttl($key));
+    }
+
+    public function test_it_compare_and_swaps_an_absent_field(): void
+    {
+        [$repository, $sessionId] = $this->repository(30);
+        $value = ['current' => ['product_ids' => [2]]];
+
+        self::assertTrue($repository->compareAndSwap($sessionId, 'recommendation.snapshot', null, $value));
+        self::assertSame($value, $repository->get($sessionId, 'recommendation.snapshot'));
+    }
+
     public function test_it_isolates_the_same_field_between_sessions(): void
     {
         [$firstRepository, $firstSessionId] = $this->repository(30);

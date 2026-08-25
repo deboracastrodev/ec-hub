@@ -24,6 +24,7 @@ use Psr\Log\LoggerInterface;
  */
 class RecommendationController
 {
+    private const SNAPSHOT_PERSISTENCE_ATTEMPTS = 3;
     private GenerateRecommendations $generateRecommendations;
     private LoggerInterface $logger;
 
@@ -238,21 +239,67 @@ class RecommendationController
         }
 
         $meta = is_array($response['meta'] ?? null) ? $response['meta'] : [];
-        $snapshot = [
+        $productIds = [];
+        foreach ($data as $recommendation) {
+            $productId = is_array($recommendation) ? ($recommendation['product_id'] ?? null) : null;
+            if (is_int($productId) || is_string($productId)) {
+                $productIds[] = $productId;
+            }
+        }
+
+        $current = [
             'source' => is_string($meta['source'] ?? null) ? $meta['source'] : 'unknown',
             'latency_ms' => is_numeric($meta['response_time_ms'] ?? null) ? (float) $meta['response_time_ms'] : 0.0,
             'avg_confidence' => $scores === [] ? 0.0 : round(array_sum($scores) / count($scores), 2),
             'count' => is_int($meta['count'] ?? null) ? $meta['count'] : count($data),
             'generated_at' => is_string($meta['generated_at'] ?? null) ? $meta['generated_at'] : date(DATE_ATOM),
+            'product_ids' => $productIds,
         ];
 
         try {
-            $this->sessions->save($sessionId, 'recommendation.snapshot', $snapshot);
+            $this->persistSnapshotAtomically($sessionId, $current);
         } catch (\Throwable $exception) {
             $this->logger->error('Não foi possível persistir o snapshot de recomendação.', [
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    /** @param array<string, mixed> $current */
+    private function persistSnapshotAtomically(string $sessionId, array $current): void
+    {
+        for ($attempt = 0; $attempt < self::SNAPSHOT_PERSISTENCE_ATTEMPTS; ++$attempt) {
+            $existing = $this->sessions->get($sessionId, 'recommendation.snapshot');
+            $previous = $this->comparableSnapshotSide($existing);
+            $snapshot = ['current' => $current];
+            if ($previous !== null) {
+                $snapshot['previous'] = $previous;
+            }
+
+            if ($this->sessions->compareAndSwap($sessionId, 'recommendation.snapshot', $existing, $snapshot)) {
+                return;
+            }
+        }
+
+        throw new \RuntimeException('O snapshot de recomendação foi alterado concorrentemente.');
+    }
+
+    /** @return array<string, mixed>|null */
+    private function comparableSnapshotSide(mixed $snapshot): ?array
+    {
+        $current = is_array($snapshot) ? ($snapshot['current'] ?? null) : null;
+
+        if (! is_array($current) || ! is_array($current['product_ids'] ?? null) || ! array_is_list($current['product_ids'])) {
+            return null;
+        }
+
+        foreach ($current['product_ids'] as $productId) {
+            if (! is_int($productId) && ! is_string($productId)) {
+                return null;
+            }
+        }
+
+        return $current;
     }
 
     /**

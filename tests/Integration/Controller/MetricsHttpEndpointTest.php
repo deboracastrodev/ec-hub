@@ -133,6 +133,17 @@ final class MetricsHttpEndpointTest extends TestCase
             MetricsController::class => fn () => new MetricsController($history, $twig, $sessions),
         ]);
     }
+
+    public function testHttpMetricsSessionRepositoryCompareAndSwapsNonNullValue(): void
+    {
+        $sessionId = 'session-a';
+        $expected = ['current' => ['product_ids' => [1]]];
+        $replacement = ['current' => ['product_ids' => [2]], 'previous' => ['product_ids' => [1]]];
+        $sessions = new HttpMetricsSessionRepository([$sessionId => ['recommendation.snapshot' => $expected]]);
+
+        self::assertTrue($sessions->compareAndSwap($sessionId, 'recommendation.snapshot', $expected, $replacement));
+        self::assertSame($replacement, $sessions->get($sessionId, 'recommendation.snapshot'));
+    }
 }
 
 final class HttpMetricsSessionRepository implements SessionRepositoryInterface
@@ -147,6 +158,13 @@ final class HttpMetricsSessionRepository implements SessionRepositoryInterface
     public function save(string $sessionId, string $field, mixed $value): void
     {
         $this->sessions[$sessionId][$field] = $value;
+    }
+
+    public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+    {
+        if (($this->sessions[$sessionId][$field] ?? null) !== $expected) { return false; }
+        $this->sessions[$sessionId][$field] = $value;
+        return true;
     }
 
     public function get(string $sessionId, string $field): mixed

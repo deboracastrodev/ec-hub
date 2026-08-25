@@ -19,6 +19,17 @@ final class SessionRepository implements SessionRepositoryInterface
     private const KEY_PREFIX = 'ec-hub:session:';
     private const JSON_MAX_DEPTH = 100;
     private const MAX_TTL = 2147483647;
+    private const COMPARE_AND_SWAP_SCRIPT = <<<'LUA'
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if ARGV[2] == '0' then
+    if current then return 0 end
+elseif not current or current ~= ARGV[3] then
+    return 0
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[4])
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+return 1
+LUA;
 
     public function __construct(
         private readonly Client $client,
@@ -70,6 +81,26 @@ final class SessionRepository implements SessionRepositoryInterface
         }
 
         return $value;
+    }
+
+    public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+    {
+        $key = $this->key($sessionId);
+        $this->assertField($field);
+        $encodedValue = $this->encode($value);
+        $hasExpectedValue = $expected !== null;
+        $encodedExpected = $hasExpectedValue ? $this->encode($expected) : '';
+
+        return (int) $this->client->eval(
+            self::COMPARE_AND_SWAP_SCRIPT,
+            1,
+            $key,
+            $field,
+            $hasExpectedValue ? '1' : '0',
+            $encodedExpected,
+            $encodedValue,
+            (string) $this->ttl,
+        ) === 1;
     }
 
     private function key(string $sessionId): string

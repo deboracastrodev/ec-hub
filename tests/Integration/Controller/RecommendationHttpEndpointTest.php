@@ -102,8 +102,9 @@ class RecommendationHttpEndpointTest extends TestCase
 
         self::assertSame(200, http_response_code());
         self::assertSame('recommendation.snapshot', $sessions->savedField);
-        self::assertSame('ml', $sessions->savedValue['source']);
-        self::assertSame(75.0, $sessions->savedValue['avg_confidence']);
+        self::assertSame('ml', $sessions->savedValue['current']['source']);
+        self::assertSame(75.0, $sessions->savedValue['current']['avg_confidence']);
+        self::assertSame([22], $sessions->savedValue['current']['product_ids']);
         self::assertSame(1, $decoded['meta']['count']);
         unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
     }
@@ -145,6 +146,9 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
     /** @var array<string, mixed> */
     public array $savedValue = [];
 
+    /** @var array<string, mixed> */
+    private array $data = [];
+
     public function __construct(private readonly bool $throwsOnSave = false)
     {
     }
@@ -156,10 +160,18 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
         }
         $this->savedField = $field;
         $this->savedValue = $value;
+        $this->data[$field] = $value;
+    }
+
+    public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+    {
+        if (($this->data[$field] ?? null) !== $expected) { return false; }
+        $this->save($sessionId, $field, $value);
+        return true;
     }
 
     public function get(string $sessionId, string $field): mixed
     {
-        return null;
+        return $this->data[$field] ?? null;
     }
 }

@@ -72,13 +72,28 @@ final class ProductControllerTrackingTest extends TestCase
         $products = $this->createMock(ProductRepositoryInterface::class);
         $products->method('findById')->willReturn($this->createMock(Product::class));
         $sessions = new class () implements SessionRepositoryInterface {
+            /** @var array<string, mixed> */
+            private array $values = [];
+
             public function save(string $sessionId, string $field, mixed $value): void
             {
+                $this->values[$sessionId . ':' . $field] = $value;
+            }
+
+            public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+            {
+                $key = $sessionId . ':' . $field;
+                if (($this->values[$key] ?? null) !== $expected) {
+                    return false;
+                }
+
+                $this->values[$key] = $value;
+                return true;
             }
 
             public function get(string $sessionId, string $field): mixed
             {
-                return null;
+                return $this->values[$sessionId . ':' . $field] ?? null;
             }
         };
         $history = new class () implements EventHistoryRepositoryInterface {

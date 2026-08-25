@@ -92,6 +92,41 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Recomendações: 2', $html);
     }
 
+    public function testItRendersViewedProductsAndChangedRecommendationEvidence(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository(['recommendation.snapshot' => [
+            'current' => ['source' => 'ml', 'latency_ms' => 10.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:01:00+00:00', 'product_ids' => [2, 3]],
+            'previous' => ['source' => 'ml', 'latency_ms' => 9.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [2, 4]],
+        ]]);
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([
+            ['event' => 'product.viewed', 'product_id' => 7, 'timestamp' => '2026-08-24T11:00:00+00:00'],
+            ['event' => 'product.clicked', 'product_id' => 99, 'timestamp' => '2026-08-24T11:01:00+00:00'],
+        ]), $sessions)->index([], [], 'current-session');
+
+        self::assertStringContainsString('Produto: 7', $html);
+        self::assertStringNotContainsString('<li>Produto: 99</li>', $html);
+        self::assertStringContainsString('A recomendação mudou nesta sessão.', $html);
+        self::assertStringContainsString('Anterior: 2, 4. Atual: 2, 3.', $html);
+    }
+
+    public function testItRendersUnchangedAndUnavailableComparisonStates(): void
+    {
+        $unchanged = new MetricsInMemorySessionRepository(['recommendation.snapshot' => [
+            'current' => ['source' => 'ml', 'latency_ms' => 10.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:01:00+00:00', 'product_ids' => [2, 3]],
+            'previous' => ['source' => 'rules', 'latency_ms' => 9.0, 'avg_confidence' => 10.0, 'count' => 2, 'generated_at' => '2026-08-24T12:00:00+00:00', 'product_ids' => [2, 3]],
+        ]]);
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $unchanged)->index([], [], 'current-session');
+        self::assertStringContainsString('A recomendação não mudou nesta sessão.', $html);
+        self::assertStringContainsString('Recomendação atual: 2, 3.', $html);
+        self::assertStringContainsString('Recomendação anterior: 2, 3.', $html);
+
+        $unavailable = new MetricsInMemorySessionRepository(['recommendation.snapshot' => [
+            'current' => ['source' => 'ml', 'latency_ms' => 10.0, 'avg_confidence' => 80.0, 'count' => 2, 'generated_at' => '2026-08-24T12:01:00+00:00'],
+        ]]);
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $unavailable)->index([], [], 'current-session');
+        self::assertStringContainsString('Ainda sem comparação nesta sessão.', $html);
+    }
+
     public function testItTreatsUnreadableSnapshotAsUnavailable(): void
     {
         $controller = $this->controller(
@@ -148,6 +183,13 @@ final class MetricsInMemorySessionRepository implements SessionRepositoryInterfa
     public function save(string $sessionId, string $field, mixed $value): void
     {
         $this->data[$field] = $value;
+    }
+
+    public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+    {
+        if (($this->data[$field] ?? null) !== $expected) { return false; }
+        $this->data[$field] = $value;
+        return true;
     }
 
     public function get(string $sessionId, string $field): mixed

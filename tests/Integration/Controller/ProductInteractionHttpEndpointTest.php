@@ -161,6 +161,17 @@ final class HttpInMemorySessionRepository implements SessionRepositoryInterface
         $this->values[$sessionId . ':' . $field] = $value;
     }
 
+    public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+    {
+        $key = $sessionId . ':' . $field;
+        if (($this->values[$key] ?? null) !== $expected) {
+            return false;
+        }
+
+        $this->values[$key] = $value;
+        return true;
+    }
+
     public function get(string $sessionId, string $field): mixed
     {
         return $this->values[$sessionId . ':' . $field] ?? null;
