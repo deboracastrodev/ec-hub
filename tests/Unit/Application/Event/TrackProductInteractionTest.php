@@ -65,6 +65,26 @@ final class TrackProductInteractionTest extends TestCase
         self::assertSame('user-1', $published[1][1]['user_id']);
     }
 
+    public function testKeepsTrackingAndResponseWhenCartPersistenceFails(): void
+    {
+        $products = $this->createMock(ProductRepositoryInterface::class);
+        $products->method('findById')->with(7)->willReturn($this->createMock(Product::class));
+        $sessions = $this->createMock(SessionRepositoryInterface::class);
+        $sessions->method('save')->willThrowException(new \RuntimeException('Redis indisponível'));
+        $history = $this->createMock(EventHistoryRepositoryInterface::class);
+        $history->expects(self::once())->method('append');
+        $publisher = $this->createMock(EventPublisherInterface::class);
+        $publisher->expects(self::once())->method('publish')->with('cart.item_added', self::isArray());
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects(self::atLeastOnce())->method('error');
+
+        $event = (new TrackProductInteraction($products, $sessions, $history, $publisher, $logger))
+            ->track('cart', 'session', 7, 'user-1', 2);
+
+        self::assertSame('cart.item_added', $event['event']);
+        self::assertSame(2, $event['quantity']);
+    }
+
     public function testRejectsUnknownProductBeforePublishing(): void
     {
         $products = $this->createMock(ProductRepositoryInterface::class);

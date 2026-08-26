@@ -67,10 +67,21 @@ final class TrackProductInteraction
 
     private function persistCart(string $sessionId, int $productId, int $quantity): void
     {
-        $items = $this->sessions->get($sessionId, 'cart.items');
-        $items = is_array($items) ? $items : [];
-        $items[(string) $productId] = ((int) ($items[(string) $productId] ?? 0)) + $quantity;
-        $this->sessions->save($sessionId, 'cart.items', $items);
+        // O carrinho vive no Redis de sessão: se ele estiver fora, o carrinho não tem
+        // onde persistir. Decisão explícita (retro do Epic 4): a interação continua
+        // válida — o erro é registrado e o evento segue para histórico e publicação,
+        // com a resposta de sucesso degradada (sem carrinho atualizado).
+        try {
+            $items = $this->sessions->get($sessionId, 'cart.items');
+            $items = is_array($items) ? $items : [];
+            $items[(string) $productId] = ((int) ($items[(string) $productId] ?? 0)) + $quantity;
+            $this->sessions->save($sessionId, 'cart.items', $items);
+        } catch (\Throwable $exception) {
+            $this->logger->error('Não foi possível persistir o carrinho da sessão.', [
+                'event' => self::EVENTS['cart'],
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /** @param array<string, mixed> $event */
