@@ -84,6 +84,14 @@ O evento precisa ser recuperável no fluxo síncrono da aplicação mesmo que n�
 - Estado ruim evitado: uma resposta poderia vazar o identificador opaco, reportar carrinho atualizado quando a telemetria impediu a mutação, ou passar a suíte sem que rotas, cookie, TTL e personalização ponta a ponta funcionassem.
 - KEEP: preservar os três nomes de evento, o envelope Pub/Sub existente, o cookie HttpOnly/SameSite, o índice por sessão e `user_id`, o limite de 50, a ordenação determinística, o fallback sem histórico e a publicação best-effort.
 
+### 2026-08-26 — validação do código como fonte de verdade (fechamento pendente)
+- Gatilho: tentativa de finalizar a story a partir do estado documental; o código foi auditado contra os três bloqueadores da retro do Epic 4 (action item 12).
+- Confirmado no código: fixação de sessão corrigida — `SessionContext` exige o par `ec_hub_session_id` + `ec_hub_session_signature` (HMAC-SHA256, `hash_equals`) e regenera o ID quando o par é inválido (commit `a5a4692`).
+- Ainda pendente no código:
+  - `persistCart()` ([TrackProductInteraction.php:68](../../app/Application/Event/TrackProductInteraction.php#L68)) segue sem try/catch nem decisão explícita; se o Redis de sessão cair, a exceção sobe ao handler global e o `POST /api/cart/items` responde 500.
+  - Personalização ponta a ponta pela borda HTTP não existe: `BehavioralPersonalizationTest` cobre apenas o pipeline público `execute()` com fakes; nenhum teste cruza `POST /api/events` → `GET /api/recommendations`.
+- Consequência: status permanece `in-review`; `sprint-status.yaml` mantém a story 4-4 em `review` e o action item 12 aberto.
+
 ## Suggested Review Order
 
 **Fluxo e persistência de interações**
