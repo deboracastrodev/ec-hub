@@ -165,8 +165,11 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
 
     public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
     {
-        if (($this->data[$field] ?? null) !== $expected) { return false; }
+        if (($this->data[$field] ?? null) !== $expected) {
+            return false;
+        }
         $this->save($sessionId, $field, $value);
+
         return true;
     }
 

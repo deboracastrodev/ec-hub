@@ -88,6 +88,7 @@ final class ProductControllerTrackingTest extends TestCase
                 }
 
                 $this->values[$key] = $value;
+
                 return true;
             }
 

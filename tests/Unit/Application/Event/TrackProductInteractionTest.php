@@ -106,6 +106,7 @@ final class InMemorySessionRepository implements SessionRepositoryInterface
         }
 
         $this->values[$key] = $value;
+
         return true;
     }
 

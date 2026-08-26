@@ -187,8 +187,11 @@ final class MetricsInMemorySessionRepository implements SessionRepositoryInterfa
 
     public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
     {
-        if (($this->data[$field] ?? null) !== $expected) { return false; }
+        if (($this->data[$field] ?? null) !== $expected) {
+            return false;
+        }
         $this->data[$field] = $value;
+
         return true;
     }
 

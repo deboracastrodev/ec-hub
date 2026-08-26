@@ -73,6 +73,7 @@ final class ProductInteractionControllerTest extends TestCase
                 }
 
                 $this->values[$key] = $value;
+
                 return true;
             }
 

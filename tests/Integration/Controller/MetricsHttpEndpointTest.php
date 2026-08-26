@@ -162,8 +162,11 @@ final class HttpMetricsSessionRepository implements SessionRepositoryInterface
 
     public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
     {
-        if (($this->sessions[$sessionId][$field] ?? null) !== $expected) { return false; }
+        if (($this->sessions[$sessionId][$field] ?? null) !== $expected) {
+            return false;
+        }
         $this->sessions[$sessionId][$field] = $value;
+
         return true;
     }
 

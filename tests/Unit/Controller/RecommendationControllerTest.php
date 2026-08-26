@@ -502,8 +502,11 @@ final class RecommendationInMemorySessionRepository implements SessionRepository
 
             return false;
         }
-        if (($this->data[$field] ?? null) !== $expected) { return false; }
+        if (($this->data[$field] ?? null) !== $expected) {
+            return false;
+        }
         $this->save($sessionId, $field, $value);
+
         return true;
     }
 

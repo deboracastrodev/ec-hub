@@ -169,6 +169,7 @@ final class HttpInMemorySessionRepository implements SessionRepositoryInterface
         }
 
         $this->values[$key] = $value;
+
         return true;
     }
 
