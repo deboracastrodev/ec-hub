@@ -409,14 +409,14 @@ class RecommendationControllerTest extends TestCase
         self::assertArrayNotHasKey('previous', $sessions->savedValue);
     }
 
-    public function testItRetriesAfterAContendedSnapshotWrite(): void
+    public function testItSucceedsOnTheThirdSnapshotWriteAfterTwoContentions(): void
     {
         $sessions = new RecommendationInMemorySessionRepository();
         $sessions->save('current-session', 'recommendation.snapshot', ['current' => [
             'source' => 'ml', 'latency_ms' => 4.0, 'avg_confidence' => 70.0,
             'count' => 1, 'generated_at' => '2026-08-24T11:00:00+00:00', 'product_ids' => [1],
         ]]);
-        $sessions->casFailures = 1;
+        $sessions->casFailures = 2;
         $sessions->concurrentValue = ['current' => [
             'source' => 'rules', 'latency_ms' => 6.0, 'avg_confidence' => 65.0,
             'count' => 1, 'generated_at' => '2026-08-24T11:01:00+00:00', 'product_ids' => [9],
@@ -426,6 +426,7 @@ class RecommendationControllerTest extends TestCase
 
         $controller->getRecommendations(['product_id' => '1'], null, 'current-session');
 
+        self::assertSame(3, $sessions->casAttempts);
         self::assertSame([2], $sessions->savedValue['current']['product_ids']);
         self::assertSame([9], $sessions->savedValue['previous']['product_ids']);
     }
@@ -472,10 +473,11 @@ final class RecommendationInMemorySessionRepository implements SessionRepository
     /** @var array<string, mixed> */
     public array $savedValue = [];
     public int $casFailures = 0;
+    public int $casAttempts = 0;
     /** @var array<string, mixed>|null */
     public ?array $concurrentValue = null;
 
-    /** @var array<string, mixed> */
+    /** @var array<string, array<string, mixed>> */
     private array $data = [];
 
     public function __construct(private readonly bool $throwsOnSave = false)
@@ -490,19 +492,21 @@ final class RecommendationInMemorySessionRepository implements SessionRepository
         $this->savedSessionId = $sessionId;
         $this->savedField = $field;
         $this->savedValue = $value;
-        $this->data[$field] = $value;
+        $this->data[$sessionId][$field] = $value;
     }
 
     public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
     {
-        if ($this->casFailures-- > 0) {
+        ++$this->casAttempts;
+        if ($this->casFailures > 0) {
+            --$this->casFailures;
             if ($this->concurrentValue !== null) {
-                $this->data[$field] = $this->concurrentValue;
+                $this->data[$sessionId][$field] = $this->concurrentValue;
             }
 
             return false;
         }
-        if (($this->data[$field] ?? null) !== $expected) {
+        if (($this->data[$sessionId][$field] ?? null) !== $expected) {
             return false;
         }
         $this->save($sessionId, $field, $value);
@@ -512,6 +516,6 @@ final class RecommendationInMemorySessionRepository implements SessionRepository
 
     public function get(string $sessionId, string $field): mixed
     {
-        return $this->data[$field] ?? null;
+        return $this->data[$sessionId][$field] ?? null;
     }
 }

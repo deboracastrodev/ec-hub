@@ -306,7 +306,7 @@ a {
 .dashboard__session-content { display: grid; gap: var(--spacing-lg); margin-top: var(--spacing-md); }
 .dashboard__session-title { font-size: var(--font-size-lg); }
 .dashboard__product-list, .dashboard__comparison, .dashboard__comparison-evidence { margin-top: var(--spacing-sm); }
-.dashboard__product-list { display: grid; gap: var(--spacing-xs); padding-left: var(--spacing-lg); }
+.dashboard__product-list { display: grid; gap: var(--spacing-xs); padding-left: var(--spacing-lg); overflow-wrap: anywhere; }
 .dashboard__comparison-evidence { color: var(--color-text-light); overflow-wrap: anywhere; }
 
 .dashboard__panel-header {

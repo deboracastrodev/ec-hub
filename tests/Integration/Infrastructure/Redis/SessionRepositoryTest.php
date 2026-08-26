@@ -131,17 +131,32 @@ final class SessionRepositoryTest extends TestCase
         self::assertNull($repository->get($sessionId, 'user.id'));
     }
 
-    public function test_it_compare_and_swaps_a_single_json_value_and_renews_ttl(): void
+    public function test_it_compare_and_swaps_a_single_json_value_renews_ttl_and_preserves_it_on_a_stale_expectation(): void
     {
-        [$repository, $sessionId, $key] = $this->repository(30);
+        [$repository, $sessionId, $key] = $this->repository(4);
         $initial = ['current' => ['product_ids' => [1]]];
         $next = ['current' => ['product_ids' => [2]], 'previous' => ['product_ids' => [1]]];
         $repository->save($sessionId, 'recommendation.snapshot', $initial);
+        $ttlAfterSave = $this->client->pttl($key);
+        $deadline = microtime(true) + 2;
+        do {
+            usleep(100_000);
+            $ttlBeforeSwap = $this->client->pttl($key);
+        } while ($ttlBeforeSwap >= $ttlAfterSave && microtime(true) < $deadline);
 
         self::assertTrue($repository->compareAndSwap($sessionId, 'recommendation.snapshot', $initial, $next));
         self::assertSame($next, $repository->get($sessionId, 'recommendation.snapshot'));
+        $ttlAfterSwap = $this->client->pttl($key);
+        self::assertLessThan($ttlAfterSave, $ttlBeforeSwap);
+        self::assertGreaterThan($ttlBeforeSwap, $ttlAfterSwap);
+
+        $valueBeforeStaleSwap = $repository->get($sessionId, 'recommendation.snapshot');
+        $ttlBeforeStaleSwap = $this->client->pttl($key);
         self::assertFalse($repository->compareAndSwap($sessionId, 'recommendation.snapshot', $initial, $initial));
-        self::assertGreaterThan(0, $this->client->ttl($key));
+        $ttlAfterStaleSwap = $this->client->pttl($key);
+        self::assertSame($valueBeforeStaleSwap, $repository->get($sessionId, 'recommendation.snapshot'));
+        self::assertLessThanOrEqual($ttlBeforeStaleSwap, $ttlAfterStaleSwap);
+        self::assertGreaterThan($ttlBeforeStaleSwap - 250, $ttlAfterStaleSwap);
     }
 
     public function test_it_compare_and_swaps_an_absent_field(): void

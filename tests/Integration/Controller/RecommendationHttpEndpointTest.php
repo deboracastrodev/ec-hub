@@ -146,7 +146,7 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
     /** @var array<string, mixed> */
     public array $savedValue = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<string, array<string, mixed>> */
     private array $data = [];
 
     public function __construct(private readonly bool $throwsOnSave = false)
@@ -160,12 +160,12 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
         }
         $this->savedField = $field;
         $this->savedValue = $value;
-        $this->data[$field] = $value;
+        $this->data[$sessionId][$field] = $value;
     }
 
     public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
     {
-        if (($this->data[$field] ?? null) !== $expected) {
+        if (($this->data[$sessionId][$field] ?? null) !== $expected) {
             return false;
         }
         $this->save($sessionId, $field, $value);
@@ -175,6 +175,6 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
 
     public function get(string $sessionId, string $field): mixed
     {
-        return $this->data[$field] ?? null;
+        return $this->data[$sessionId][$field] ?? null;
     }
 }

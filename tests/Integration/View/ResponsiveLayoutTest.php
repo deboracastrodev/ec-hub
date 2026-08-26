@@ -11,6 +11,8 @@ use App\Controller\ProductController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
+use App\Domain\Session\Repository\SessionRepositoryInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\InMemoryProductRepository;
 use Twig\Environment;
@@ -149,6 +151,85 @@ class ResponsiveLayoutTest extends TestCase
         $this->assertStringContainsString('grid-template-columns: repeat(3, minmax(0, 1fr));', $stylesheet);
         $this->assertStringContainsString('.dashboard__metrics {', $stylesheet);
         $this->assertStringContainsString('grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));', $stylesheet);
+    }
+
+    #[DataProvider('metricsTargetWidths')]
+    public function test_metrics_session_disclosure_keeps_long_content_safe_and_native_at_target_widths(
+        int $width,
+        string $layoutContractPattern,
+    ): void {
+        $longProductId = str_repeat('W', 240);
+        $history = new ResponsiveMetricsHistoryRepository([
+            ['event' => 'product.viewed', 'product_id' => $longProductId, 'timestamp' => '2026-08-26T10:00:00+00:00'],
+        ]);
+        $sessions = new class ($longProductId) implements SessionRepositoryInterface {
+            public function __construct(private readonly string $longProductId)
+            {
+            }
+
+            public function save(string $sessionId, string $field, mixed $value): void
+            {
+            }
+
+            public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+            {
+                return false;
+            }
+
+            public function get(string $sessionId, string $field): mixed
+            {
+                $side = [
+                    'source' => 'ml',
+                    'latency_ms' => 10.0,
+                    'avg_confidence' => 80.0,
+                    'count' => 1,
+                    'generated_at' => '2026-08-26T10:00:00+00:00',
+                    'product_ids' => [$this->longProductId],
+                ];
+
+                return ['current' => $side, 'previous' => $side];
+            }
+        };
+        $output = (new MetricsController($history, $this->twig, $sessions))->index([], [], 'current-session');
+        $stylesheet = (string) file_get_contents(__DIR__ . '/../../../public/assets/css/main.css');
+
+        self::assertContains($width, [320, 768, 1024]);
+        self::assertMatchesRegularExpression($layoutContractPattern, $stylesheet);
+        self::assertStringContainsString('<details class="dashboard__disclosure">', $output);
+        self::assertStringContainsString('<summary class="dashboard__disclosure-control">', $output);
+        self::assertStringContainsString($longProductId, $output);
+        self::assertMatchesRegularExpression(
+            '~\.dashboard__product-list\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*\}~s',
+            $stylesheet,
+        );
+        self::assertMatchesRegularExpression(
+            '~\.dashboard__disclosure\s*\{[^}]*min-width:\s*0;[^}]*\}~s',
+            $stylesheet,
+        );
+        self::assertMatchesRegularExpression(
+            '~\.dashboard__disclosure-control\s*\{[^}]*min-height:\s*44px;[^}]*\}~s',
+            $stylesheet,
+        );
+        self::assertStringContainsString('.dashboard__disclosure-control:focus-visible {', $stylesheet);
+    }
+
+    /** @return array<string, array{int, string}> */
+    public static function metricsTargetWidths(): array
+    {
+        return [
+            'mobile 320 px' => [
+                320,
+                '~\.dashboard__grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*\}~s',
+            ],
+            'tablet 768 px' => [
+                768,
+                '~@media\s*\(min-width:\s*768px\)\s*\{(?:(?!@media).)*?\.dashboard__grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[^}]*\}~s',
+            ],
+            'desktop 1024 px' => [
+                1024,
+                '~@media\s*\(min-width:\s*1024px\)\s*\{(?:(?!@media).)*?\.dashboard__grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);[^}]*\}~s',
+            ],
+        ];
     }
 }
 
