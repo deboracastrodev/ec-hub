@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 use App\Application\Event\TrackProductInteraction;
+use App\Application\Monitoring\MemoryMonitor;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Recommendation\GenerateRecommendations;
@@ -17,6 +18,7 @@ use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
 use App\Controller\MetricsController;
+use App\Controller\MemoryMonitoringController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Event\EventBusStatusInterface;
@@ -165,6 +167,14 @@ return new Container([
         $c->get(Environment::class),
         $c->get(SessionRepositoryInterface::class),
         $c->get(EventBusStatusInterface::class)
+    ),
+
+    MemoryMonitor::class => fn () => new MemoryMonitor(
+        (int) ($GLOBALS['EC_HUB_MEMORY_BASELINE'] ?? memory_get_usage())
+    ),
+
+    MemoryMonitoringController::class => fn (ContainerInterface $c) => new MemoryMonitoringController(
+        $c->get(MemoryMonitor::class)
     ),
 
     NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),

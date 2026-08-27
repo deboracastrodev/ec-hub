@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Controller\Exceptions\InvalidRequestException;
+use App\Controller\MemoryMonitoringController;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
 use App\Controller\MetricsController;
@@ -22,6 +23,10 @@ use Twig\Environment;
  * wiring) is in config/bootstrap.php (outside web root); routing and error
  * mapping are in App\Shared\Http (R5.6).
  */
+
+// A baseline pertence exclusivamente à requisição atual. Ela é capturada
+// antes do container e de qualquer dependência da rota de diagnóstico.
+$GLOBALS['EC_HUB_MEMORY_BASELINE'] = memory_get_usage();
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -70,6 +75,7 @@ $router = new Router(
         'GET /' => ['controller' => ProductController::class, 'action' => 'index'],
         'GET /products' => ['controller' => ProductController::class, 'action' => 'index'],
         'GET /metrics' => ['controller' => MetricsController::class, 'action' => 'index'],
+        'GET /debug/memory' => ['controller' => MemoryMonitoringController::class, 'action' => 'index', 'api' => true],
         'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
         'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
         'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
@@ -104,6 +110,8 @@ try {
             throw new InvalidRequestException('JSON body is required');
         }
         $output = $controller->$action($payload);
+    } elseif ($matchedRoute->controller === MemoryMonitoringController::class) {
+        $output = $controller->$action();
     } else {
         $headers = function_exists('getallheaders') ? (array) getallheaders() : [];
         $sessionId = $container->has(SessionContext::class) ? $container->get(SessionContext::class)->id() : null;
