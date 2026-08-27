@@ -54,3 +54,5 @@ coverage.txt
 .bmad-loop/policy.toml
 _bmad/render/
 .php-cs-fixer.cache
+.bmad-loop/profiles/
+.bmad-loop/litellm-config.yaml
