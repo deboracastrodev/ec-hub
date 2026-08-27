@@ -4,16 +4,28 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
+use Throwable;
 use Twig\Environment;
 
 final class MetricsController
 {
+    /** @var list<array{label: string, story: string}> */
+    private const ARCHITECTURE_SIGNALS_NOT_YET_AVAILABLE = [
+        ['label' => 'Modelo KNN em cache (treinado há Xs)', 'story' => 'Epic 10 / Story 10.1'],
+        ['label' => 'Memory (uso / growth %)', 'story' => 'Story 5.6'],
+        ['label' => 'KNN Confidence Score (global do modelo)', 'story' => 'Epic 10'],
+        ['label' => 'precision@5', 'story' => 'Story 10.5'],
+        ['label' => 'Cobertura de catálogo', 'story' => 'Story 10.5'],
+    ];
+
     public function __construct(
         private readonly EventHistoryRepositoryInterface $history,
         private readonly Environment $twig,
         private readonly ?SessionRepositoryInterface $sessions = null,
+        private readonly ?EventBusStatusInterface $eventBusStatus = null,
     ) {
     }
 
@@ -54,7 +66,29 @@ final class MetricsController
             'recommendation' => $this->levelOneSnapshot($recommendationPair['current']),
             'viewed_products' => $this->viewedProducts($history),
             'recommendation_comparison' => $this->recommendationComparison($recommendationPair),
+            'pubsub' => $this->pubSubStatus(),
+            'architecture_signals' => self::ARCHITECTURE_SIGNALS_NOT_YET_AVAILABLE,
         ]);
+    }
+
+    /** @return array{available: bool, connected: bool, published_count: int} */
+    private function pubSubStatus(): array
+    {
+        if ($this->eventBusStatus === null) {
+            return ['available' => false, 'connected' => false, 'published_count' => 0];
+        }
+
+        try {
+            $status = $this->eventBusStatus->status();
+        } catch (Throwable) {
+            return ['available' => false, 'connected' => false, 'published_count' => 0];
+        }
+
+        return [
+            'available' => true,
+            'connected' => $status->connected,
+            'published_count' => $status->publishedCount,
+        ];
     }
 
     /** @return array{state: 'changed'|'unchanged'|'unavailable', current: list<int|string>, previous: list<int|string>} */

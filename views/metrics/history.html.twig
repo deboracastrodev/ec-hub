@@ -71,6 +71,36 @@
                                 <p class="dashboard__empty" role="status">Ainda sem comparação nesta sessão.</p>
                             {% endif %}
                         </section>
+
+                        <details class="dashboard__disclosure dashboard__disclosure--architecture">
+                            <summary class="dashboard__disclosure-control">Ver arquitetura técnica</summary>
+                            <section class="dashboard__panel dashboard__panel--architecture" aria-labelledby="architecture-visibility-title">
+                                <header class="dashboard__panel-header">
+                                    <h3 class="dashboard__panel-title" id="architecture-visibility-title">Architecture Visibility</h3>
+                                    <p class="dashboard__panel-description">Sinais técnicos observáveis do pipeline de recomendação, sem valores simulados.</p>
+                                </header>
+                                <dl class="dashboard__metrics" aria-label="Sinais de arquitetura">
+                                    <div class="dashboard__metric">
+                                        <dt>Redis Pub/Sub</dt>
+                                        <dd>
+                                            {% if not pubsub.available %}
+                                                Redis Pub/Sub: Not available
+                                            {% elseif pubsub.connected %}
+                                                Redis Pub/Sub: connected · {{ pubsub.published_count }} eventos publicados
+                                            {% else %}
+                                                Redis Pub/Sub: disconnected
+                                            {% endif %}
+                                        </dd>
+                                    </div>
+                                    {% for signal in architecture_signals %}
+                                        <div class="dashboard__metric">
+                                            <dt>{{ signal.label }}</dt>
+                                            <dd>Not available yet ({{ signal.story }})</dd>
+                                        </div>
+                                    {% endfor %}
+                                </dl>
+                            </section>
+                        </details>
                     </div>
                 </section>
             </details>

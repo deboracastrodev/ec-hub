@@ -7,6 +7,8 @@ namespace Tests\Integration\Controller;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\MetricsController;
 use App\Controller\RecommendationController;
+use App\Domain\Event\EventBusStatus;
+use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
@@ -88,6 +90,32 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('Latência: —', $html);
         self::assertStringContainsString('Confiança média: —', $html);
         self::assertStringContainsString('Recomendações: 0', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function testMetricsRouteRendersArchitectureVisibilityWithRealPubSubStatusAndRemainingSignalsAsNotAvailableYet(): void
+    {
+        $sessionId = str_repeat('e', 64);
+        $history = new HttpMetricsHistoryRepository([$sessionId => []]);
+        $this->installContainer($history, null, new HttpMetricsEventBusStatus(new EventBusStatus(connected: true, publishedCount: 3)));
+        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/metrics';
+        $_GET = [];
+        header_remove();
+        http_response_code(200);
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $html = (string) ob_get_clean();
+
+        self::assertSame(200, http_response_code());
+        self::assertStringContainsString('Architecture Visibility', $html);
+        self::assertStringContainsString('Redis Pub/Sub: connected · 3 eventos publicados', $html);
+        self::assertStringContainsString('Not available yet (Story 5.6)', $html);
+        self::assertStringContainsString('Not available yet (Epic 10)', $html);
+        self::assertStringContainsString('Not available yet (Story 10.5)', $html);
     }
 
     #[RunInSeparateProcess]
@@ -290,15 +318,18 @@ final class MetricsHttpEndpointTest extends TestCase
         }
     }
 
-    private function installContainer(EventHistoryRepositoryInterface $history, ?SessionRepositoryInterface $sessions = null): void
-    {
+    private function installContainer(
+        EventHistoryRepositoryInterface $history,
+        ?SessionRepositoryInterface $sessions = null,
+        ?EventBusStatusInterface $eventBusStatus = null,
+    ): void {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
             'strict_variables' => true,
         ]);
         $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
             Environment::class => fn () => $twig,
             SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
-            MetricsController::class => fn () => new MetricsController($history, $twig, $sessions),
+            MetricsController::class => fn () => new MetricsController($history, $twig, $sessions, $eventBusStatus),
         ]);
     }
 
@@ -311,6 +342,18 @@ final class MetricsHttpEndpointTest extends TestCase
 
         self::assertTrue($sessions->compareAndSwap($sessionId, 'recommendation.snapshot', $expected, $replacement));
         self::assertSame($replacement, $sessions->get($sessionId, 'recommendation.snapshot'));
+    }
+}
+
+final class HttpMetricsEventBusStatus implements EventBusStatusInterface
+{
+    public function __construct(private readonly EventBusStatus $status)
+    {
+    }
+
+    public function status(): EventBusStatus
+    {
+        return $this->status;
     }
 }
 

@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Messaging;
 
+use App\Domain\Event\EventBusStatus;
+use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventPublisherInterface;
 use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
 use JsonException;
 use Predis\ClientInterface;
+use Throwable;
 
-final class RedisEventBus implements EventPublisherInterface
+final class RedisEventBus implements EventPublisherInterface, EventBusStatusInterface
 {
     private const JSON_MAX_DEPTH = 100;
+    private const PUBLISHED_COUNTER_KEY = 'metrics:pubsub:published_count';
 
     public function __construct(private readonly ClientInterface $client)
     {
@@ -37,6 +41,27 @@ final class RedisEventBus implements EventPublisherInterface
         }
 
         $this->client->publish("events:{$event}", $payload);
+        $this->client->incr(self::PUBLISHED_COUNTER_KEY);
+    }
+
+    public function status(): EventBusStatus
+    {
+        try {
+            $this->client->ping();
+        } catch (Throwable) {
+            return new EventBusStatus(connected: false, publishedCount: 0);
+        }
+
+        try {
+            $count = $this->client->get(self::PUBLISHED_COUNTER_KEY);
+        } catch (Throwable) {
+            $count = null;
+        }
+
+        return new EventBusStatus(
+            connected: true,
+            publishedCount: is_numeric($count) ? (int) $count : 0,
+        );
     }
 
     public static function assertEventName(string $event): void

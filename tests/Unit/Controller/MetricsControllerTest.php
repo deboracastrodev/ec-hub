@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Controller;
 
 use App\Controller\MetricsController;
+use App\Domain\Event\EventBusStatus;
+use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use PHPUnit\Framework\TestCase;
@@ -65,6 +67,79 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Latência: —', $html);
         self::assertStringContainsString('Confiança média: —', $html);
         self::assertStringContainsString('Recomendações: 0', $html);
+    }
+
+    public function testItRendersArchitectureVisibilityWithPubSubConnectedAndFiveSignalsNotAvailableYet(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            null,
+            new MetricsFakeEventBusStatus(new EventBusStatus(connected: true, publishedCount: 7))
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('Architecture Visibility', $html);
+        self::assertStringContainsString('Redis Pub/Sub: connected · 7 eventos publicados', $html);
+        self::assertStringContainsString('Not available yet (Epic 10 / Story 10.1)', $html);
+        self::assertStringContainsString('Not available yet (Story 5.6)', $html);
+        self::assertStringContainsString('Not available yet (Epic 10)', $html);
+        self::assertStringContainsString('Not available yet (Story 10.5)', $html);
+    }
+
+    public function testItRendersPubSubAsDisconnectedWhenTheRealPingFails(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            null,
+            new MetricsFakeEventBusStatus(new EventBusStatus(connected: false, publishedCount: 0))
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('Redis Pub/Sub: disconnected', $html);
+        self::assertStringNotContainsString('eventos publicados', $html);
+    }
+
+    public function testItRendersPubSubAsNotAvailableWhenTheStatusSourceThrows(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            null,
+            new MetricsFakeEventBusStatus(null, throws: true)
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('Redis Pub/Sub: Not available', $html);
+    }
+
+    public function testItRendersPubSubAsNotAvailableWhenNoStatusSourceIsWired(): void
+    {
+        $controller = $this->controller(new MetricsInMemoryHistoryRepository([]));
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('Redis Pub/Sub: Not available', $html);
+    }
+
+    public function testItNeverReusesTheSessionAverageConfidenceAsTheLevelThreeConfidenceSignal(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository([
+            'recommendation.snapshot' => [
+                'source' => 'ml',
+                'latency_ms' => 12.34,
+                'avg_confidence' => 87.5,
+                'count' => 2,
+                'generated_at' => '2026-08-24T12:00:00+00:00',
+            ],
+        ]);
+        $controller = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions);
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('87,50%', $html);
+        self::assertStringContainsString('Not available yet (Epic 10)', $html);
     }
 
     public function testItRendersRecordedRecommendationSnapshot(): void
@@ -161,13 +236,34 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Latência: —', $html);
     }
 
-    private function controller(EventHistoryRepositoryInterface $history, ?SessionRepositoryInterface $sessions = null): MetricsController
-    {
+    private function controller(
+        EventHistoryRepositoryInterface $history,
+        ?SessionRepositoryInterface $sessions = null,
+        ?EventBusStatusInterface $eventBusStatus = null,
+    ): MetricsController {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
             'strict_variables' => true,
         ]);
 
-        return new MetricsController($history, $twig, $sessions);
+        return new MetricsController($history, $twig, $sessions, $eventBusStatus);
+    }
+}
+
+final class MetricsFakeEventBusStatus implements EventBusStatusInterface
+{
+    public function __construct(
+        private readonly ?EventBusStatus $status,
+        private readonly bool $throws = false,
+    ) {
+    }
+
+    public function status(): EventBusStatus
+    {
+        if ($this->throws || $this->status === null) {
+            throw new \RuntimeException('Fonte de status indisponível.');
+        }
+
+        return $this->status;
     }
 }
 

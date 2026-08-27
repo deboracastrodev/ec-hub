@@ -19,6 +19,7 @@ use App\Controller\ProductInteractionController;
 use App\Controller\MetricsController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
+use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
@@ -103,6 +104,9 @@ return new Container([
         $c->get(Client::class)
     ),
 
+    // Story 5.4: mesmo RedisEventBus, consultado pelo MetricsController como status observável.
+    EventBusStatusInterface::class => fn (ContainerInterface $c) => $c->get(EventPublisherInterface::class),
+
     SessionRepositoryInterface::class => fn (ContainerInterface $c) => new SessionRepository(
         $c->get(Client::class),
         $sessionConfig['ttl']
@@ -159,7 +163,8 @@ return new Container([
     MetricsController::class => fn (ContainerInterface $c) => new MetricsController(
         $c->get(EventHistoryRepositoryInterface::class),
         $c->get(Environment::class),
-        $c->get(SessionRepositoryInterface::class)
+        $c->get(SessionRepositoryInterface::class),
+        $c->get(EventBusStatusInterface::class)
     ),
 
     NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
