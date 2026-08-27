@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 use App\Application\Event\TrackProductInteraction;
+use App\Application\Monitoring\HealthCheck;
 use App\Application\Monitoring\MemoryMonitor;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
@@ -18,6 +19,7 @@ use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
 use App\Controller\MetricsController;
+use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\RecommendationController;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
@@ -175,6 +177,15 @@ return new Container([
 
     MemoryMonitoringController::class => fn (ContainerInterface $c) => new MemoryMonitoringController(
         $c->get(MemoryMonitor::class)
+    ),
+
+    HealthCheck::class => fn (ContainerInterface $c) => new HealthCheck(
+        fn (): PDO => $c->get(PDO::class),
+        fn (): Client => $c->get(Client::class),
+    ),
+
+    HealthCheckController::class => fn (ContainerInterface $c) => new HealthCheckController(
+        $c->get(HealthCheck::class)
     ),
 
     NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Controller\Exceptions\InvalidRequestException;
+use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
@@ -76,6 +77,7 @@ $router = new Router(
         'GET /products' => ['controller' => ProductController::class, 'action' => 'index'],
         'GET /metrics' => ['controller' => MetricsController::class, 'action' => 'index'],
         'GET /debug/memory' => ['controller' => MemoryMonitoringController::class, 'action' => 'index', 'api' => true],
+        'GET /health' => ['controller' => HealthCheckController::class, 'action' => 'index', 'api' => true],
         'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
         'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
         'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
@@ -96,7 +98,6 @@ if ($matchedRoute === null) {
 $controller = $container->get($matchedRoute->controller);
 $action = $matchedRoute->action;
 $isApiRoute = $matchedRoute->isApi;
-$errorHandler = new ErrorHandler($container->get(Environment::class));
 
 try {
     if ($matchedRoute->params !== []) {
@@ -110,7 +111,7 @@ try {
             throw new InvalidRequestException('JSON body is required');
         }
         $output = $controller->$action($payload);
-    } elseif ($matchedRoute->controller === MemoryMonitoringController::class) {
+    } elseif (in_array($matchedRoute->controller, [MemoryMonitoringController::class, HealthCheckController::class], true)) {
         $output = $controller->$action();
     } else {
         $headers = function_exists('getallheaders') ? (array) getallheaders() : [];
@@ -132,9 +133,12 @@ try {
         echo $output;
     }
 } catch (InvalidRequestException $e) {
+    $errorHandler = new ErrorHandler($container->get(Environment::class));
     $errorHandler->handleInvalidRequest($e, $isApiRoute);
 } catch (RecommendationException $e) {
+    $errorHandler = new ErrorHandler($container->get(Environment::class));
     $errorHandler->handleRecommendationFailure($e, $isApiRoute);
 } catch (\Throwable $e) {
+    $errorHandler = new ErrorHandler($container->get(Environment::class));
     $errorHandler->handleUnexpected($e, $isApiRoute);
 }
