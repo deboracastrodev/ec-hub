@@ -110,6 +110,7 @@ class ProductControllerTest extends TestCase
     {
         // Arrange
         $nonexistentId = 999999;
+        $this->expectOutputRegex('/\[ProductController\] Produto não encontrado: 999999/');
 
         // Act
         $output = $this->controller->show((string) $nonexistentId);

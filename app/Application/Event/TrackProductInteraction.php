@@ -7,6 +7,7 @@ namespace App\Application\Event;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
+use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use DateTimeImmutable;
@@ -21,6 +22,7 @@ final class TrackProductInteraction
         private readonly ProductRepositoryInterface $products,
         private readonly SessionRepositoryInterface $sessions,
         private readonly EventHistoryRepositoryInterface $history,
+        private readonly EventStoreInterface $eventStore,
         private readonly EventPublisherInterface $publisher,
         private readonly LoggerInterface $logger,
     ) {
@@ -60,6 +62,7 @@ final class TrackProductInteraction
         }
 
         $this->persistTracking($sessionId, $event);
+        $this->persistEvent($event);
         $this->publish($event);
 
         return $event;
@@ -102,6 +105,23 @@ final class TrackProductInteraction
             $this->history->append($sessionId, $event['user_id'] ?? null, $event);
         } catch (\Throwable $exception) {
             $this->logger->error('Não foi possível persistir interação de produto.', [
+                'event' => $event['event'],
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /** @param array<string, mixed> $event */
+    private function persistEvent(array $event): void
+    {
+        try {
+            $this->eventStore->append([
+                'event' => (string) $event['event'],
+                'data' => $event,
+                'timestamp' => (string) $event['timestamp'],
+            ]);
+        } catch (\Throwable $exception) {
+            $this->logger->error('Não foi possível persistir evento de produto.', [
                 'event' => $event['event'],
                 'error' => $exception->getMessage(),
             ]);

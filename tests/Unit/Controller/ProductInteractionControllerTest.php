@@ -9,6 +9,7 @@ use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\ProductInteractionController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
+use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
@@ -102,6 +103,7 @@ final class ProductInteractionControllerTest extends TestCase
             $products,
             $sessions,
             $history,
+            $this->createStub(EventStoreInterface::class),
             $publisher ?? $this->createMock(EventPublisherInterface::class),
             new NullLogger()
         );

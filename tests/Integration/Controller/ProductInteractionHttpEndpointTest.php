@@ -8,6 +8,7 @@ use App\Application\Event\TrackProductInteraction;
 use App\Controller\ProductInteractionController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
+use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
@@ -128,6 +129,7 @@ final class ProductInteractionHttpEndpointTest extends TestCase
             $products,
             $sessions ?? new HttpInMemorySessionRepository(),
             $history,
+            $this->createStub(EventStoreInterface::class),
             $publisher,
             new NullLogger()
         );

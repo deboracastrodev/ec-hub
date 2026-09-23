@@ -8,6 +8,7 @@ use App\Application\Event\TrackProductInteraction;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
+use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
@@ -26,7 +27,7 @@ final class TrackProductInteractionTest extends TestCase
         $history->method('append')->willThrowException(new \RuntimeException('Redis indisponível'));
         $session = new InMemorySessionRepository();
 
-        $event = (new TrackProductInteraction($products, $session, $history, $publisher, new NullLogger()))
+        $event = (new TrackProductInteraction($products, $session, $history, $this->createStub(EventStoreInterface::class), $publisher, new NullLogger()))
             ->track('cart', 'session', 7, 'user-1', 2);
 
         self::assertSame('cart.item_added', $event['event']);
@@ -44,10 +45,17 @@ final class TrackProductInteractionTest extends TestCase
                 $published[] = [$name, $event];
             });
         $history = new InMemoryEventHistoryRepository();
+        $eventStore = $this->createMock(EventStoreInterface::class);
+        $stored = [];
+        $eventStore->expects(self::exactly(2))->method('append')
+            ->willReturnCallback(static function (array $envelope) use (&$stored): void {
+                $stored[] = $envelope;
+            });
         $tracker = new TrackProductInteraction(
             $products,
             new InMemorySessionRepository(),
             $history,
+            $eventStore,
             $publisher,
             new NullLogger()
         );
@@ -63,6 +71,40 @@ final class TrackProductInteractionTest extends TestCase
         self::assertArrayHasKey('timestamp', $published[0][1]);
         self::assertSame('product.clicked', $published[1][0]);
         self::assertSame('user-1', $published[1][1]['user_id']);
+        self::assertSame('product.viewed', $stored[0]['event']);
+        self::assertSame($published[0][1], $stored[0]['data']);
+    }
+
+    public function testPersistsEventBeforePublishingAndKeepsPublishingWhenStoreFails(): void
+    {
+        $products = $this->createMock(ProductRepositoryInterface::class);
+        $products->method('findById')->with(7)->willReturn($this->createMock(Product::class));
+        $calls = [];
+        $eventStore = $this->createMock(EventStoreInterface::class);
+        $eventStore->expects(self::once())->method('append')
+            ->willReturnCallback(static function () use (&$calls): void {
+                $calls[] = 'store';
+                throw new \RuntimeException('Event store indisponível');
+            });
+        $publisher = $this->createMock(EventPublisherInterface::class);
+        $publisher->expects(self::once())->method('publish')
+            ->willReturnCallback(static function () use (&$calls): void {
+                $calls[] = 'publish';
+            });
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects(self::once())->method('error');
+
+        $event = (new TrackProductInteraction(
+            $products,
+            new InMemorySessionRepository(),
+            new InMemoryEventHistoryRepository(),
+            $eventStore,
+            $publisher,
+            $logger
+        ))->track('click', 'session', 7);
+
+        self::assertSame('product.clicked', $event['event']);
+        self::assertSame(['store', 'publish'], $calls);
     }
 
     public function testKeepsTrackingAndResponseWhenCartPersistenceFails(): void
@@ -73,12 +115,14 @@ final class TrackProductInteractionTest extends TestCase
         $sessions->method('save')->willThrowException(new \RuntimeException('Redis indisponível'));
         $history = $this->createMock(EventHistoryRepositoryInterface::class);
         $history->expects(self::once())->method('append');
+        $eventStore = $this->createMock(EventStoreInterface::class);
+        $eventStore->expects(self::once())->method('append');
         $publisher = $this->createMock(EventPublisherInterface::class);
         $publisher->expects(self::once())->method('publish')->with('cart.item_added', self::isArray());
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $logger->expects(self::atLeastOnce())->method('error');
 
-        $event = (new TrackProductInteraction($products, $sessions, $history, $publisher, $logger))
+        $event = (new TrackProductInteraction($products, $sessions, $history, $eventStore, $publisher, $logger))
             ->track('cart', 'session', 7, 'user-1', 2);
 
         self::assertSame('cart.item_added', $event['event']);
@@ -95,6 +139,7 @@ final class TrackProductInteractionTest extends TestCase
             $products,
             new InMemorySessionRepository(),
             new InMemoryEventHistoryRepository(),
+            $this->createStub(EventStoreInterface::class),
             $publisher,
             new NullLogger()
         );

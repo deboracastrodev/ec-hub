@@ -113,6 +113,6 @@ final class ProductControllerTrackingTest extends TestCase
             }
         };
 
-        return new TrackProductInteraction($products, $sessions, $history, $publisher, new NullLogger());
+        return new TrackProductInteraction($products, $sessions, $history, $this->createStub(\App\Domain\Event\EventStoreInterface::class), $publisher, new NullLogger());
     }
 }

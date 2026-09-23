@@ -10,6 +10,7 @@ use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
+use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Service\KNNService;
@@ -98,6 +99,7 @@ final class BehavioralPersonalizationHttpTest extends TestCase
                     $this->products(),
                     new HttpJourneySessionRepository(),
                     $history,
+                    $this->createStub(EventStoreInterface::class),
                     $this->createStub(EventPublisherInterface::class),
                     new NullLogger()
                 ),

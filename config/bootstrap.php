@@ -26,6 +26,7 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
+use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Service\CategoryService;
 use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
@@ -36,6 +37,7 @@ use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Messaging\RedisEventBus;
+use App\Infrastructure\Messaging\RedisEventStore;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Infrastructure\Redis\SessionRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
@@ -108,6 +110,10 @@ return new Container([
         $c->get(Client::class)
     ),
 
+    EventStoreInterface::class => fn (ContainerInterface $c) => new RedisEventStore(
+        $c->get(Client::class)
+    ),
+
     // Story 5.4: mesmo RedisEventBus, consultado pelo MetricsController como status observável.
     EventBusStatusInterface::class => fn (ContainerInterface $c) => $c->get(EventPublisherInterface::class),
 
@@ -127,6 +133,7 @@ return new Container([
         $c->get(ProductRepositoryInterface::class),
         $c->get(SessionRepositoryInterface::class),
         $c->get(EventHistoryRepositoryInterface::class),
+        $c->get(EventStoreInterface::class),
         $c->get(EventPublisherInterface::class),
         $c->get(LoggerInterface::class)
     ),
