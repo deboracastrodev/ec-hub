@@ -71,7 +71,7 @@ app/
 
 O `Domain` não depende de framework nem de biblioteca de ML — `App\Domain\Recommendation\Service\NeighborFinderInterface` é a porta; `App\Infrastructure\ML\RubixNeighborFinder` é a única implementação, e o único lugar do projeto que importa `Rubix\ML\*`.
 
-Detalhes completos: [docs/STRUCTURE.md](docs/STRUCTURE.md) (árvore + fluxo de requisição) e [docs/architecture.md](docs/architecture.md) (decisões, com o porquê).
+Detalhes completos: [docs/STRUCTURE.md](docs/STRUCTURE.md) (árvore + fluxo de requisição), [docs/architecture.md](docs/architecture.md) (decisões, com o porquê) e [docs/ML.md](docs/ML.md) (como o KNN funciona, fallback e benchmarks).
 
 ## API de recomendações
 
@@ -131,6 +131,8 @@ make test-performance   # roda a suíte de performance
 make benchmark-knn      # tabela: treino e p50/p95/máx de recommend() para 100, 1.000 e 5.000 produtos
 ```
 
+Resultados medidos do benchmark, com data e ambiente: [docs/ML.md](docs/ML.md) (seção "Benchmarks medidos").
+
 `PERF_BASE_URL` (padrão `http://127.0.0.1:9501`, visto de dentro do container) aponta os testes HTTP para outra URL; servidor inacessível faz os testes falharem, não serem pulados. O CI roda a suíte e o benchmark no job `performance`.
 
 ## Roadmap
@@ -173,6 +175,7 @@ docker compose exec app vendor/bin/phpunit --group redis
 
 - [docs/STRUCTURE.md](docs/STRUCTURE.md) — estrutura de pastas e fluxo de requisição
 - [docs/architecture.md](docs/architecture.md) — decisões arquiteturais (ADRs)
+- [docs/ML.md](docs/ML.md) — KNN com Rubix ML: pipeline, features e similaridade, fallback e benchmarks medidos
 - [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) — PSR-12 e convenções específicas do projeto
 - [docs/remediation-spec.md](docs/remediation-spec.md) — histórico da remediação que trouxe o projeto ao estado atual
 
