@@ -32,13 +32,17 @@ final class RedisEventHistoryRepository implements EventHistoryRepositoryInterfa
             $keys[] = $this->key('user', $userId);
         }
 
-        foreach ($keys as $key) {
-            $this->client->transaction(function (MultiExec $transaction) use ($key, $encoded): void {
+        // DW-33: both indexes go out in a single MULTI/EXEC, so a failure
+        // between the two writes (connection drop, EXEC never sent) cannot
+        // leave one index updated without the other. Redis has no rollback
+        // for per-command runtime errors inside the transaction.
+        $this->client->transaction(function (MultiExec $transaction) use ($keys, $encoded): void {
+            foreach ($keys as $key) {
                 $transaction->rpush($key, [$encoded]);
                 $transaction->ltrim($key, -self::LIMIT, -1);
                 $transaction->expire($key, $this->ttl);
-            });
-        }
+            }
+        });
     }
 
     public function getBySession(string $sessionId): array

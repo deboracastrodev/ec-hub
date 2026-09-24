@@ -51,7 +51,16 @@ final class MetricsController
      */
     public function index(array $queryParams, array $headers, ?string $sessionId): string
     {
-        $events = $sessionId === null ? [] : $this->history->getBySession($sessionId);
+        $events = [];
+        $historyUnavailable = false;
+        if ($sessionId !== null) {
+            // DW-28: Redis down only degrades the history panel, never the route.
+            try {
+                $events = $this->history->getBySession($sessionId);
+            } catch (Throwable) {
+                $historyUnavailable = true;
+            }
+        }
         $history = [];
 
         foreach ($events as $position => $event) {
@@ -79,6 +88,7 @@ final class MetricsController
         return $this->twig->render('metrics/history.html.twig', [
             'events' => $history,
             'total' => count($history),
+            'history_unavailable' => $historyUnavailable,
             'recommendation' => $this->levelOneSnapshot($recommendationPair['current']),
             'viewed_products' => $this->viewedProducts($history),
             'recommendation_comparison' => $this->recommendationComparison($recommendationPair),

@@ -97,6 +97,35 @@ final class MetricsHttpEndpointTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function testMetricsRouteDegradesTheHistoryPanelWhenTheHistoryReadFails(): void
+    {
+        $sessionId = str_repeat('d', 64);
+        $history = new HttpMetricsHistoryRepository([], throwsOnGet: true);
+        $this->installContainer($history);
+        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/metrics';
+        $_GET = [];
+        header_remove();
+        http_response_code(200);
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $html = (string) ob_get_clean();
+
+        self::assertSame(200, http_response_code());
+        self::assertSame($sessionId, $history->queriedSessionId);
+        self::assertStringContainsString('ec-hub - System Metrics Dashboard', $html);
+        self::assertStringContainsString('Total de eventos: 0', $html);
+        self::assertStringContainsString(
+            '<p class="dashboard__empty" role="status">Histórico de eventos indisponível no momento.</p>',
+            $html
+        );
+        self::assertStringNotContainsString('Nenhum evento foi registrado nesta sessão.', $html);
+    }
+
+    #[RunInSeparateProcess]
     public function testMetricsRouteRendersArchitectureVisibilityWithRealPubSubStatusAndRemainingSignalsAsNotAvailableYet(): void
     {
         $sessionId = str_repeat('e', 64);
@@ -448,7 +477,7 @@ final class HttpMetricsHistoryRepository implements EventHistoryRepositoryInterf
     public ?string $queriedSessionId = null;
 
     /** @param array<string, list<array<string, mixed>>> $eventsBySession */
-    public function __construct(private readonly array $eventsBySession)
+    public function __construct(private readonly array $eventsBySession, private readonly bool $throwsOnGet = false)
     {
     }
 
@@ -459,6 +488,9 @@ final class HttpMetricsHistoryRepository implements EventHistoryRepositoryInterf
     public function getBySession(string $sessionId): array
     {
         $this->queriedSessionId = $sessionId;
+        if ($this->throwsOnGet) {
+            throw new \RuntimeException('Redis indisponível.');
+        }
 
         return $this->eventsBySession[$sessionId] ?? [];
     }

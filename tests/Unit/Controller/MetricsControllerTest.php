@@ -72,6 +72,43 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Recomendações: 0', $html);
     }
 
+    public function testItDegradesTheHistoryPanelWhenTheHistoryReadFails(): void
+    {
+        $history = new MetricsInMemoryHistoryRepository([], throwsOnGet: true);
+        $controller = $this->controller($history);
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertSame('current-session', $history->queriedSessionId);
+        self::assertStringContainsString('ec-hub - System Metrics Dashboard', $html);
+        self::assertStringContainsString('Total de eventos: 0', $html);
+        self::assertStringContainsString(
+            '<p class="dashboard__empty" role="status">Histórico de eventos indisponível no momento.</p>',
+            $html
+        );
+        self::assertStringNotContainsString('Nenhum evento foi registrado nesta sessão.', $html);
+    }
+
+    public function testItDoesNotShowTheUnavailableNoticeWhenTheHistoryReadSucceeds(): void
+    {
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]))->index([], [], 'current-session');
+
+        self::assertStringContainsString('Nenhum evento foi registrado nesta sessão.', $html);
+        self::assertStringNotContainsString('Histórico de eventos indisponível no momento.', $html);
+    }
+
+    public function testItRendersAnEmptyHistoryWithoutNoticeWhenThereIsNoSession(): void
+    {
+        $history = new MetricsInMemoryHistoryRepository([], throwsOnGet: true);
+
+        $html = $this->controller($history)->index([], [], null);
+
+        self::assertNull($history->queriedSessionId);
+        self::assertStringContainsString('Total de eventos: 0', $html);
+        self::assertStringContainsString('Nenhum evento foi registrado nesta sessão.', $html);
+        self::assertStringNotContainsString('Histórico de eventos indisponível no momento.', $html);
+    }
+
     public function testItRendersArchitectureVisibilityWithPubSubConnectedAndRemainingSignalsNotAvailableYet(): void
     {
         $controller = $this->controller(
@@ -456,7 +493,7 @@ final class MetricsInMemoryHistoryRepository implements EventHistoryRepositoryIn
     public ?string $queriedSessionId = null;
 
     /** @param list<array<string, mixed>> $events */
-    public function __construct(private readonly array $events)
+    public function __construct(private readonly array $events, private readonly bool $throwsOnGet = false)
     {
     }
 
@@ -467,6 +504,9 @@ final class MetricsInMemoryHistoryRepository implements EventHistoryRepositoryIn
     public function getBySession(string $sessionId): array
     {
         $this->queriedSessionId = $sessionId;
+        if ($this->throwsOnGet) {
+            throw new \RuntimeException('Histórico indisponível.');
+        }
 
         return $this->events;
     }

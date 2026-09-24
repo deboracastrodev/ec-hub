@@ -198,7 +198,9 @@
                     <p class="dashboard__count" id="event-history-count" aria-live="polite">Total de eventos: {{ total }}</p>
                 </header>
 
-                {% if events is empty %}
+                {% if history_unavailable %}
+                    <p class="dashboard__empty" role="status">Histórico de eventos indisponível no momento.</p>
+                {% elseif events is empty %}
                     <p class="dashboard__empty" role="status">Nenhum evento foi registrado nesta sessão.</p>
                 {% else %}
                     <ol class="dashboard__event-list" aria-label="Eventos da sessão, do mais recente ao mais antigo">

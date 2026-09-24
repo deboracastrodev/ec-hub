@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Controller;
 
+use App\Application\Monitoring\HttpMetricsRepositoryInterface;
 use App\Application\Recommendation\Evaluation\PublishedQualityMetrics;
 use App\Controller\MetricsController;
 use App\Domain\Event\EventBusStatusInterface;
@@ -11,11 +12,16 @@ use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
+use App\Shared\Http\SessionContext;
 use Closure;
 use PDO;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Predis\Client;
+use Psr\Log\LoggerInterface;
 use ReflectionProperty;
+use Tests\Support\InMemoryHttpMetricsRepository;
+use Tests\Support\RecordingLogger;
 use Twig\Environment;
 
 final class MetricsBootstrapConfigurationTest extends TestCase
@@ -63,6 +69,53 @@ final class MetricsBootstrapConfigurationTest extends TestCase
             putenv($previousHost === false ? 'REDIS_HOST' : "REDIS_HOST={$previousHost}");
             putenv($previousPort === false ? 'REDIS_PORT' : "REDIS_PORT={$previousPort}");
         }
+    }
+
+    /**
+     * DW-28: with the real wiring and Redis refusing connections, a real
+     * Predis failure while reading the history only degrades the history
+     * panel -- GET /metrics still answers 200.
+     */
+    #[RunInSeparateProcess]
+    public function testMetricsRouteDegradesTheHistoryPanelWhenRedisRefusesConnections(): void
+    {
+        putenv('REDIS_HOST=127.0.0.1');
+        putenv('REDIS_PORT=1');
+
+        /** @var Container $container */
+        $container = require dirname(__DIR__, 3) . '/config/bootstrap.php';
+        (new ReflectionProperty(Container::class, 'instances'))->setValue($container, [
+            HttpMetricsRepositoryInterface::class => new InMemoryHttpMetricsRepository(),
+            LoggerInterface::class => new RecordingLogger(),
+        ]);
+        $sessionId = str_repeat('f', 64);
+        $_COOKIE = [
+            SessionContext::COOKIE_NAME => $sessionId,
+            SessionContext::SIGNATURE_COOKIE_NAME => hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32'),
+        ];
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/metrics';
+        $_GET = [];
+        header_remove();
+        http_response_code(200);
+        $GLOBALS['EC_HUB_TEST_CONTAINER'] = $container;
+
+        try {
+            ob_start();
+            require dirname(__DIR__, 3) . '/public/index.php';
+            $html = (string) ob_get_clean();
+        } finally {
+            unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
+        }
+
+        self::assertSame(200, http_response_code());
+        self::assertStringContainsString('ec-hub - System Metrics Dashboard', $html);
+        self::assertStringContainsString('Total de eventos: 0', $html);
+        self::assertStringContainsString(
+            '<p class="dashboard__empty" role="status">Histórico de eventos indisponível no momento.</p>',
+            $html
+        );
+        self::assertStringNotContainsString('Nenhum evento foi registrado nesta sessão.', $html);
     }
 
     /** @return array<string, mixed> */
