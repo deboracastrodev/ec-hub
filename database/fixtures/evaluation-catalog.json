@@ -1,0 +1,802 @@
+[
+    {
+        "id": 1,
+        "name": "Fone Bluetooth Wireless Premium",
+        "slug": "fone-bluetooth-wireless-premium",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 366.64,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 2,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 239.07,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 3,
+        "name": "Monitor Gamer 27\" 144Hz",
+        "slug": "monitor-gamer-27-144hz",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 111.75,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 4,
+        "name": "Smartwatch Fitness Tracker",
+        "slug": "smartwatch-fitness-tracker",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 465.42,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 5,
+        "name": "Notebook Gamer i7 16GB",
+        "slug": "notebook-gamer-i7-16gb",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 494.91,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 6,
+        "name": "Drone com Camera 4K",
+        "slug": "drone-com-camera-4k",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 94.49,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 7,
+        "name": "Fone Bluetooth Wireless Premium",
+        "slug": "fone-bluetooth-wireless-premium-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 431.79,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 8,
+        "name": "Monitor Gamer 27\" 144Hz",
+        "slug": "monitor-gamer-27-144hz-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 173.16,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 9,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 98.46,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 10,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-2",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 207.6,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 11,
+        "name": "Smartwatch Fitness Tracker",
+        "slug": "smartwatch-fitness-tracker-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 112.33,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 12,
+        "name": "Notebook Gamer i7 16GB",
+        "slug": "notebook-gamer-i7-16gb-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 63.75,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 13,
+        "name": "Notebook Gamer i7 16GB",
+        "slug": "notebook-gamer-i7-16gb-2",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 305.5,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 14,
+        "name": "Notebook Gamer i7 16GB",
+        "slug": "notebook-gamer-i7-16gb-3",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 83.37,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 15,
+        "name": "Smartwatch Fitness Tracker",
+        "slug": "smartwatch-fitness-tracker-2",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 184.55,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 16,
+        "name": "Fone de Ouvido Cancelamento Ruído",
+        "slug": "fone-de-ouvido-cancelamento-ruido",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 39.68,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 17,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-3",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 109.92,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 18,
+        "name": "Smartwatch Fitness Tracker",
+        "slug": "smartwatch-fitness-tracker-3",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 350.5,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 19,
+        "name": "Tablet 10 polegadas HD",
+        "slug": "tablet-10-polegadas-hd",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 281.59,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 20,
+        "name": "Tablet 10 polegadas HD",
+        "slug": "tablet-10-polegadas-hd-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 68.45,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 21,
+        "name": "Smartwatch Fitness Tracker",
+        "slug": "smartwatch-fitness-tracker-4",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 375.21,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 22,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-4",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 130.43,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 23,
+        "name": "Smartwatch Fitness Tracker",
+        "slug": "smartwatch-fitness-tracker-5",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 53.22,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 24,
+        "name": "Smart TV 55\" 4K",
+        "slug": "smart-tv-55-4k",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 215.41,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 25,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-5",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 227.42,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 26,
+        "name": "Drone com Camera 4K",
+        "slug": "drone-com-camera-4k-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 194.52,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 27,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-6",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 101.35,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 28,
+        "name": "Ficção Científica Espacial",
+        "slug": "ficcao-cientifica-espacial",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 369.83,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 29,
+        "name": "Lâmpada LED Mesa",
+        "slug": "lampada-led-mesa",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 12.91,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 30,
+        "name": "Shorts Praia Fresco",
+        "slug": "shorts-praia-fresco",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 485.21,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 31,
+        "name": "Chuteira Profissional",
+        "slug": "chuteira-profissional",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 26.84,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 32,
+        "name": "Fone de Ouvido Cancelamento Ruído",
+        "slug": "fone-de-ouvido-cancelamento-ruido-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 356.7,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 33,
+        "name": "Camiseta Algodão Premium",
+        "slug": "camiseta-algodao-premium",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 292.56,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 34,
+        "name": "Autoajuda Produtividade",
+        "slug": "autoajuda-produtividade",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 336.83,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 35,
+        "name": "Romance Bestseller Nacional",
+        "slug": "romance-bestseller-nacional",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 206.1,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 36,
+        "name": "Decorativo Parede Quadro",
+        "slug": "decorativo-parede-quadro",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 499.17,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 37,
+        "name": "Caixa de Som Bluetooth Portátil",
+        "slug": "caixa-de-som-bluetooth-portatil-7",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 114.13,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 38,
+        "name": "Jaqueta Couro Legítima",
+        "slug": "jaqueta-couro-legitima",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 302.6,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 39,
+        "name": "Monitor Ultrawide 34\"",
+        "slug": "monitor-ultrawide-34",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 322.04,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 40,
+        "name": "Cabo USB Type-C Rápido",
+        "slug": "cabo-usb-type-c-rapido",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 225.13,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 41,
+        "name": "Almofada Sofá Confortável",
+        "slug": "almofada-sofa-confortavel",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 412.58,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 42,
+        "name": "Colchonete Yoga Espesso",
+        "slug": "colchonete-yoga-espesso",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 371.34,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 43,
+        "name": "Macacão Fashion Moderno",
+        "slug": "macacao-fashion-moderno",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 128.55,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 44,
+        "name": "Suporte Notebook Ajustável",
+        "slug": "suporte-notebook-ajustavel",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 120.08,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 45,
+        "name": "Calça Jeans Slim Fit",
+        "slug": "calca-jeans-slim-fit",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 88.69,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 46,
+        "name": "Protetor Solar FPS 50",
+        "slug": "protetor-solar-fps-50",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 35.66,
+        "category": "Beleza",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Beleza",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 47,
+        "name": "Saia Midi Casual",
+        "slug": "saia-midi-casual",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 311.87,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 48,
+        "name": "Halteres Academia Kit",
+        "slug": "halteres-academia-kit",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 490.44,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 49,
+        "name": "Calça Jeans Slim Fit",
+        "slug": "calca-jeans-slim-fit-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 460.57,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 50,
+        "name": "Organizador Cozinha",
+        "slug": "organizador-cozinha",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 270.18,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 51,
+        "name": "Óleo Capilar Nutritivo",
+        "slug": "oleo-capilar-nutritivo",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 106.38,
+        "category": "Beleza",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Beleza",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 52,
+        "name": "Livro Técnico PHP Avançado",
+        "slug": "livro-tecnico-php-avancado",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 248.12,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 53,
+        "name": "Suporte Notebook Ajustável",
+        "slug": "suporte-notebook-ajustavel-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 105.81,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 54,
+        "name": "Livro de Receitas Vegetarianas",
+        "slug": "livro-de-receitas-vegetarianas",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 134,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 55,
+        "name": "Almofada Sofá Confortável",
+        "slug": "almofada-sofa-confortavel-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 21.06,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 56,
+        "name": "Monitor Ultrawide 34\"",
+        "slug": "monitor-ultrawide-34-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 64.09,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 57,
+        "name": "Hub USB 3.0 7 Portas",
+        "slug": "hub-usb-3-0-7-portas",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 295.48,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 58,
+        "name": "Carregador Turbo 30W",
+        "slug": "carregador-turbo-30w",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 253.36,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 59,
+        "name": "Shorts Praia Fresco",
+        "slug": "shorts-praia-fresco-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 167.65,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 60,
+        "name": "Shorts Praia Fresco",
+        "slug": "shorts-praia-fresco-2",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 100.4,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 61,
+        "name": "Perfume Importado 100ml",
+        "slug": "perfume-importado-100ml",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 240.83,
+        "category": "Beleza",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Beleza",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 62,
+        "name": "Escova Dental Elétrica",
+        "slug": "escova-dental-eletrica",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 34.18,
+        "category": "Beleza",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Beleza",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 63,
+        "name": "Escova Dental Elétrica",
+        "slug": "escova-dental-eletrica-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 133.4,
+        "category": "Beleza",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Beleza",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 64,
+        "name": "Patins Inline Ajustável",
+        "slug": "patins-inline-ajustavel",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 368.22,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 65,
+        "name": "Mouse Gamer RGB",
+        "slug": "mouse-gamer-rgb",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 373.76,
+        "category": "Tecnologia",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Tecnologia",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 66,
+        "name": "Almofada Sofá Confortável",
+        "slug": "almofada-sofa-confortavel-2",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 474.03,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 67,
+        "name": "Colchonete Yoga Espesso",
+        "slug": "colchonete-yoga-espesso-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 481.78,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 68,
+        "name": "Camera Digital 24MP",
+        "slug": "camera-digital-24mp",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 205.12,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 69,
+        "name": "Cortina Blackout Janela",
+        "slug": "cortina-blackout-janela",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 291.41,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 70,
+        "name": "Blusa Social Elegante",
+        "slug": "blusa-social-elegante",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 450.49,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 71,
+        "name": "Camera Digital 24MP",
+        "slug": "camera-digital-24mp-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 405.48,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 72,
+        "name": "Panela Antiaderente Set",
+        "slug": "panela-antiaderente-set",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 279.93,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 73,
+        "name": "Shorts Praia Fresco",
+        "slug": "shorts-praia-fresco-3",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 493.2,
+        "category": "Roupas",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Roupas",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 74,
+        "name": "Mistério e Suspense",
+        "slug": "misterio-e-suspense",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 492.77,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 75,
+        "name": "Patins Inline Ajustável",
+        "slug": "patins-inline-ajustavel-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 74.02,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 76,
+        "name": "Bola Basquete Profissional",
+        "slug": "bola-basquete-profissional",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 281.06,
+        "category": "Esportes",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Esportes",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 77,
+        "name": "Drone com Camera 4K",
+        "slug": "drone-com-camera-4k-2",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 244.34,
+        "category": "Eletrônicos",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Eletr%C3%B4nicos",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 78,
+        "name": "Vaso Cerâmica Decorativo",
+        "slug": "vaso-ceramica-decorativo",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 366.87,
+        "category": "Casa",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Casa",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 79,
+        "name": "Ficção Científica Espacial",
+        "slug": "ficcao-cientifica-espacial-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 479.71,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    },
+    {
+        "id": 80,
+        "name": "Mistério e Suspense",
+        "slug": "misterio-e-suspense-1",
+        "description": "Produto gerado para a avaliação offline.",
+        "price": 110.7,
+        "category": "Livros",
+        "image_url": "https://placehold.co/400x400/FF6B6B/ffffff?text=Livros",
+        "created_at": "2026-09-24 00:00:00"
+    }
+]

@@ -375,7 +375,7 @@ Problemas do ambiente de desenvolvimento (Docker não sobe, Composer, conexão M
 - **Exclusão de produto sem restauração:** o painel só faz soft delete (`deleted_at`) e não tem "desfazer"; a restauração é manual no banco ([seção 6](#6-migrations-e-dados)).
 - **Slug de produto excluído continua reservado:** o índice único de `slug` vale para linhas excluídas também. Um produto novo com o mesmo nome de um excluído recebe o sufixo `-1` (por exemplo, `notebook-pro-1`), e a URL pública antiga continua respondendo 404.
 - **Migrations aditivas, sem down-migration.** `bin/seed.php` apaga `products`, e `bin/migrate-fresh.php` faz `DROP TABLE`.
-- **O KNN treina a cada requisição** que chega ao ML (não há cache do modelo). Detalhes em [docs/ML.md — Limitações conhecidas](ML.md#9-limitações-conhecidas).
+- **O KNN treina a cada requisição** que chega ao ML (não há cache do modelo). Detalhes em [docs/ML.md — Limitações conhecidas](ML.md#10-limitações-conhecidas).
 - **Redis sem senha e conexões sem TLS:** `config/redis.php` só lê host e porta (não há `REDIS_PASSWORD`), e a conexão PDO não tem opção de TLS. Mantenha os dois numa rede privada.
 - **Sem pipeline de deploy nem registry:** build, publicação e troca de container são manuais.
 

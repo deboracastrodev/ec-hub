@@ -1,0 +1,50 @@
+{
+    "algorithm": "knn",
+    "measured_at": "2026-09-24",
+    "catalog": {
+        "path": "database/fixtures/evaluation-catalog.json",
+        "products": 80,
+        "sha256": "6735c6350a9f"
+    },
+    "split": {
+        "seed": 42,
+        "holdout_ratio": 0.2,
+        "train_size": 64,
+        "holdout_size": 16,
+        "holdout_ids": [
+            2,
+            6,
+            10,
+            15,
+            18,
+            20,
+            24,
+            26,
+            38,
+            47,
+            62,
+            63,
+            64,
+            74,
+            78,
+            79
+        ]
+    },
+    "relevance": "same_category",
+    "queries": {
+        "evaluated": 16,
+        "without_relevant": 0
+    },
+    "metrics": {
+        "precision_at_k": {
+            "1": 1.0,
+            "5": 0.95,
+            "10": 0.8125
+        },
+        "recall_at_k": {
+            "1": 0.1155,
+            "5": 0.4939,
+            "10": 0.7083
+        }
+    }
+}

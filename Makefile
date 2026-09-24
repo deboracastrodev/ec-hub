@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset test-e2e e2e-install test-performance benchmark-knn
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset test-e2e e2e-install test-performance benchmark-knn eval
 
 # Variáveis
 COMPOSE := docker compose
@@ -26,6 +26,7 @@ help: ## Show this help message
 	@echo "  make test-e2e  - Roda a suíte E2E (Playwright) contra o app no ar"
 	@echo "  make test-performance - Roda a suíte de performance (container app, stack no ar)"
 	@echo "  make benchmark-knn - Imprime o benchmark do KNN (100/1.000/5.000 produtos)"
+	@echo "  make eval      - Avaliação offline do KNN (precision@k/recall@k, local, sem Docker)"
 
 # Docker commands
 up: ## Start Docker containers
@@ -119,6 +120,11 @@ test-performance: ## Run performance tests (tests/Performance, own phpunit confi
 
 benchmark-knn: ## Print KNN benchmark table
 	$(COMPOSE) exec -T app php bin/benchmark-knn.php
+
+# Avaliação offline (Story 10.2) -- local, sem Docker e sem banco. Grava o
+# relatório em docs/evaluation/offline-evaluation.{md,json}.
+eval: ## Run offline evaluation of the KNN recommender
+	php bin/evaluate.php
 
 # Maintenance
 clean: ## Clean generated files

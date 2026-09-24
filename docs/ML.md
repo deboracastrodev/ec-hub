@@ -14,8 +14,9 @@ Este documento descreve **apenas o que existe hoje no código**. O que ainda nã
 6. [Personalização por histórico](#6-personalização-por-histórico)
 7. [Testando o Domain sem Rubix](#7-testando-o-domain-sem-rubix)
 8. [Benchmarks medidos](#8-benchmarks-medidos)
-9. [Limitações conhecidas](#9-limitações-conhecidas)
-10. [Roadmap (não implementado)](#roadmap-não-implementado)
+9. [Avaliação offline](#9-avaliação-offline)
+10. [Limitações conhecidas](#10-limitações-conhecidas)
+11. [Roadmap (não implementado)](#roadmap-não-implementado)
 
 ---
 
@@ -241,7 +242,7 @@ A explicação de cada item ML vem do `ExplanationGenerator`, com o template `Re
 
 ### Treino lazy
 
-Não existe passo de treino separado. No caminho HTTP, `GenerateRecommendations::ensureModelTrained()` treina o índice antes da primeira consulta, com o catálogo carregado por `findAll(1000, 0)`; com menos de 2 produtos ele lança `RuntimeException`, que cai no fallback `ml_error` (só alcançável se `min_products_for_ml` for configurado abaixo de 2). Usado direto, o `KNNService` faz o mesmo sozinho: `KNNService::ensureModelIsTrained()` treina na primeira chamada a `recommend()`. As chamadas seguintes **no mesmo processo** reutilizam o índice (o `KnnBenchmarkTest` confirma que 100 `recommend()` resultam em um único `train()`). Veja em [Limitações](#9-limitações-conhecidas) o que isso significa com `php -S`.
+Não existe passo de treino separado. No caminho HTTP, `GenerateRecommendations::ensureModelTrained()` treina o índice antes da primeira consulta, com o catálogo carregado por `findAll(1000, 0)`; com menos de 2 produtos ele lança `RuntimeException`, que cai no fallback `ml_error` (só alcançável se `min_products_for_ml` for configurado abaixo de 2). Usado direto, o `KNNService` faz o mesmo sozinho: `KNNService::ensureModelIsTrained()` treina na primeira chamada a `recommend()`. As chamadas seguintes **no mesmo processo** reutilizam o índice (o `KnnBenchmarkTest` confirma que 100 `recommend()` resultam em um único `train()`). Veja em [Limitações](#10-limitações-conhecidas) o que isso significa com `php -S`.
 
 ## 4. ML ou fallback: quem responde
 
@@ -353,7 +354,7 @@ Tempo do `KNNService` real com o `RubixNeighborFinder` real, sem HTTP e sem banc
 - catálogo sintético determinístico (`KnnBenchmark::syntheticCatalog`): 8 categorias em rodízio e preços de R$ 10 a ~R$ 5.000
 - **treino ms**: uma chamada a `train()` sobre o catálogo inteiro
 - **recommend**: 100 chamadas a `recommend(limit = 5)` com produtos-alvo espalhados pelo catálogo, reportando p50, p95 e máximo. O `train()` é chamado explicitamente antes, então esses tempos **não** incluem treino
-- a linha de 5.000 produtos é sintética: em produção o treino carrega no máximo 1.000 produtos (ver [Limitações](#9-limitações-conhecidas))
+- a linha de 5.000 produtos é sintética: em produção o treino carrega no máximo 1.000 produtos (ver [Limitações](#10-limitações-conhecidas))
 
 | produtos | treino ms | recommend p50 | recommend p95 | recommend máx |
 |---:|---:|---:|---:|---:|
@@ -376,7 +377,22 @@ Os números **variam com a máquina** e com a carga do momento. O que deve se re
 
 Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **treino**, porque ele acontece a cada requisição (ver abaixo), e não a consulta. O catálogo do seed tem hoje 56 produtos em 6 categorias, bem abaixo da menor linha da tabela.
 
-## 9. Limitações conhecidas
+## 9. Avaliação offline
+
+Mede a **qualidade** do KNN (precision@k e recall@k, k = 1, 5 e 10), e não só o tempo. Roda local, sem Docker, MySQL nem Redis:
+
+```bash
+make eval        # = php bin/evaluate.php [--seed=42] [--catalog=...] [--output-dir=docs/evaluation]
+```
+
+- **Catálogo:** [`database/fixtures/evaluation-catalog.json`](../database/fixtures/evaluation-catalog.json), 80 produtos versionados, gerados uma vez com a distribuição do `ProductSeeder`. O seed do banco é aleatório a cada execução, então não serve para comparar medições.
+- **Split:** catálogo ordenado por id, embaralhado com `Mt19937` e seed fixa (padrão 42). O holdout são os primeiros `max(1, round(n × 0.2))` produtos depois desse embaralhamento (16 dos 80 do catálogo versionado), e o resto é o treino. O `KNNService` real com o `RubixNeighborFinder` real é treinado só com o treino, e cada produto do holdout vira uma consulta de top-k direto na estratégia, sem o fallback de cold-start.
+- **Relevância:** os produtos **do treino** da mesma categoria da consulta. Limitação: a categoria também é feature do modelo, então o número mede o quanto o KNN respeita a categoria, e não o gosto do usuário. A precision@k cai abaixo de 1 principalmente quando a categoria tem menos de k produtos no treino.
+- **Reprodutível:** mesma seed e mesmo catálogo geram o mesmo relatório, exceto a data. O [`EvaluateScriptTest`](../tests/Integration/Tooling/EvaluateScriptTest.php) (roda no `make test`) confere que o relatório commitado bate com uma execução nova.
+
+Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluation/offline-evaluation.md) (e `.json`), e não são copiados para cá. Cobertura de catálogo e diversidade (Story 10.3) e cold-start (Story 10.4) ainda não entram no relatório.
+
+## 10. Limitações conhecidas
 
 - **O índice é treinado a cada requisição HTTP.** O servidor é o `php -S`, que não mantém estado entre requisições, e não há cache do modelo. Toda chamada a `/api/recommendations` que chega ao KNN refaz `findAll(1000, 0)` + `train()`. O "treina uma vez" vale dentro de um mesmo processo (testes, benchmark).
 - **Catálogo limitado a 1.000 produtos** no treino (`findAll(1000, 0)`, ordenado por nome). Produtos além disso não entram no índice. Se o produto consultado ficar fora do índice, o preço dele pode normalizar fora de `[0, 1]` e, se a categoria dele não existir no índice, o `OneHotEncoder` gera um vetor só de zeros; nesses casos as faixas de distância e score da [seção 3](#3-features-similaridade-e-score) deixam de valer.
@@ -389,7 +405,7 @@ Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **
 - **O A/B compara operação, não resultado.** As métricas por algoritmo são volume, % de itens `ml`, latência e score médio. Não há CTR nem conversão (os eventos de clique e carrinho não são ligados à recomendação que os originou) e não há teste de significância estatística: a diferença entre os braços é só descritiva. O score médio mistura escalas diferentes (KNN × CF, ver seção 1), então não serve para dizer qual algoritmo acerta mais.
 - **O sujeito do A/B não é autenticado.** O `user_id` é um parâmetro de query sem autenticação: um cliente que o envia escolhe o próprio braço (basta testar valores até cair na variante desejada) e pode inflar `unique_subjects` mandando um `user_id` diferente a cada requisição. Um mesmo visitante que às vezes manda `user_id` e às vezes não é atribuído ora pelo `user_id`, ora pelo `session_id`, e pode cair nos dois braços. Trate os números do A/B como indicativos, não como prova.
 - **Métricas do A/B sem janela de tempo.** Os contadores no Redis não expiram e acumulam desde a última limpeza manual (`DEL` das chaves `ec-hub:ab-metrics:*`). Trocar as variantes sem zerar mistura os períodos. Sujeitos únicos vêm de um HyperLogLog, uma contagem aproximada.
-- **Sem métrica de qualidade de recomendação.** Os números acima são de desempenho (tempo), não de acerto. Não há precision@k nem cobertura de catálogo medidos.
+- **Qualidade medida só offline e só por categoria.** precision@k e recall@k são medidos pelo harness offline ([seção 9](#9-avaliação-offline)) num catálogo versionado, com a categoria como rótulo de relevância. Não há medição com comportamento real de usuário, e a cobertura de catálogo ainda não é medida.
 
 ## Roadmap (não implementado)
 
@@ -397,7 +413,7 @@ Nada nesta seção existe no código hoje. Não há números para estes itens po
 
 - **Cache do modelo serializado (Story 10.1):** persistir o índice treinado para não retreinar a cada requisição.
 - **Export Prometheus das métricas por algoritmo (Story 8.4):** pode reaproveitar `RecommendationExperiment::results()`.
-- **Métricas de qualidade (Epic 10):** precision@k e cobertura de catálogo das recomendações.
+- **Cobertura de catálogo e diversidade (Story 10.3):** estender o harness offline da [seção 9](#9-avaliação-offline), que já mede precision@k e recall@k.
 
 ---
 
