@@ -110,6 +110,7 @@ class RecommendationController
 
         if ($sessionId !== null) {
             $this->persistRecommendationSnapshot($sessionId, $response);
+            $this->recordColdStart($sessionId, $response);
         }
 
         if ($this->experiment !== null && $assignment !== null) {
@@ -290,6 +291,72 @@ class RecommendationController
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Story 10.5: per-session cold-start counter (`recommendation.cold_start`,
+     * {requests, fallback_activated}) shown on /metrics Level 3. A response
+     * counts as "fallback activated" when any item has a source other than
+     * `ml` (same definition as the offline harness, Story 10.4); an empty
+     * list only counts as a request. Never changes nor breaks the response.
+     *
+     * @param array<string, mixed> $response
+     */
+    private function recordColdStart(string $sessionId, array $response): void
+    {
+        if ($this->sessions === null) {
+            return;
+        }
+
+        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $fallbackActivated = false;
+        foreach ($data as $recommendation) {
+            if (is_array($recommendation) && ($recommendation['source'] ?? null) !== 'ml') {
+                $fallbackActivated = true;
+
+                break;
+            }
+        }
+
+        try {
+            for ($attempt = 0; $attempt < self::SNAPSHOT_PERSISTENCE_ATTEMPTS; ++$attempt) {
+                $existing = $this->sessions->get($sessionId, 'recommendation.cold_start');
+                $counter = $this->validColdStartCounter($existing) ?? ['requests' => 0, 'fallback_activated' => 0];
+                $updated = [
+                    'requests' => $counter['requests'] + 1,
+                    'fallback_activated' => $counter['fallback_activated'] + ($fallbackActivated ? 1 : 0),
+                ];
+
+                if ($this->sessions->compareAndSwap($sessionId, 'recommendation.cold_start', $existing, $updated)) {
+                    return;
+                }
+            }
+
+            throw new \RuntimeException('O contador de cold-start foi alterado concorrentemente.');
+        } catch (\Throwable $exception) {
+            $this->logger->error('Não foi possível registrar a taxa de cold-start da sessão.', [
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * A malformed stored counter restarts from zero instead of being carried over.
+     *
+     * @return array{requests: int, fallback_activated: int}|null
+     */
+    private function validColdStartCounter(mixed $counter): ?array
+    {
+        if (! is_array($counter)) {
+            return null;
+        }
+        $requests = $counter['requests'] ?? null;
+        $activated = $counter['fallback_activated'] ?? null;
+        if (! is_int($requests) || ! is_int($activated) || $requests < 0 || $activated < 0 || $activated > $requests) {
+            return null;
+        }
+
+        return ['requests' => $requests, 'fallback_activated' => $activated];
     }
 
     /** @param array<string, mixed> $current */

@@ -190,7 +190,7 @@ final class EvaluationReportWriter
         }
 
         $lines = array_merge($lines, [
-            '- **Fora deste relatório:** `/metrics` e README (Story 10.5).',
+            '- **Publicado em:** Nível 3 do `/metrics` e README (precision@5, cobertura de catálogo@5).',
             '',
         ]);
 

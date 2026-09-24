@@ -122,6 +122,19 @@ GET /api/recommendations?product_id={id}&limit={1-50, default 10}
 - `meta.source` é `ml`, `rules` ou `popular`, conforme de onde a resposta veio
 - Headers de resposta: `X-Recommendation-Source`, `X-Response-Time`
 
+## Qualidade da recomendação (medida)
+
+Números da avaliação offline do KNN (`make eval`, seed fixa, sem Docker), medidos em 2026-09-24 sobre um holdout de 16 produtos do catálogo versionado. Nada aqui é estimado: os valores são os de [`docs/evaluation/offline-evaluation.json`](docs/evaluation/offline-evaluation.json), e um teste falha se esta seção divergir dele.
+
+- precision@5: 0,95 · medido em 2026-09-24
+- Cobertura de catálogo@5: 68,75% · medido em 2026-09-24
+- Ativação do fallback (offline): fallback ativado em 0 de 16 consultas
+
+Relatório completo, com recall, diversidade, concentração e o fallback medido lado a lado: [docs/evaluation/offline-evaluation.md](docs/evaluation/offline-evaluation.md).
+
+- **Limitação:** a relevância é `same_category` (produtos do treino da mesma categoria da consulta), e a categoria também é feature do modelo. Essa circularidade infla a precision: o número mede o quanto o KNN respeita a categoria, e não o gosto do usuário.
+- **Ao vivo:** o Nível 3 do `/metrics` ("Ver arquitetura técnica") mostra esses mesmos números e a taxa de cold-start da sessão atual, contada a partir das respostas de recomendação realmente servidas nessa sessão.
+
 ## Testes
 
 ```bash

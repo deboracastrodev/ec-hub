@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Controller;
 
+use App\Application\Recommendation\Evaluation\PublishedQualityMetrics;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\MetricsController;
 use App\Controller\RecommendationController;
@@ -13,6 +14,7 @@ use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
 use App\Shared\Http\SessionContext;
+use Closure;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -21,6 +23,8 @@ use Twig\Loader\FilesystemLoader;
 
 final class MetricsHttpEndpointTest extends TestCase
 {
+    private const COMMITTED_REPORT = __DIR__ . '/../../../docs/evaluation/offline-evaluation.json';
+
     #[RunInSeparateProcess]
     public function testMetricsRouteShowsOnlyCurrentSessionEventsInReverseChronologicalOrder(): void
     {
@@ -115,7 +119,53 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('Redis Pub/Sub: connected · 3 eventos publicados', $html);
         self::assertStringContainsString('Not available yet (Story 5.6)', $html);
         self::assertStringContainsString('Not available yet (Epic 10)', $html);
-        self::assertStringContainsString('Not available yet (Story 10.5)', $html);
+        self::assertStringNotContainsString('Not available yet (Story 10.5)', $html);
+    }
+
+    #[RunInSeparateProcess]
+    public function testMetricsRouteRendersCommittedQualityMetricsAndTheSeededSessionColdStartRate(): void
+    {
+        $sessionId = str_repeat('f', 64);
+        $sessions = new HttpMetricsSessionRepository([
+            $sessionId => ['recommendation.cold_start' => ['requests' => 4, 'fallback_activated' => 1]],
+        ]);
+        $this->installContainer(
+            new HttpMetricsHistoryRepository([$sessionId => []]),
+            $sessions,
+            null,
+            fn (): ?PublishedQualityMetrics => PublishedQualityMetrics::fromReportFile(self::COMMITTED_REPORT)
+        );
+        $_COOKIE[SessionContext::COOKIE_NAME] = $sessionId;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $sessionId, 'phpunit-only-session-cookie-secret-32');
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/metrics';
+        $_GET = [];
+        header_remove();
+        http_response_code(200);
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $html = (string) ob_get_clean();
+
+        $report = json_decode((string) file_get_contents(self::COMMITTED_REPORT), true, 64, JSON_THROW_ON_ERROR);
+        self::assertSame(200, http_response_code());
+        self::assertStringContainsString(sprintf(
+            'precision@5: %s · medido em %s',
+            number_format((float) $report['metrics']['precision_at_k']['5'], 2, ',', '.'),
+            $report['measured_at']
+        ), $html);
+        self::assertStringContainsString(sprintf(
+            'Cobertura de catálogo@5: %s%% · medido em %s',
+            number_format((float) $report['coverage']['catalog_coverage_at_k']['5'] * 100, 2, ',', '.'),
+            $report['measured_at']
+        ), $html);
+        self::assertStringContainsString(sprintf(
+            'Avaliação offline (make eval): holdout de %d produtos · fallback ativado em %d de %d consultas',
+            $report['split']['holdout_size'],
+            $report['cold_start']['activation']['activated'],
+            $report['cold_start']['activation']['queries']
+        ), $html);
+        self::assertStringContainsString('Taxa de cold-start (sessão atual): 1 de 4 recomendações (25,00%)', $html);
     }
 
     #[RunInSeparateProcess]
@@ -198,6 +248,8 @@ final class MetricsHttpEndpointTest extends TestCase
         self::assertStringContainsString('Recomendações: 2', $changedHtml);
         self::assertStringContainsString('produto-visto-' . str_repeat('x', 80), $changedHtml);
         self::assertStringNotContainsString('Produto: 202', $changedHtml);
+        // Story 10.5: the counter comes from the two responses actually served to this session.
+        self::assertStringContainsString('Taxa de cold-start (sessão atual): 0 de 2 recomendações (0,00%)', $changedHtml);
 
         $this->assertSuccessfulRecommendationResponse($this->dispatch('GET', '/api/recommendations?product_id=3', ['product_id' => '3'], $unchangedSession, $twig, $recommendationController, $metricsController));
         $this->assertSuccessfulRecommendationResponse($this->dispatch('GET', '/api/recommendations?product_id=4', ['product_id' => '4'], $unchangedSession, $twig, $recommendationController, $metricsController));
@@ -216,6 +268,7 @@ final class MetricsHttpEndpointTest extends TestCase
         $unavailableHtml = $unavailableResponse['body'];
 
         self::assertStringContainsString('Ainda sem comparação nesta sessão.', $unavailableHtml);
+        self::assertStringContainsString('Taxa de cold-start (sessão atual): 0 de 1 recomendações (0,00%)', $unavailableHtml);
         self::assertStringContainsString('Produto: 303', $unavailableHtml);
         self::assertStringNotContainsString('A recomendação mudou nesta sessão.', $unavailableHtml);
         self::assertStringNotContainsString('A recomendação não mudou nesta sessão.', $unavailableHtml);
@@ -322,6 +375,7 @@ final class MetricsHttpEndpointTest extends TestCase
         EventHistoryRepositoryInterface $history,
         ?SessionRepositoryInterface $sessions = null,
         ?EventBusStatusInterface $eventBusStatus = null,
+        ?Closure $qualityMetrics = null,
     ): void {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
             'strict_variables' => true,
@@ -329,7 +383,7 @@ final class MetricsHttpEndpointTest extends TestCase
         $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
             Environment::class => fn () => $twig,
             SessionContext::class => fn () => new SessionContext('phpunit-only-session-cookie-secret-32'),
-            MetricsController::class => fn () => new MetricsController($history, $twig, $sessions, $eventBusStatus),
+            MetricsController::class => fn () => new MetricsController($history, $twig, $sessions, $eventBusStatus, null, $qualityMetrics),
         ]);
     }
 

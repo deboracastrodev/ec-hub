@@ -141,6 +141,44 @@
                                             {% endif %}
                                         </dd>
                                     </div>
+                                    <div class="dashboard__metric">
+                                        <dt>precision@5</dt>
+                                        <dd>
+                                            {% if quality is null %}
+                                                precision@5: indisponível (rode make eval)
+                                            {% else %}
+                                                precision@5: {{ quality.precisionAt5|number_format(2, ',', '.') }} · medido em {{ quality.measuredAt }}
+                                            {% endif %}
+                                        </dd>
+                                    </div>
+                                    <div class="dashboard__metric">
+                                        <dt>Cobertura de catálogo@5</dt>
+                                        <dd>
+                                            {% if quality is null %}
+                                                Cobertura de catálogo: indisponível (rode make eval)
+                                            {% else %}
+                                                Cobertura de catálogo@5: {{ (quality.catalogCoverageAt5 * 100)|number_format(2, ',', '.') }}% · medido em {{ quality.measuredAt }}
+                                            {% endif %}
+                                        </dd>
+                                    </div>
+                                    {% if quality is not null %}
+                                        <div class="dashboard__metric">
+                                            <dt>Contexto da avaliação offline</dt>
+                                            <dd>Avaliação offline (make eval): holdout de {{ quality.holdoutSize }} produtos{% if quality.fallbackActivated is not null and quality.fallbackQueries is not null %} · fallback ativado em {{ quality.fallbackActivated }} de {{ quality.fallbackQueries }} consultas{% endif %}</dd>
+                                        </div>
+                                    {% endif %}
+                                    <div class="dashboard__metric">
+                                        <dt>Taxa de cold-start (sessão atual)</dt>
+                                        <dd>
+                                            {% if session_cold_start.state == 'measured' %}
+                                                Taxa de cold-start (sessão atual): {{ session_cold_start.fallback_activated }} de {{ session_cold_start.requests }} recomendações ({{ session_cold_start.rate|number_format(2, ',', '.') }}%)
+                                            {% elseif session_cold_start.state == 'empty' %}
+                                                Taxa de cold-start (sessão atual): nenhuma recomendação nesta sessão
+                                            {% else %}
+                                                Taxa de cold-start (sessão atual): indisponível
+                                            {% endif %}
+                                        </dd>
+                                    </div>
                                     {% for signal in architecture_signals %}
                                         <div class="dashboard__metric">
                                             <dt>{{ signal.label }}</dt>

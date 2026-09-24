@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Controller;
 
+use App\Application\Recommendation\Evaluation\PublishedQualityMetrics;
 use App\Controller\MetricsController;
 use App\Domain\Event\EventBusStatus;
 use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
+use Closure;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
@@ -69,7 +72,7 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Recomendações: 0', $html);
     }
 
-    public function testItRendersArchitectureVisibilityWithPubSubConnectedAndFiveSignalsNotAvailableYet(): void
+    public function testItRendersArchitectureVisibilityWithPubSubConnectedAndRemainingSignalsNotAvailableYet(): void
     {
         $controller = $this->controller(
             new MetricsInMemoryHistoryRepository([]),
@@ -84,7 +87,152 @@ final class MetricsControllerTest extends TestCase
         self::assertStringContainsString('Not available yet (Epic 10 / Story 10.1)', $html);
         self::assertStringContainsString('Not available yet (Story 5.6)', $html);
         self::assertStringContainsString('Not available yet (Epic 10)', $html);
-        self::assertStringContainsString('Not available yet (Story 10.5)', $html);
+        self::assertStringNotContainsString('Not available yet (Story 10.5)', $html);
+    }
+
+    public function testItRendersPublishedQualityMetricsFromTheReport(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            quality: fn (): PublishedQualityMetrics => new PublishedQualityMetrics(0.95, 0.6875, '2026-09-24', 16, 0, 16)
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('precision@5: 0,95 · medido em 2026-09-24', $html);
+        self::assertStringContainsString('Cobertura de catálogo@5: 68,75% · medido em 2026-09-24', $html);
+        self::assertStringContainsString(
+            'Avaliação offline (make eval): holdout de 16 produtos · fallback ativado em 0 de 16 consultas',
+            $html
+        );
+        self::assertStringNotContainsString('indisponível (rode make eval)', $html);
+    }
+
+    public function testQualityMetricsAndSessionRateAreInsideTheLevelThreeDisclosure(): void
+    {
+        $html = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            new MetricsInMemorySessionRepository([
+                'recommendation.cold_start' => ['requests' => 4, 'fallback_activated' => 1],
+            ]),
+            quality: fn (): PublishedQualityMetrics => new PublishedQualityMetrics(0.95, 0.6875, '2026-09-24', 16, 0, 16)
+        )->index([], [], 'current-session');
+
+        self::assertLevelThreeContains($html, [
+            'precision@5: 0,95',
+            'Cobertura de catálogo@5: 68,75%',
+            'Avaliação offline (make eval):',
+            'Taxa de cold-start (sessão atual): 1 de 4',
+        ]);
+    }
+
+    public function testUnavailableQualityMetricsAreInsideTheLevelThreeDisclosure(): void
+    {
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]))->index([], [], 'current-session');
+
+        self::assertLevelThreeContains($html, [
+            'precision@5: indisponível (rode make eval)',
+            'Cobertura de catálogo: indisponível (rode make eval)',
+            'Taxa de cold-start (sessão atual): indisponível',
+        ]);
+    }
+
+    /** @param list<string> $needles */
+    private static function assertLevelThreeContains(string $html, array $needles): void
+    {
+        $summary = strpos($html, 'Ver arquitetura técnica</summary>');
+        self::assertNotFalse($summary);
+        $close = strpos($html, '</details>', $summary);
+        self::assertNotFalse($close);
+        $levelThree = substr($html, $summary, $close - $summary);
+
+        foreach ($needles as $needle) {
+            self::assertStringContainsString($needle, $levelThree, $needle . ' fora do Nível 3');
+            self::assertSame(1, substr_count($html, $needle), $needle . ' repetido fora do Nível 3');
+        }
+    }
+
+    public function testItOmitsOfflineActivationWhenTheReportHasNone(): void
+    {
+        $controller = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            quality: fn (): PublishedQualityMetrics => new PublishedQualityMetrics(0.5, 1.0, '2026-09-20', 10)
+        );
+
+        $html = $controller->index([], [], 'current-session');
+
+        self::assertStringContainsString('precision@5: 0,50 · medido em 2026-09-20', $html);
+        self::assertStringContainsString('Cobertura de catálogo@5: 100,00% · medido em 2026-09-20', $html);
+        self::assertStringContainsString('Avaliação offline (make eval): holdout de 10 produtos</dd>', $html);
+        self::assertStringNotContainsString('fallback ativado em', $html);
+    }
+
+    /** @return iterable<string, array{Closure|null}> */
+    public static function unavailableQualitySources(): iterable
+    {
+        yield 'sem fonte' => [null];
+        yield 'relatório ausente' => [static fn (): ?PublishedQualityMetrics => null];
+        yield 'fonte que lança' => [static fn (): ?PublishedQualityMetrics => throw new \RuntimeException('falhou')];
+        yield 'arquivo inexistente' => [static fn (): ?PublishedQualityMetrics => PublishedQualityMetrics::fromReportFile('/nao/existe.json')];
+    }
+
+    #[DataProvider('unavailableQualitySources')]
+    public function testItDegradesQualityMetricsToUnavailable(?Closure $quality): void
+    {
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), quality: $quality)
+            ->index([], [], 'current-session');
+
+        self::assertStringContainsString('precision@5: indisponível (rode make eval)', $html);
+        self::assertStringContainsString('Cobertura de catálogo: indisponível (rode make eval)', $html);
+        self::assertStringNotContainsString('Avaliação offline (make eval)', $html);
+        self::assertStringContainsString('Redis Pub/Sub: Not available', $html);
+    }
+
+    public function testItRendersTheSessionColdStartRate(): void
+    {
+        $sessions = new MetricsInMemorySessionRepository([
+            'recommendation.cold_start' => ['requests' => 4, 'fallback_activated' => 1],
+        ]);
+
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), $sessions)->index([], [], 'current-session');
+
+        self::assertStringContainsString('Taxa de cold-start (sessão atual): 1 de 4 recomendações (25,00%)', $html);
+    }
+
+    /** @return iterable<string, array{mixed, string}> */
+    public static function sessionColdStartStates(): iterable
+    {
+        yield 'campo ausente' => [null, 'nenhuma recomendação nesta sessão'];
+        yield 'zero requests' => [['requests' => 0, 'fallback_activated' => 0], 'nenhuma recomendação nesta sessão'];
+        yield 'contador corrompido' => [['requests' => 1, 'fallback_activated' => 2], 'indisponível'];
+        yield 'negativo' => [['requests' => -1, 'fallback_activated' => 0], 'indisponível'];
+        yield 'não inteiro' => [['requests' => '4', 'fallback_activated' => 1], 'indisponível'];
+        yield 'não é objeto' => ['4', 'indisponível'];
+    }
+
+    #[DataProvider('sessionColdStartStates')]
+    public function testItRendersSessionColdStartStates(mixed $counter, string $expected): void
+    {
+        $data = $counter === null ? [] : ['recommendation.cold_start' => $counter];
+        $html = $this->controller(new MetricsInMemoryHistoryRepository([]), new MetricsInMemorySessionRepository($data))
+            ->index([], [], 'current-session');
+
+        self::assertStringContainsString('Taxa de cold-start (sessão atual): ' . $expected . "\n", $html);
+    }
+
+    public function testSessionColdStartIsUnavailableWithoutRepositoryOrOnReadError(): void
+    {
+        $withoutRepository = $this->controller(new MetricsInMemoryHistoryRepository([]))->index([], [], 'current-session');
+        $unreadable = $this->controller(new MetricsInMemoryHistoryRepository([]), new MetricsInMemorySessionRepository([], true))
+            ->index([], [], 'current-session');
+        $withoutSession = $this->controller(
+            new MetricsInMemoryHistoryRepository([]),
+            new MetricsInMemorySessionRepository(['recommendation.cold_start' => ['requests' => 2, 'fallback_activated' => 0]])
+        )->index([], [], null);
+
+        foreach ([$withoutRepository, $unreadable, $withoutSession] as $html) {
+            self::assertStringContainsString('Taxa de cold-start (sessão atual): indisponível', $html);
+        }
     }
 
     public function testItRendersPubSubAsDisconnectedWhenTheRealPingFails(): void
@@ -240,12 +388,13 @@ final class MetricsControllerTest extends TestCase
         EventHistoryRepositoryInterface $history,
         ?SessionRepositoryInterface $sessions = null,
         ?EventBusStatusInterface $eventBusStatus = null,
+        ?Closure $quality = null,
     ): MetricsController {
         $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'), [
             'strict_variables' => true,
         ]);
 
-        return new MetricsController($history, $twig, $sessions, $eventBusStatus);
+        return new MetricsController($history, $twig, $sessions, $eventBusStatus, null, $quality);
     }
 }
 

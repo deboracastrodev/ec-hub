@@ -22,6 +22,7 @@ use App\Application\Order\PlaceOrder;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Product\ManageProducts;
+use App\Application\Recommendation\Evaluation\PublishedQualityMetrics;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\Recommendation\RecommendationExperiment;
 use App\Application\Recommendation\TrainedModelCacheInterface;
@@ -334,7 +335,11 @@ return new Container([
         $c->get(SessionRepositoryInterface::class),
         $c->get(EventBusStatusInterface::class),
         // Story 8.2: lazy, so invalid A/B config or Redis down only degrades the panel.
-        fn (): array => $c->get(RecommendationExperiment::class)->results()
+        fn (): array => $c->get(RecommendationExperiment::class)->results(),
+        // Story 10.5: committed `make eval` report, read per request (no MySQL/Redis).
+        fn (): ?PublishedQualityMetrics => PublishedQualityMetrics::fromReportFile(
+            dirname(__DIR__) . '/docs/evaluation/offline-evaluation.json'
+        )
     ),
 
     MemoryMonitor::class => fn () => new MemoryMonitor(

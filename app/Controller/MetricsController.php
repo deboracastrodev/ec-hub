@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Application\Recommendation\Evaluation\PublishedQualityMetrics;
 use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
@@ -18,8 +19,6 @@ final class MetricsController
         ['label' => 'Modelo KNN em cache (treinado há Xs)', 'story' => 'Epic 10 / Story 10.1'],
         ['label' => 'Memory (uso / growth %)', 'story' => 'Story 5.6'],
         ['label' => 'KNN Confidence Score (global do modelo)', 'story' => 'Epic 10'],
-        ['label' => 'precision@5', 'story' => 'Story 10.5'],
-        ['label' => 'Cobertura de catálogo', 'story' => 'Story 10.5'],
     ];
 
     public function __construct(
@@ -35,6 +34,14 @@ final class MetricsController
          * @var (Closure(): array<string, mixed>)|null
          */
         private readonly ?Closure $abTestResults = null,
+        /**
+         * Story 10.5: offline quality numbers from the committed `make eval`
+         * report, read on every request. An exception or null degrades to
+         * "indisponível (rode make eval)".
+         *
+         * @var (Closure(): ?PublishedQualityMetrics)|null
+         */
+        private readonly ?Closure $qualityMetrics = null,
     ) {
     }
 
@@ -78,7 +85,65 @@ final class MetricsController
             'pubsub' => $this->pubSubStatus(),
             'architecture_signals' => self::ARCHITECTURE_SIGNALS_NOT_YET_AVAILABLE,
             'ab_test' => $this->abTestResults(),
+            'quality' => $this->qualityMetrics(),
+            'session_cold_start' => $this->sessionColdStart($sessionId),
         ]);
+    }
+
+    private function qualityMetrics(): ?PublishedQualityMetrics
+    {
+        if ($this->qualityMetrics === null) {
+            return null;
+        }
+
+        try {
+            $metrics = ($this->qualityMetrics)();
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $metrics instanceof PublishedQualityMetrics ? $metrics : null;
+    }
+
+    /**
+     * Story 10.5: session cold-start rate, from the counter the
+     * RecommendationController keeps in `recommendation.cold_start`.
+     *
+     * @return array{state: 'unavailable'|'empty'|'measured', requests: int, fallback_activated: int, rate: float}
+     */
+    private function sessionColdStart(?string $sessionId): array
+    {
+        $unavailable = ['state' => 'unavailable', 'requests' => 0, 'fallback_activated' => 0, 'rate' => 0.0];
+        if ($sessionId === null || $this->sessions === null) {
+            return $unavailable;
+        }
+
+        try {
+            $counter = $this->sessions->get($sessionId, 'recommendation.cold_start');
+        } catch (Throwable) {
+            return $unavailable;
+        }
+
+        if ($counter === null) {
+            return ['state' => 'empty', 'requests' => 0, 'fallback_activated' => 0, 'rate' => 0.0];
+        }
+
+        $requests = is_array($counter) ? ($counter['requests'] ?? null) : null;
+        $activated = is_array($counter) ? ($counter['fallback_activated'] ?? null) : null;
+        if (! is_int($requests) || ! is_int($activated) || $requests < 0 || $activated < 0 || $activated > $requests) {
+            return $unavailable;
+        }
+
+        if ($requests === 0) {
+            return ['state' => 'empty', 'requests' => 0, 'fallback_activated' => 0, 'rate' => 0.0];
+        }
+
+        return [
+            'state' => 'measured',
+            'requests' => $requests,
+            'fallback_activated' => $activated,
+            'rate' => $activated / $requests * 100,
+        ];
     }
 
     private const AB_TEST_ROW_KEYS = [

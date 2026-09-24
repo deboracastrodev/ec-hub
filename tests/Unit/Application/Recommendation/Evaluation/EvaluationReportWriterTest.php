@@ -59,7 +59,7 @@ final class EvaluationReportWriterTest extends TestCase
         $this->assertStringContainsString('`top_products / aparições`', $markdown);
         $this->assertStringContainsString('Aqui, em k = 1: 1/2 = 0.5000.', $markdown);
         $this->assertStringContainsString('Isso não torna o sinal inevitável', $markdown);
-        $this->assertStringContainsString('- **Fora deste relatório:** `/metrics` e README (Story 10.5).', $markdown);
+        $this->assertStringContainsString('- **Publicado em:** Nível 3 do `/metrics` e README (precision@5, cobertura de catálogo@5).', $markdown);
         $this->assertStringNotContainsString('Story 10.4)', $markdown);
 
         $result['concentration']['excessive_at_k'] = [1 => false, 5 => false];
@@ -178,7 +178,7 @@ final class EvaluationReportWriterTest extends TestCase
         $this->assertStringNotContainsString('Relevância por categoria favorece o fallback', $markdown);
         $this->assertStringNotContainsString('A seção de cold-start', $markdown);
         $this->assertStringContainsString('## Cobertura, diversidade e concentração', $markdown);
-        $this->assertStringContainsString('- **Fora deste relatório:** `/metrics` e README (Story 10.5).', $markdown);
+        $this->assertStringContainsString('- **Publicado em:** Nível 3 do `/metrics` e README (precision@5, cobertura de catálogo@5).', $markdown);
     }
 
     public function test_cold_start_section_with_empty_ml_population_shows_n_a(): void

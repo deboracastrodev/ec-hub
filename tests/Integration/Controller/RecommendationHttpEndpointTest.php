@@ -158,10 +158,15 @@ class RecommendationHttpEndpointTest extends TestCase
         $decoded = json_decode((string) ob_get_clean(), true);
 
         self::assertSame(200, http_response_code());
-        self::assertSame('recommendation.snapshot', $sessions->savedField);
-        self::assertSame('ml', $sessions->savedValue['current']['source']);
-        self::assertSame(75.0, $sessions->savedValue['current']['avg_confidence']);
-        self::assertSame([22], $sessions->savedValue['current']['product_ids']);
+        $snapshot = $sessions->get($sessionId, 'recommendation.snapshot');
+        self::assertSame('ml', $snapshot['current']['source']);
+        self::assertSame(75.0, $snapshot['current']['avg_confidence']);
+        self::assertSame([22], $snapshot['current']['product_ids']);
+        // Story 10.5: the same response also feeds the session cold-start counter.
+        self::assertSame(
+            ['requests' => 1, 'fallback_activated' => 0],
+            $sessions->get($sessionId, 'recommendation.cold_start')
+        );
         self::assertSame(1, $decoded['meta']['count']);
         unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
     }
@@ -199,10 +204,6 @@ class RecommendationHttpEndpointTest extends TestCase
 
 final class HttpRecommendationSessionRepository implements SessionRepositoryInterface
 {
-    public ?string $savedField = null;
-    /** @var array<string, mixed> */
-    public array $savedValue = [];
-
     /** @var array<string, array<string, mixed>> */
     private array $data = [];
 
@@ -215,8 +216,6 @@ final class HttpRecommendationSessionRepository implements SessionRepositoryInte
         if ($this->throwsOnSave) {
             throw new \RuntimeException('Redis indisponível.');
         }
-        $this->savedField = $field;
-        $this->savedValue = $value;
         $this->data[$sessionId][$field] = $value;
     }
 
