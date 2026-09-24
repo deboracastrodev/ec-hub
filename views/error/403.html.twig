@@ -1,0 +1,17 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}403 - Acesso negado | ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="error-page__content">
+        <h1 class="error-page__code">403</h1>
+        <p class="error-page__message">{{ message ?? 'Acesso negado' }}</p>
+        <a href="/admin/products" class="error-page__link">
+            &larr; Voltar ao painel
+        </a>
+    </div>
+</div>
+{% endblock %}

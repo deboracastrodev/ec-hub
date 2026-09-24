@@ -14,7 +14,8 @@ final class MatchedRoute
         public readonly string $controller,
         public readonly string $action,
         public readonly array $params,
-        public readonly bool $isApi
+        public readonly bool $isApi,
+        public readonly bool $isAdmin = false
     ) {
     }
 }

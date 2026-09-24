@@ -3,15 +3,19 @@
 declare(strict_types=1);
 
 use App\Controller\AbTestResultsController;
+use App\Controller\Admin\AdminAuthController;
+use App\Controller\Admin\AdminProductController;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
+use App\Controller\MetricsController;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
-use App\Controller\MetricsController;
 use App\Controller\RecommendationController;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Shared\Http\ErrorHandler;
+use App\Shared\Http\Request;
+use App\Shared\Http\Response;
 use App\Shared\Http\Router;
 use App\Shared\Http\SessionContext;
 use Psr\Container\ContainerInterface;
@@ -83,9 +87,19 @@ $router = new Router(
         'GET /api/ab-tests/results' => ['controller' => AbTestResultsController::class, 'action' => 'results', 'api' => true],
         'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
         'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
+        // Story 8.3: admin panel (Request in, Response out; see the admin branch below).
+        'GET /admin/login' => ['controller' => AdminAuthController::class, 'action' => 'loginForm', 'admin' => true],
+        'POST /admin/login' => ['controller' => AdminAuthController::class, 'action' => 'login', 'admin' => true],
+        'POST /admin/logout' => ['controller' => AdminAuthController::class, 'action' => 'logout', 'admin' => true],
+        'GET /admin/products' => ['controller' => AdminProductController::class, 'action' => 'index', 'admin' => true],
+        'GET /admin/products/new' => ['controller' => AdminProductController::class, 'action' => 'newForm', 'admin' => true],
+        'POST /admin/products' => ['controller' => AdminProductController::class, 'action' => 'create', 'admin' => true],
     ],
     [
         '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => ProductController::class, 'action' => 'show'],
+        '/admin/products/(\d+)/edit' => ['method' => 'GET', 'controller' => AdminProductController::class, 'action' => 'edit', 'admin' => true],
+        '/admin/products/(\d+)' => ['method' => 'POST', 'controller' => AdminProductController::class, 'action' => 'update', 'admin' => true],
+        '/admin/products/(\d+)/delete' => ['method' => 'POST', 'controller' => AdminProductController::class, 'action' => 'delete', 'admin' => true],
     ]
 );
 
@@ -101,8 +115,23 @@ $controller = $container->get($matchedRoute->controller);
 $action = $matchedRoute->action;
 $isApiRoute = $matchedRoute->isApi;
 
+if ($matchedRoute->isAdmin) {
+    // Set up front so an error page rendered by the catch blocks gets them too:
+    // not cached, not frameable.
+    foreach (Response::SECURITY_HEADERS as $name => $value) {
+        header($name . ': ' . $value);
+    }
+}
+
+$response = null;
+
 try {
-    if ($matchedRoute->params !== []) {
+    if ($matchedRoute->isAdmin) {
+        $response = $controller->$action(new Request($method, $matchedRoute->params, $_GET, $_POST));
+        if (! $response instanceof Response) {
+            throw new \LogicException(sprintf('Admin action %s::%s must return a Response.', $matchedRoute->controller, $action));
+        }
+    } elseif ($matchedRoute->params !== []) {
         $output = $controller->$action((string) $matchedRoute->params[0], $_GET);
     } elseif ($isApiRoute && $method === 'POST') {
         $rawBody = isset($GLOBALS['EC_HUB_TEST_JSON_BODY']) && is_string($GLOBALS['EC_HUB_TEST_JSON_BODY'])
@@ -121,7 +150,18 @@ try {
         $output = $controller->$action($_GET, $headers, $sessionId);
     }
 
-    if ($isApiRoute) {
+    if ($response instanceof Response) {
+        http_response_code($response->status);
+        header('Content-Type: text/html; charset=utf-8');
+        foreach ($response->headers as $name => $value) {
+            header($name . ': ' . $value);
+        }
+        // Admin pages are private and not frameable, whatever the controller returned.
+        foreach (Response::SECURITY_HEADERS as $name => $value) {
+            header($name . ': ' . $value);
+        }
+        echo $response->body;
+    } elseif ($isApiRoute) {
         header('Content-Type: application/json');
         if ($matchedRoute->controller === RecommendationController::class) {
             $responseTimeMs = $output['meta']['response_time_ms'] ?? 0;

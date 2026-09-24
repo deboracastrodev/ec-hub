@@ -14,6 +14,12 @@ use PDO;
  * Implements the repository interface using PDO. Read methods hydrate rows
  * into Product entities here -- the only place in the app that knows the
  * products table's column shape (R3.4).
+ *
+ * Soft delete (Story 8.3, FR106): delete() only stamps deleted_at, and every
+ * read filters `deleted_at IS NULL`, so an excluded product disappears from
+ * the catalog, the detail page and the recommendations (which read through
+ * findAll/findById). slugExists() deliberately does NOT filter: the unique
+ * index on slug is global, so an excluded product keeps its slug reserved.
  */
 class ProductRepository implements ProductRepositoryInterface
 {
@@ -36,7 +42,7 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function findById(int $id): ?Product
     {
-        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE id = :id LIMIT 1");
+        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE id = :id AND deleted_at IS NULL LIMIT 1");
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -59,7 +65,7 @@ class ProductRepository implements ProductRepositoryInterface
             return $this->slugCache[$slug];
         }
 
-        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE slug = :slug LIMIT 1");
+        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE slug = :slug AND deleted_at IS NULL LIMIT 1");
         $stmt->execute(['slug' => $slug]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -80,7 +86,7 @@ class ProductRepository implements ProductRepositoryInterface
             return $this->listCache[$cacheKey];
         }
 
-        $stmt = $this->pdo->prepare("SELECT * FROM products ORDER BY name LIMIT :limit OFFSET :offset");
+        $stmt = $this->pdo->prepare("SELECT * FROM products WHERE deleted_at IS NULL ORDER BY name LIMIT :limit OFFSET :offset");
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
@@ -108,7 +114,7 @@ class ProductRepository implements ProductRepositoryInterface
 
         $stmt = $this->pdo->prepare("
             SELECT * FROM products
-            WHERE category = :category
+            WHERE category = :category AND deleted_at IS NULL
             ORDER BY name
             LIMIT :limit OFFSET :offset
         ");
@@ -131,7 +137,7 @@ class ProductRepository implements ProductRepositoryInterface
             return $this->categoryCountCache[$category];
         }
 
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) as count FROM products WHERE category = :category");
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) as count FROM products WHERE category = :category AND deleted_at IS NULL");
         $stmt->execute(['category' => $category]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -150,7 +156,7 @@ class ProductRepository implements ProductRepositoryInterface
         $stmt = $this->pdo->query("
             SELECT DISTINCT category
             FROM products
-            WHERE category IS NOT NULL AND category != ''
+            WHERE category IS NOT NULL AND category != '' AND deleted_at IS NULL
             ORDER BY category ASC
         ");
 
@@ -165,7 +171,7 @@ class ProductRepository implements ProductRepositoryInterface
             return $this->totalCountCache;
         }
 
-        $stmt = $this->pdo->query("SELECT COUNT(*) as count FROM products");
+        $stmt = $this->pdo->query("SELECT COUNT(*) as count FROM products WHERE deleted_at IS NULL");
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
         $this->totalCountCache = (int) $result['count'];
@@ -209,14 +215,28 @@ class ProductRepository implements ProductRepositoryInterface
         $fields = [];
         $params = ['id' => $id];
 
-        foreach (['name', 'description', 'price', 'category', 'slug', 'image_url'] as $field) {
-            if (isset($data[$field])) {
+        // array_key_exists (not isset) so a null/'' value can clear the
+        // optional columns: image_url becomes NULL and description ''. The
+        // NOT NULL columns are only written when a real value is given.
+        foreach (['name', 'price', 'category', 'slug'] as $field) {
+            if (array_key_exists($field, $data) && $data[$field] !== null && $data[$field] !== '') {
                 $fields[] = "{$field} = :{$field}";
                 $params[$field] = $data[$field];
             }
         }
 
-        if (empty($fields)) {
+        if (array_key_exists('description', $data)) {
+            $fields[] = 'description = :description';
+            $params['description'] = (string) ($data['description'] ?? '');
+        }
+
+        if (array_key_exists('image_url', $data)) {
+            $imageUrl = $data['image_url'];
+            $fields[] = 'image_url = :image_url';
+            $params['image_url'] = $imageUrl === null || $imageUrl === '' ? null : $imageUrl;
+        }
+
+        if ($fields === []) {
             return false;
         }
 
@@ -224,26 +244,29 @@ class ProductRepository implements ProductRepositoryInterface
             $params['slug'] = $this->ensureUniqueSlug($this->slugify($params['slug']), $id);
         }
 
-        $sql = "UPDATE products SET " . implode(', ', $fields) . " WHERE id = :id";
-        $stmt = $this->pdo->prepare($sql);
-
         // Convert price to decimal if Money object was passed
         if (isset($params['price']) && is_object($params['price']) && method_exists($params['price'], 'getDecimal')) {
             $params['price'] = $params['price']->getDecimal();
         }
 
+        $sql = "UPDATE products SET " . implode(', ', $fields) . " WHERE id = :id AND deleted_at IS NULL";
+        $stmt = $this->pdo->prepare($sql);
+
+        // rowCount() is 0 when the row matched but nothing changed (MySQL
+        // reports affected, not matched, rows); callers that need "exists"
+        // semantics must check findById() first (see ManageProducts::update).
         $executed = $stmt->execute($params) && $stmt->rowCount() > 0;
 
-        if ($executed) {
-            $this->resetCache();
-        }
+        $this->resetCache();
 
         return $executed;
     }
 
     public function delete(int $id): bool
     {
-        $stmt = $this->pdo->prepare("DELETE FROM products WHERE id = :id");
+        $stmt = $this->pdo->prepare(
+            "UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE id = :id AND deleted_at IS NULL"
+        );
 
         $executed = $stmt->execute(['id' => $id]) && $stmt->rowCount() > 0;
 

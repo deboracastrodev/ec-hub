@@ -31,6 +31,9 @@ services:
       - REDIS_PORT=6379
       - SESSION_TTL=${SESSION_TTL:-1800}
       - SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET:?SESSION_COOKIE_SECRET must be configured}
+      # Story 8.3: empty = admin panel disabled. Set them in .env (hash in single quotes).
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
     depends_on:
       mysql:
         condition: service_healthy

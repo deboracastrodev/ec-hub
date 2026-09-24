@@ -62,7 +62,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
 
     public function findById(int $id): ?Product
     {
-        foreach ($this->products as $product) {
+        foreach ($this->activeProducts() as $product) {
             if ((int) $product['id'] === $id) {
                 return Product::fromArray($product);
             }
@@ -73,7 +73,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
 
     public function findBySlug(string $slug): ?Product
     {
-        foreach ($this->products as $product) {
+        foreach ($this->activeProducts() as $product) {
             if (($product['slug'] ?? null) === $slug) {
                 return Product::fromArray($product);
             }
@@ -86,7 +86,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
     {
         return array_map(
             static fn (array $p): Product => Product::fromArray($p),
-            array_slice($this->products, $offset, $limit)
+            array_slice($this->activeProducts(), $offset, $limit)
         );
     }
 
@@ -98,7 +98,7 @@ class InMemoryProductRepository implements ProductRepositoryInterface
     public function findByCategoryPaginated(string $category, int $limit, int $offset): array
     {
         $filtered = array_values(array_filter(
-            $this->products,
+            $this->activeProducts(),
             static fn (array $p) => $p['category'] === $category
         ));
 
@@ -111,14 +111,14 @@ class InMemoryProductRepository implements ProductRepositoryInterface
     public function countByCategory(string $category): int
     {
         return count(array_filter(
-            $this->products,
+            $this->activeProducts(),
             static fn (array $p) => $p['category'] === $category
         ));
     }
 
     public function findCategories(): array
     {
-        $categories = array_unique(array_column($this->products, 'category'));
+        $categories = array_unique(array_column($this->activeProducts(), 'category'));
         sort($categories);
 
         return array_values($categories);
@@ -126,22 +126,65 @@ class InMemoryProductRepository implements ProductRepositoryInterface
 
     public function count(): int
     {
-        return count($this->products);
+        return count($this->activeProducts());
     }
 
     public function create(array $data): int
     {
         $id = $this->nextId++;
-        $this->products[] = $data + ['id' => $id];
+        $slug = isset($data['slug']) && is_string($data['slug']) && $data['slug'] !== ''
+            ? $data['slug']
+            : $this->uniqueSlug((string) ($data['name'] ?? ''));
+        $this->products[] = ['slug' => $slug] + $data + ['id' => $id, 'deleted_at' => null];
 
         return $id;
     }
 
+    /**
+     * Mirrors ProductRepository::update(): only present keys are written, a
+     * present null/'' clears image_url/description, deleted rows are ignored.
+     * Like MySQL's rowCount() (affected rows), it returns false when the row
+     * exists but no value actually changes.
+     */
     public function update(int $id, array $data): bool
     {
         foreach ($this->products as $index => $product) {
-            if ((int) $product['id'] === $id) {
-                $this->products[$index] = $data + ['id' => $id];
+            if ((int) $product['id'] !== $id || ($product['deleted_at'] ?? null) !== null) {
+                continue;
+            }
+
+            foreach (['name', 'price', 'category', 'slug'] as $field) {
+                if (array_key_exists($field, $data) && $data[$field] !== null && $data[$field] !== '') {
+                    $product[$field] = $data[$field];
+                }
+            }
+            if (array_key_exists('description', $data)) {
+                $product['description'] = (string) ($data['description'] ?? '');
+            }
+            if (array_key_exists('image_url', $data)) {
+                $product['image_url'] = $data['image_url'] === '' ? null : $data['image_url'];
+            }
+            $changed = false;
+            foreach ($product as $field => $value) {
+                $previous = $this->products[$index][$field] ?? null;
+                $changed = $changed || ($field === 'price'
+                    ? (float) $previous !== (float) $value
+                    : $previous !== $value);
+            }
+            $this->products[$index] = $product;
+
+            return $changed;
+        }
+
+        return false;
+    }
+
+    /** Soft delete, like ProductRepository: the row stays, flagged with deleted_at. */
+    public function delete(int $id): bool
+    {
+        foreach ($this->products as $index => $product) {
+            if ((int) $product['id'] === $id && ($product['deleted_at'] ?? null) === null) {
+                $this->products[$index]['deleted_at'] = date('Y-m-d H:i:s');
 
                 return true;
             }
@@ -150,17 +193,38 @@ class InMemoryProductRepository implements ProductRepositoryInterface
         return false;
     }
 
-    public function delete(int $id): bool
+    /** Raw row, including soft-deleted ones -- for assertions only. */
+    public function rawRow(int $id): ?array
     {
-        foreach ($this->products as $index => $product) {
+        foreach ($this->products as $product) {
             if ((int) $product['id'] === $id) {
-                unset($this->products[$index]);
-                $this->products = array_values($this->products);
-
-                return true;
+                return $product;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function activeProducts(): array
+    {
+        return array_values(array_filter(
+            $this->products,
+            static fn (array $p): bool => ($p['deleted_at'] ?? null) === null
+        ));
+    }
+
+    /** Slugs stay reserved by deleted rows, like the global unique index. */
+    private function uniqueSlug(string $name): string
+    {
+        $base = trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower($name)), '-');
+        $base = $base !== '' ? $base : 'produto';
+        $taken = array_column($this->products, 'slug');
+        $slug = $base;
+        for ($suffix = 1; in_array($slug, $taken, true); ++$suffix) {
+            $slug = $base . '-' . $suffix;
+        }
+
+        return $slug;
     }
 }

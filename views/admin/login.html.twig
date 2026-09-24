@@ -1,0 +1,35 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}Entrar no painel admin | ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="admin admin--narrow" aria-labelledby="admin-login-title">
+    <h1 class="admin__title" id="admin-login-title">Painel admin</h1>
+
+    {% if error %}
+        <p class="admin__alert admin__alert--error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <form class="admin-form" method="post" action="/admin/login">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="admin-username">Usuário</label>
+            <input class="admin-form__input" type="text" id="admin-username" name="username"
+                   value="{{ username }}" autocomplete="username" required>
+        </div>
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="admin-password">Senha</label>
+            <input class="admin-form__input" type="password" id="admin-password" name="password"
+                   autocomplete="current-password" required>
+        </div>
+
+        <div class="admin-form__actions">
+            <button class="admin-button admin-button--primary" type="submit">Entrar</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

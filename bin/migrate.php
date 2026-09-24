@@ -49,9 +49,11 @@ try {
         slug VARCHAR(255) NOT NULL,
         image_url VARCHAR(500) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP NULL DEFAULT NULL,
         UNIQUE KEY idx_products_slug (slug),
         INDEX idx_products_name (name),
-        INDEX idx_products_category (category)
+        INDEX idx_products_category (category),
+        INDEX idx_products_deleted_at (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
 
     $pdo->exec($sql);
@@ -61,10 +63,25 @@ try {
     $columnStmt = $pdo->query("SHOW COLUMNS FROM products LIKE 'slug'");
     $hasSlugColumn = (bool) $columnStmt->fetch();
 
-    if (!$hasSlugColumn) {
+    if (! $hasSlugColumn) {
         echo "ℹ️  Adicionando coluna 'slug' em tabela existente...\n";
         $pdo->exec("ALTER TABLE products ADD COLUMN slug VARCHAR(255) NOT NULL AFTER category");
         $pdo->exec("CREATE UNIQUE INDEX idx_products_slug ON products(slug)");
+    }
+
+    // Story 8.3: soft delete (FR106). Idempotent for existing installations:
+    // the column and its index are only added when missing.
+    $deletedAtStmt = $pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'");
+    $hasDeletedAtColumn = (bool) $deletedAtStmt->fetch();
+
+    if (! $hasDeletedAtColumn) {
+        echo "ℹ️  Adicionando coluna 'deleted_at' em tabela existente...\n";
+        $pdo->exec("ALTER TABLE products ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL AFTER created_at");
+    }
+
+    $deletedAtIndexStmt = $pdo->query("SHOW INDEX FROM products WHERE Key_name = 'idx_products_deleted_at'");
+    if (! (bool) $deletedAtIndexStmt->fetch()) {
+        $pdo->exec("CREATE INDEX idx_products_deleted_at ON products(deleted_at)");
     }
 
     // Backfill slug data when necessary

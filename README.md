@@ -10,6 +10,7 @@
 
 - **Catálogo de produtos** — listagem paginada, filtro por categoria, página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
 - **API de recomendações** — `GET /api/recommendations?product_id=X` devolve produtos similares via KNN (Rubix ML: `OneHotEncoder` + `MinMaxNormalizer` + `BallTree`), com fallback automático baseado em regras (categoria/popularidade) quando o catálogo é pequeno demais ou o ML falha
+- **Painel admin** — `/admin/products` com listagem, criação, edição e exclusão (soft delete) de produtos, para um único admin configurado no `.env` (ver [Painel admin](#painel-admin))
 - **Clean Architecture** — 4 camadas (Controller/Application/Domain/Infrastructure); o Domain não importa nenhuma biblioteca externa, nem o Rubix ML (fica atrás de uma porta, em `App\Infrastructure\ML`)
 - **PHP 8.4**, MySQL 8, Redis 7, Twig, servidor embutido do PHP (`php -S`) — sem Swoole
 - **Mais de 140 testes** (PHPUnit 12), cobertura de linhas medida em **~81%**; a suíte sem grupos `db` e `redis` passa sem Docker
@@ -50,13 +51,34 @@ make down       # para os containers
 
 `make test` e `make cs-check` não precisam de Docker no ar — rodam direto com `vendor/bin/`. A suíte completa roda no CI com MySQL e Redis. Alvos de banco (`migrate`, `seed`, `db-shell`) precisam do container do MySQL.
 
+### Painel admin
+
+`/admin/products` gerencia o catálogo (criar, editar, excluir). Existe **um único admin**, sem tabela de usuários. As credenciais ficam no `.env`:
+
+```bash
+# 1. gere o hash da senha (nunca coloque a senha em texto puro no .env)
+php -r "echo password_hash('sua-senha', PASSWORD_DEFAULT), PHP_EOL;"
+
+# 2. no .env, com o hash entre aspas SIMPLES (ele contém "$"):
+#    ADMIN_USERNAME=admin
+#    ADMIN_PASSWORD_HASH='$2y$12$...'
+
+# 3. recrie o container para ele receber as variáveis
+make up
+
+# 4. instalação que já existia antes do painel: crie a coluna products.deleted_at
+make migrate
+```
+
+Com as duas variáveis vazias (ou o hash inválido) o painel fica **desligado**: o login mostra "Painel admin desabilitado…" e o resto do site segue normal. A exclusão é lógica: o produto some do catálogo, da página de detalhe (404) e das recomendações, mas a linha continua no banco com `deleted_at` preenchido. Não há tela para restaurar. Limitações (sem rate limit no login, sessão não revogável antes de expirar) estão em [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#11-limitações-conhecidas).
+
 ## Arquitetura
 
 4 camadas, dependências apontando para dentro (`Controller → Application → Domain`; `Infrastructure` implementa interfaces que o `Domain` declara):
 
 ```
 app/
-├── Controller/       # HTTP handlers (ProductController, RecommendationController)
+├── Controller/       # HTTP handlers (ProductController, RecommendationController, Admin/)
 ├── Application/      # Casos de uso (GetProductList, GenerateRecommendations, ...)
 ├── Domain/
 │   ├── Product/      # Catálogo — entidade, repositório (interface), CategoryService
@@ -66,7 +88,7 @@ app/
 │   └── Persistence/    # ProductRepository (MySQL/PDO)
 └── Shared/
     ├── Container/     # Container PSR-11 mínimo
-    └── Http/          # Router, ErrorHandler
+    └── Http/          # Router, ErrorHandler, SessionContext, AdminAuth
 ```
 
 O `Domain` não depende de framework nem de biblioteca de ML — `App\Domain\Recommendation\Service\NeighborFinderInterface` é a porta; `App\Infrastructure\ML\RubixNeighborFinder` é a única implementação, e o único lugar do projeto que importa `Rubix\ML\*`.
@@ -143,7 +165,7 @@ Não implementado — fora do escopo atual, não abandonado no meio:
 - **Dashboard `/metrics`, `/health`** — visibilidade em tempo real da arquitetura e do KNN
 - **Swoole** — servidor assíncrono com workers e coroutines (hoje: `php -S`)
 - **Redis Pub/Sub e cache de sessão** — a infraestrutura Redis já está disponível no stack local; essas funcionalidades de aplicação seguem no roadmap
-- **Autenticação real** — `AUTH_REQUIRED=true` hoje só exige a *presença* do header `Authorization`, sem validar nada; é um placeholder, documentado como tal
+- **Autenticação real** — `AUTH_REQUIRED=true` hoje só exige a *presença* do header `Authorization`, sem validar nada; é um placeholder, documentado como tal. O painel admin (Story 8.3) tem login próprio, mas só para um admin fixo no `.env`: não há usuários, papéis nem recuperação de senha
 
 ## Troubleshooting
 

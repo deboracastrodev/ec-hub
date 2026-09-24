@@ -1,0 +1,76 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}Produtos - Painel admin | ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="admin" aria-labelledby="admin-products-title">
+    {% include 'admin/products/_toolbar.html.twig' %}
+
+    <div class="admin__header">
+        <h1 class="admin__title" id="admin-products-title">Produtos</h1>
+        <a class="admin-button admin-button--primary" href="/admin/products/new">Novo produto</a>
+    </div>
+
+    {% if status_message %}
+        <p class="admin__alert admin__alert--success" role="status">{{ status_message }}</p>
+    {% endif %}
+
+    {% if products is empty %}
+        <p class="admin__empty">Nenhum produto ativo no catálogo.</p>
+    {% else %}
+        <div class="admin-table__wrapper">
+            <table class="admin-table">
+                <caption class="admin-table__caption">
+                    Produtos ativos: {{ total }} (página {{ page }} de {{ total_pages }})
+                </caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Nome</th>
+                        <th scope="col">Categoria</th>
+                        <th scope="col">Preço</th>
+                        <th scope="col">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products %}
+                        <tr>
+                            <th scope="row" class="admin-table__name">{{ product.name }}</th>
+                            <td>{{ product.category }}</td>
+                            <td class="admin-table__price">{{ product.price.decimal|BRL }}</td>
+                            <td>
+                                <div class="admin-table__actions">
+                                    <a class="admin-button admin-button--secondary"
+                                       href="/admin/products/{{ product.id }}/edit"
+                                       aria-label="Editar {{ product.name }}">Editar</a>
+                                    {# The confirm() is a convenience: without JS the form still posts. #}
+                                    <form class="admin-table__delete" method="post"
+                                          action="/admin/products/{{ product.id }}/delete"
+                                          onsubmit="return confirm('Excluir o produto {{ product.name|e('js') }}?')">
+                                        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                                        <button class="admin-button admin-button--danger" type="submit"
+                                                aria-label="Excluir {{ product.name }}">Excluir</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+        <nav class="admin-pagination" aria-label="Paginação de produtos">
+            {% if page > 1 %}
+                <a class="admin-button admin-button--secondary" href="/admin/products?page={{ page - 1 }}" rel="prev">Anterior</a>
+            {% endif %}
+            <span class="admin-pagination__current" aria-current="page">Página {{ page }} de {{ total_pages }}</span>
+            {% if page < total_pages %}
+                <a class="admin-button admin-button--secondary" href="/admin/products?page={{ page + 1 }}" rel="next">Próxima</a>
+            {% endif %}
+        </nav>
+    {% endif %}
+</section>
+{% endblock %}

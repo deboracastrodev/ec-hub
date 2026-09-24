@@ -50,11 +50,18 @@ trait RequiresTestDatabase
                 slug VARCHAR(255) NOT NULL,
                 image_url VARCHAR(500) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP NULL DEFAULT NULL,
                 UNIQUE KEY idx_products_slug (slug),
                 INDEX idx_products_name (name),
-                INDEX idx_products_category (category)
+                INDEX idx_products_category (category),
+                INDEX idx_products_deleted_at (deleted_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             SQL);
+
+        // ec_hub_test databases created before Story 8.3 lack the soft-delete column.
+        if ($pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'")->fetch() === false) {
+            $pdo->exec('ALTER TABLE products ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL');
+        }
 
         $pdo->exec('TRUNCATE TABLE products');
         $seed = $pdo->prepare(

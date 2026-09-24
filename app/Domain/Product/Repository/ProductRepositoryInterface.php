@@ -12,6 +12,10 @@ use App\Domain\Product\Model\Product;
  * Defines contract for Product data access following DDD Repository pattern.
  * Read methods return Product entities, not raw arrays (R3.4) -- the shape
  * of the products table is an Infrastructure concern, not a Domain one.
+ *
+ * Soft delete (Story 8.3, FR106): every read method only sees active
+ * products; a deleted product behaves as if it did not exist, except that
+ * its slug stays reserved.
  */
 interface ProductRepositoryInterface
 {
@@ -77,19 +81,24 @@ interface ProductRepositoryInterface
     public function create(array $data): int;
 
     /**
-     * Update product
+     * Update an active product (a soft-deleted one is never touched)
+     *
+     * Only the keys present in $data are written. A present null/'' clears
+     * the optional fields: image_url becomes null and description ''.
      *
      * @param int $id Product ID
      * @param array $data Product data
-     * @return bool Success status
+     * @return bool Whether a row changed (implementations may return false
+     *              when the product exists but the values are identical)
      */
     public function update(int $id, array $data): bool;
 
     /**
-     * Delete product
+     * Soft delete an active product: it is marked as deleted (never removed)
+     * and disappears from every read method.
      *
      * @param int $id Product ID
-     * @return bool Success status
+     * @return bool False when the product does not exist or is already deleted
      */
     public function delete(int $id): bool;
 }

@@ -2,6 +2,8 @@
 
 {% block title %}404 - Não encontrado | ec-hub{% endblock %}
 
+{% block head_extra %}{% if noindex ?? false %}<meta name="robots" content="noindex">{% endif %}{% endblock %}
+
 {% block content %}
 <main class="error-page">
     <div class="error-page__content">

@@ -60,7 +60,8 @@ class GenerateRecommendationsIntegrationTest extends TestCase
                 category TEXT NOT NULL,
                 slug TEXT NOT NULL,
                 image_url TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                deleted_at TEXT NULL DEFAULT NULL
             )
         ');
     }

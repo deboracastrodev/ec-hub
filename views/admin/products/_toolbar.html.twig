@@ -1,0 +1,7 @@
+<div class="admin__toolbar">
+    <a class="admin-button admin-button--secondary" href="/admin/products">Produtos</a>
+    <form class="admin__logout" method="post" action="/admin/logout">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <button class="admin-button admin-button--secondary" type="submit">Sair</button>
+    </form>
+</div>

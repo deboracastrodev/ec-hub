@@ -1040,3 +1040,200 @@ footer[role="contentinfo"] {
         --color-border: #000000;
     }
 }
+
+/* ==========================================================================
+   Admin panel (Story 8.3) - BEM admin-*
+   ========================================================================== */
+.admin {
+    max-width: var(--container-max-width);
+    margin: 0 auto;
+    padding: var(--spacing-lg) var(--spacing-sm);
+}
+
+.admin--narrow {
+    max-width: 40rem;
+}
+
+.admin__toolbar,
+.admin__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.admin__title {
+    font-size: var(--font-size-2xl);
+    line-height: var(--line-height-tight);
+    margin-bottom: var(--spacing-md);
+    overflow-wrap: anywhere;
+}
+
+.admin__header .admin__title {
+    margin-bottom: 0;
+}
+
+.admin__logout {
+    margin: 0;
+}
+
+.admin__alert {
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-md);
+    border: 1px solid currentColor;
+}
+
+.admin__alert--success {
+    color: #065f46;
+    background: #ecfdf5;
+}
+
+.admin__alert--error {
+    color: #991b1b;
+    background: #fef2f2;
+}
+
+.admin__empty {
+    color: var(--color-text-light);
+}
+
+.admin-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+    padding: 0 var(--spacing-sm);
+    border-radius: var(--border-radius);
+    border: 1px solid transparent;
+    font: inherit;
+    font-size: var(--font-size-md);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.admin-button:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.admin-button--primary {
+    background: var(--color-primary-dark);
+    color: var(--color-white);
+}
+
+.admin-button--secondary {
+    background: var(--color-white);
+    color: var(--color-primary-dark);
+    border-color: var(--color-border);
+}
+
+.admin-button--danger {
+    background: var(--color-white);
+    color: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.admin-table__wrapper {
+    overflow-x: auto;
+    background: var(--color-white);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table__caption {
+    text-align: left;
+    padding: var(--spacing-sm);
+    color: var(--color-text-light);
+}
+
+.admin-table th,
+.admin-table td {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-top: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.admin-table__name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.admin-table__price {
+    white-space: nowrap;
+}
+
+.admin-table__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}
+
+.admin-table__delete {
+    margin: 0;
+}
+
+.admin-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+}
+
+.admin-form {
+    display: grid;
+    gap: var(--spacing-md);
+}
+
+.admin-form__field {
+    display: grid;
+    gap: var(--spacing-xs);
+}
+
+.admin-form__label {
+    font-weight: 600;
+}
+
+.admin-form__input {
+    min-height: var(--touch-target-min);
+    padding: var(--spacing-xs);
+    border: 1px solid var(--color-text-light);
+    border-radius: var(--border-radius);
+    font: inherit;
+    font-size: var(--font-size-md);
+    width: 100%;
+}
+
+.admin-form__input:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+.admin-form__input[aria-invalid="true"] {
+    border-color: #b91c1c;
+}
+
+.admin-form__textarea {
+    resize: vertical;
+}
+
+.admin-form__error {
+    color: #b91c1c;
+    font-size: var(--font-size-sm);
+}
+
+.admin-form__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}

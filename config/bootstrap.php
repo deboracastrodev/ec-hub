@@ -14,10 +14,13 @@ use App\Application\Monitoring\HealthCheck;
 use App\Application\Monitoring\MemoryMonitor;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
+use App\Application\Product\ManageProducts;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\Recommendation\RecommendationExperiment;
 use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\AbTestResultsController;
+use App\Controller\Admin\AdminAuthController;
+use App\Controller\Admin\AdminProductController;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\MetricsController;
@@ -49,6 +52,8 @@ use App\Infrastructure\Redis\RedisAlgorithmMetricsRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
 use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
+use App\Shared\Http\AdminAuth;
+use App\Shared\Http\AdminCredentials;
 use App\Shared\Http\SessionContext;
 use Predis\Client;
 use Psr\Container\ContainerInterface;
@@ -149,6 +154,31 @@ return new Container([
     ),
 
     SessionContext::class => fn () => new SessionContext($sessionConfig['cookie_secret']),
+
+    // Story 8.3: single-admin panel. Invalid/missing credentials only disable
+    // /admin (fail-closed); config/admin.php never throws.
+    AdminCredentials::class => fn () => AdminCredentials::fromArray(require __DIR__ . '/admin.php'),
+
+    AdminAuth::class => fn (ContainerInterface $c) => new AdminAuth(
+        $c->get(AdminCredentials::class),
+        $sessionConfig['cookie_secret']
+    ),
+
+    ManageProducts::class => fn (ContainerInterface $c) => new ManageProducts(
+        $c->get(ProductRepositoryInterface::class)
+    ),
+
+    AdminAuthController::class => fn (ContainerInterface $c) => new AdminAuthController(
+        $c->get(AdminAuth::class),
+        $c->get(SessionContext::class),
+        $c->get(Environment::class)
+    ),
+
+    AdminProductController::class => fn (ContainerInterface $c) => new AdminProductController(
+        $c->get(ManageProducts::class),
+        $c->get(AdminAuth::class),
+        $c->get(Environment::class)
+    ),
 
     TrackProductInteraction::class => fn (ContainerInterface $c) => new TrackProductInteraction(
         $c->get(ProductRepositoryInterface::class),

@@ -1,0 +1,69 @@
+{% extends 'layout/base.html.twig' %}
+
+{% set is_edit = product is not null %}
+{% set page_title = is_edit ? 'Editar produto' : 'Novo produto' %}
+
+{% block title %}{{ page_title }} - Painel admin | ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% macro field_attrs(name, errors) %}{% if errors[name] is defined %} aria-invalid="true" aria-describedby="product-{{ name }}-error"{% endif %}{% endmacro %}
+
+{% macro field_error(name, errors) %}{% if errors[name] is defined %}<p class="admin-form__error" id="product-{{ name }}-error">{{ errors[name] }}</p>{% endif %}{% endmacro %}
+
+{% block content %}
+{% import _self as f %}
+<section class="admin admin--narrow" aria-labelledby="admin-form-title">
+    {% include 'admin/products/_toolbar.html.twig' %}
+
+    <h1 class="admin__title" id="admin-form-title">{{ page_title }}{% if is_edit %}: {{ product.name }}{% endif %}</h1>
+
+    {% if errors is not empty %}
+        <p class="admin__alert admin__alert--error" role="alert">Corrija os campos indicados abaixo.</p>
+    {% endif %}
+
+    <form class="admin-form" method="post" action="{{ action }}" novalidate>
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="product-name">Nome</label>
+            <input class="admin-form__input" type="text" id="product-name" name="name" maxlength="255" required
+                   value="{{ values.name }}"{{ f.field_attrs('name', errors) }}>
+            {{ f.field_error('name', errors) }}
+        </div>
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="product-description">Descrição (opcional)</label>
+            <textarea class="admin-form__input admin-form__textarea" id="product-description" name="description"
+                      maxlength="5000" rows="5"{{ f.field_attrs('description', errors) }}>{{ values.description }}</textarea>
+            {{ f.field_error('description', errors) }}
+        </div>
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="product-price">Preço (R$)</label>
+            <input class="admin-form__input" type="text" id="product-price" name="price" inputmode="decimal" required
+                   placeholder="1234,50" value="{{ values.price }}"{{ f.field_attrs('price', errors) }}>
+            {{ f.field_error('price', errors) }}
+        </div>
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="product-category">Categoria</label>
+            <input class="admin-form__input" type="text" id="product-category" name="category" maxlength="100" required
+                   value="{{ values.category }}"{{ f.field_attrs('category', errors) }}>
+            {{ f.field_error('category', errors) }}
+        </div>
+
+        <div class="admin-form__field">
+            <label class="admin-form__label" for="product-image_url">URL da imagem (opcional)</label>
+            <input class="admin-form__input" type="text" id="product-image_url" name="image_url" maxlength="500"
+                   placeholder="https://… ou /assets/images/…" value="{{ values.image_url }}"{{ f.field_attrs('image_url', errors) }}>
+            {{ f.field_error('image_url', errors) }}
+        </div>
+
+        <div class="admin-form__actions">
+            <button class="admin-button admin-button--primary" type="submit">{{ is_edit ? 'Salvar alterações' : 'Criar produto' }}</button>
+            <a class="admin-button admin-button--secondary" href="/admin/products">Cancelar</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

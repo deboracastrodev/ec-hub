@@ -81,6 +81,8 @@ A maioria dos valores é lida com `getenv('X') ?: default` e usa o default tamb�
 | `REDIS_HOST` | Não | `redis` | host do seu Redis | `config/redis.php` |
 | `REDIS_PORT` | Não | `6379` | `6379` | `config/redis.php` |
 | `AUTH_REQUIRED` | Não | desligado | ver nota abaixo | `app/Controller/RecommendationController.php` |
+| `ADMIN_USERNAME` | Não | vazia (painel admin desligado) | nome do admin, se o painel for usado | `config/admin.php` |
+| `ADMIN_PASSWORD_HASH` | Não | vazia (painel admin desligado) | saída de `password_hash()`, nunca a senha (ver regra abaixo) | `config/admin.php` |
 | `RECOMMENDATION_ALGORITHM` | Não | `knn` | `knn` | `config/recommendation.php` |
 | `RECOMMENDATION_AB_TEST` | Não | vazia (A/B desligado) | vazia, ou `knn,collaborative` para comparar | `config/recommendation.php` |
 | `RECOMMENDATION_FALLBACK_STRATEGY` | Não | `hybrid` | `hybrid` | `config/recommendation.php` |
@@ -97,6 +99,7 @@ Regras de validação que derrubam a aplicação:
 - **`DB_PORT`** e **`RECOMMENDATION_MIN_PRODUCTS_FOR_ML`** são convertidas com `(int)` **sem validação**: um valor não numérico vira `0` sem erro (porta 0 derruba a conexão; limiar 0 faz o ML ser tentado com qualquer catálogo). Use inteiros positivos.
 - **`RECOMMENDATION_ALGORITHM`** aceita `knn` e `collaborative` (sem diferenciar maiúsculas, espaços nas pontas são ignorados; ausente ou vazia usa `knn`). Qualquer outro valor lança `InvalidArgumentException` com a lista de valores aceitos, em vez de cair no default em silêncio. A configuração é carregada sob demanda, então a falha aparece em **toda** requisição a `GET /api/recommendations`; as demais rotas não são afetadas.
 - **`RECOMMENDATION_AB_TEST`** liga o teste A/B entre dois algoritmos (Story 8.2). O valor é separado por vírgula e cada item passa por `trim` + minúsculas; o 1º é a variante A e o 2º a B (ex.: `knn,collaborative`). Vazia ou ausente desliga o A/B. Ligada, precisa ter **exatamente 2 nomes distintos** entre `knn` e `collaborative`; `knn`, `knn,knn`, `knn,svd` ou três itens lançam `InvalidArgumentException` citando `RECOMMENDATION_AB_TEST`. Como a do algoritmo, a falha aparece em toda requisição a `GET /api/recommendations` e `GET /api/ab-tests/results`; o `/metrics` continua no ar e mostra "Comparação indisponível". As métricas por algoritmo ficam no Redis, sem TTL (ver [ML.md](ML.md#ab-testing-entre-algoritmos)). O sujeito do A/B é o `user_id` da query, senão o `session_id`. O `user_id` não é autenticado: quem o envia escolhe o próprio braço e pode inflar `unique_subjects` variando o valor. Um visitante que ora manda `user_id`, ora não, pode cair nos dois braços. Não use o resultado do A/B como decisão sem considerar isso.
+- **`ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`** ligam o painel `/admin/products` (Story 8.3), com um único admin. O usuário passa por `trim`; o hash precisa ser reconhecido por `password_get_info()` (gere com `php -r "echo password_hash('...', PASSWORD_DEFAULT), PHP_EOL;"`). Com qualquer uma das duas vazia, ou com um hash inválido (por exemplo, a senha em texto puro), o painel fica **desligado** (fail-closed): o login sempre falha com "Painel admin desabilitado: configure ADMIN_USERNAME e ADMIN_PASSWORD_HASH". Nada derruba a aplicação, e as demais rotas não são afetadas. O hash contém `$`: no `.env` (lido pelo phpdotenv e pelo Compose) ponha o valor entre **aspas simples**; no `--env-file` do `docker run`, **sem aspas** (ver nota abaixo do exemplo). A sessão do admin é um cookie `ec_hub_admin` assinado com o `SESSION_COOKIE_SECRET` e válido por 2 h. Trocar a senha, o usuário ou o segredo invalida as sessões abertas.
 - **`RECOMMENDATION_FALLBACK_STRATEGY`** aceita `hybrid`, `category_only` e `popularity_only`. Um valor desconhecido cai em `hybrid` sem erro.
 
 A lista canônica de variáveis é o [`.env.example`](../.env.example). O script `php bin/ci/check-env-vars.php` (roda no CI) garante que ela bate com os `getenv()` do código nos dois sentidos.
@@ -116,13 +119,15 @@ REDIS_PORT=6379
 SESSION_TTL=1800
 SESSION_COOKIE_SECRET=<saida de: openssl rand -hex 32>
 AUTH_REQUIRED=false
+ADMIN_USERNAME=<nome-do-admin, ou vazio para desligar o painel>
+ADMIN_PASSWORD_HASH=<saida de: php -r "echo password_hash('...', PASSWORD_DEFAULT), PHP_EOL;">
 RECOMMENDATION_ALGORITHM=knn
 RECOMMENDATION_AB_TEST=
 RECOMMENDATION_FALLBACK_STRATEGY=hybrid
 RECOMMENDATION_MIN_PRODUCTS_FOR_ML=5
 ```
 
-O `--env-file` do Docker não é um parser de dotenv. Ele não remove aspas e não aceita `export` nem comentário no fim da linha. Escreva `DB_PASSWORD=abc`, não `DB_PASSWORD="abc"`: com aspas, elas passam a fazer parte do valor.
+O `--env-file` do Docker não é um parser de dotenv. Ele não remove aspas e não aceita `export` nem comentário no fim da linha. Escreva `DB_PASSWORD=abc`, não `DB_PASSWORD="abc"`: com aspas, elas passam a fazer parte do valor. Isso vale também para o `ADMIN_PASSWORD_HASH`: no `--env-file` o hash vai **sem aspas** (`ADMIN_PASSWORD_HASH=$2y$12$...`), e o `--env-file` não interpreta o `$`. Já no `.env` de desenvolvimento ele vai entre aspas simples. Com aspas no `--env-file`, o hash deixa de ser reconhecido e o painel fica desligado.
 
 ## 5. Execução
 
@@ -190,13 +195,15 @@ docker run --rm --env-file /caminho/seguro/ec-hub-migrate.env ec-hub:<sha> php b
 # acrescente --network <rede> se o MySQL só for alcançável por uma rede Docker (ver seção 5)
 ```
 
-- `bin/migrate.php` faz `CREATE TABLE IF NOT EXISTS products` e completa `slug` vazio. É **idempotente e só aditivo**. **Não existe down-migration.**
+- `bin/migrate.php` faz `CREATE TABLE IF NOT EXISTS products`, completa `slug` vazio e garante a coluna `deleted_at` (soft delete do painel admin, Story 8.3) com o índice `idx_products_deleted_at`. É **idempotente e só aditivo**. **Não existe down-migration.**
+- **Instalação existente, anterior ao painel admin:** rode a migration (`make migrate` no ambiente de desenvolvimento, ou o `docker run … php bin/migrate.php` acima) **antes** de subir a versão nova. A migration verifica a coluna com `SHOW COLUMNS … LIKE 'deleted_at'` e só faz o `ALTER TABLE` quando ela falta. Sem a coluna, toda leitura de produto falha, porque as queries filtram `deleted_at IS NULL`.
 - Exceção: numa tabela `products` **antiga, sem a coluna `slug` e com mais de uma linha**, a migration falha. Ela adiciona `slug` com valor vazio em todas as linhas e cria o índice único **antes** de preencher os slugs, e o índice não aceita as duplicatas. Isso só afeta instalações anteriores à coluna `slug`. Uma base nova, ou uma que já tem a coluna, não é afetada (comportamento lido em `bin/migrate.php`).
 - ⚠️ **`bin/seed.php` apaga os dados:** o `ProductSeeder` executa `DELETE FROM products` antes de inserir o catálogo de exemplo. Nunca rode em uma base com dados reais.
 - ⚠️ **`bin/migrate-fresh.php`** (e `make migrate-fresh` / `make db-reset`) faz `DROP TABLE`. Nunca rode em produção.
-- Privilégios do usuário do banco: a migration precisa de `CREATE`, `ALTER`, `INDEX`, `SELECT` e `UPDATE` em `ec_hub`; a aplicação em execução só lê `products` (`SELECT`). Por isso são duas credenciais: o usuário de migration (no `ec-hub-migrate.env`) e o da aplicação, só com `GRANT SELECT ON ec_hub.* TO '<usuario>'@'<host>';` (no `ec-hub.env`). Se preferir um único usuário, ele precisa de todos os privilégios de migration.
+- Privilégios do usuário do banco: a migration precisa de `CREATE`, `ALTER`, `INDEX`, `SELECT` e `UPDATE` em `ec_hub`. A aplicação em execução lê `products` (`SELECT`) e, com o painel admin ligado, também grava: criar produto faz `INSERT` e editar/excluir faz `UPDATE` (a exclusão é lógica, nunca `DELETE`). Por isso são duas credenciais: o usuário de migration (no `ec-hub-migrate.env`) e o da aplicação (no `ec-hub.env`), com `GRANT SELECT, INSERT, UPDATE ON ec_hub.products TO '<usuario>'@'<host>';`. Se o painel ficar desligado, `GRANT SELECT` basta; com ele ligado e só `SELECT`, salvar no painel devolve 500. Se preferir um único usuário, ele precisa de todos os privilégios de migration.
 - Operações manuais precisam de mais do que isso. A carga do catálogo precisa de `INSERT`. O restore de um backup do `mysqldump` precisa de `DROP`, `CREATE`, `ALTER`, `INSERT` e `LOCK TABLES`, porque o arquivo recria a tabela. Faça essas operações com um usuário administrativo, ou acrescente esses privilégios ao usuário de migration.
-- Uma base nova fica sem produtos até você carregar o catálogo. Com o catálogo vazio a home e as recomendações não têm o que mostrar. O seed só serve para ambientes descartáveis. **O repositório não tem script de importação de catálogo:** os produtos entram por `INSERT` na tabela `products` (colunas `name`, `description`, `price`, `category`, `slug` único, `image_url`), com a ferramenta de banco que você usa.
+- Uma base nova fica sem produtos até você carregar o catálogo. Com o catálogo vazio a home e as recomendações não têm o que mostrar. O seed só serve para ambientes descartáveis. **O repositório não tem script de importação de catálogo:** os produtos entram pelo painel `/admin/products` (um a um) ou por `INSERT` na tabela `products` (colunas `name`, `description`, `price`, `category`, `slug` único, `image_url`), com a ferramenta de banco que você usa.
+- **Exclusão lógica (FR106):** excluir no painel só preenche `products.deleted_at`. A linha fica no banco, some de todas as leituras (catálogo, detalhe, recomendações) e o `slug` continua reservado pelo índice único. Não há restauração pelo painel: se precisar, faça `UPDATE products SET deleted_at = NULL WHERE id = <id>` com um usuário administrativo.
 
 ## 7. Checklist pré-deploy
 
@@ -207,10 +214,11 @@ docker run --rm --env-file /caminho/seguro/ec-hub-migrate.env ec-hub:<sha> php b
 - [ ] `DB_*` apontando para o MySQL de produção, com usuário dedicado (não `root`) e senha forte. Não reaproveite `secret` do compose.
 - [ ] `REDIS_HOST`/`REDIS_PORT` apontando para o Redis de produção.
 - [ ] `SESSION_TTL`, se definida, é um inteiro ≥ 1 (não vazia).
+- [ ] Painel admin: ou `ADMIN_USERNAME` e `ADMIN_PASSWORD_HASH` vazias (painel desligado), ou um usuário e um hash gerado com `password_hash()` (no `--env-file`, sem aspas). O usuário do banco da aplicação tem `INSERT` e `UPDATE` em `products` se o painel estiver ligado ([seção 6](#6-migrations-e-dados)).
 - [ ] MySQL e Redis alcançáveis a partir do host do container.
 - [ ] **Backup do MySQL feito** antes de rodar a migration (ver [seção 9](#9-rollback)).
 - [ ] `php bin/migrate.php` executado via imagem, **sem** `seed` e **sem** `migrate-fresh`.
-- [ ] Proxy reverso com TLS na frente do `php -S`, bloqueando `/debug/memory`, `/metrics` e `/api/ab-tests/results` se não devem ser públicos.
+- [ ] Proxy reverso com TLS na frente do `php -S`, bloqueando `/debug/memory`, `/metrics` e `/api/ab-tests/results` se não devem ser públicos. `/admin/*` só por HTTPS; se possível, restrinja por IP ou VPN no proxy (o login não tem rate limit).
 - [ ] Container rodando com `-d display_errors=0 -d log_errors=1` (ver [seção 5](#5-execução)).
 - [ ] Catálogo de produtos carregado na base (uma base nova fica vazia, ver [seção 6](#6-migrations-e-dados)).
 - [ ] Imagem da versão atual (a do rollback) ainda disponível no host ou no registry.
@@ -291,7 +299,7 @@ mysqldump -h <host> -u <usuario> -p --single-transaction --no-tablespaces <DB_DA
 mysql -h <host> -u <usuario> -p <DB_DATABASE> < backup-<data>.sql
 ```
 
-Hoje a migration só cria `products` se ela não existir e completa `slug`. Uma versão anterior da aplicação continua funcionando com o schema atual. Se uma migration futura mudar colunas, essa garantia deixa de existir e o restore do backup passa a ser o caminho.
+Hoje a migration cria `products` se ela não existir, completa `slug` e acrescenta a coluna `deleted_at`. Uma versão anterior da aplicação continua subindo com o schema atual, mas **ignora o `deleted_at`**: depois de um rollback para uma versão anterior ao painel admin, os produtos excluídos pelo painel voltam a aparecer no catálogo e nas recomendações. Se isso importar, restaure o backup ou apague essas linhas de vez antes do rollback (`DELETE FROM products WHERE deleted_at IS NOT NULL`, com um usuário administrativo). Se uma migration futura mudar colunas, a compatibilidade deixa de existir e o restore do backup passa a ser o caminho.
 
 ### Redis
 
@@ -325,6 +333,13 @@ Problemas do ambiente de desenvolvimento (Docker não sobe, Composer, conexão M
 - **`/health` sempre HTTP 200:** o estado está só no JSON. Orquestradores que olham apenas o código HTTP não detectam `unhealthy`.
 - **`/debug/memory`, `/metrics` e `/api/ab-tests/results` são públicos**, sem autenticação. Bloqueie no proxy se não devem ficar expostos.
 - **`AUTH_REQUIRED=true` só exige a presença do header** `Authorization`. Não há validação de token.
+- **Painel admin com um único admin** (usuário e hash no ambiente), sem tabela de usuários, papéis, cadastro ou recuperação de senha.
+- **Login do admin sem rate limit** nem bloqueio por tentativas. A senha é verificada com `password_verify`, mas nada impede força bruta além do custo do hash: restrinja `/admin` no proxy.
+- **Sessão do admin não revogável antes de expirar:** o cookie `ec_hub_admin` é stateless (HMAC, sem nada no servidor) e vale 2 h. O logout apaga o cookie do navegador, mas um cookie copiado continua válido até expirar. Para invalidar todas as sessões na hora, troque a senha (`ADMIN_PASSWORD_HASH`), o usuário ou o `SESSION_COOKIE_SECRET` e recrie o container.
+- **Cookie do admin sem `Secure` atrás do proxy:** mesma regra do cookie de sessão (só com `$_SERVER['HTTPS']`). O cookie é `HttpOnly`, `SameSite=Strict` e restrito ao caminho `/admin`.
+- **Sessão do admin não é renovada com o uso:** ela expira 2 h depois do login, mesmo com o admin ativo (não há renovação deslizante). Um formulário enviado depois disso é redirecionado para o login e **os dados digitados se perdem**. Em edições longas, salve antes de completar 2 h de sessão.
+- **Exclusão de produto sem restauração:** o painel só faz soft delete (`deleted_at`) e não tem "desfazer"; a restauração é manual no banco ([seção 6](#6-migrations-e-dados)).
+- **Slug de produto excluído continua reservado:** o índice único de `slug` vale para linhas excluídas também. Um produto novo com o mesmo nome de um excluído recebe o sufixo `-1` (por exemplo, `notebook-pro-1`), e a URL pública antiga continua respondendo 404.
 - **Migrations aditivas, sem down-migration.** `bin/seed.php` apaga `products`, e `bin/migrate-fresh.php` faz `DROP TABLE`.
 - **O KNN treina a cada requisição** que chega ao ML (não há cache do modelo). Detalhes em [docs/ML.md — Limitações conhecidas](ML.md#9-limitações-conhecidas).
 - **Redis sem senha e conexões sem TLS:** `config/redis.php` só lê host e porta (não há `REDIS_PASSWORD`), e a conexão PDO não tem opção de TLS. Mantenha os dois numa rede privada.
