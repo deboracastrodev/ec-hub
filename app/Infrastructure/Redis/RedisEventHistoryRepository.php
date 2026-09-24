@@ -7,7 +7,7 @@ namespace App\Infrastructure\Redis;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use InvalidArgumentException;
 use JsonException;
-use Predis\ClientInterface;
+use Predis\Client;
 use Predis\Transaction\MultiExec;
 use UnexpectedValueException;
 
@@ -17,7 +17,7 @@ final class RedisEventHistoryRepository implements EventHistoryRepositoryInterfa
     private const PREFIX = 'ec-hub:event-history:';
     private const MAX_TTL = 2147483647;
 
-    public function __construct(private readonly ClientInterface $client, private readonly int $ttl)
+    public function __construct(private readonly Client $client, private readonly int $ttl)
     {
         if ($ttl < 1 || $ttl > self::MAX_TTL) {
             throw new InvalidArgumentException('SESSION_TTL must be an integer between 1 and 2147483647.');

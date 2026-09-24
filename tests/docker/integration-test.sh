@@ -123,11 +123,12 @@ echo "📋 Test Group 9: Real Container Communication"
 echo "Starting containers for integration test..."
 echo -e "${YELLOW}(This will take 30-60 seconds for services to become healthy)${NC}"
 
-# Source env vars
+# Load env vars (variáveis já definidas no ambiente têm precedência)
+source "$SCRIPT_DIR/load-env-defaults.sh"
 if [ -f .env ]; then
-  source .env
+  load_env_defaults .env
 else
-  source .env.example 2>/dev/null || true
+  load_env_defaults .env.example
 fi
 
 # Start containers

@@ -37,6 +37,7 @@ final class FullStackHttpIntegrationTest extends TestCase
 
         $config = require dirname(__DIR__, 3) . '/config/redis.php';
         $this->redis = new Client(['scheme' => 'tcp', ...$config, 'database' => self::REDIS_DATABASE]);
+
         try {
             $this->redis->flushdb();
         } catch (\Throwable $exception) {
