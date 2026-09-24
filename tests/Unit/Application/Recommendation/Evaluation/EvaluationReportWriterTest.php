@@ -59,13 +59,13 @@ final class EvaluationReportWriterTest extends TestCase
         $this->assertStringContainsString('`top_products / aparições`', $markdown);
         $this->assertStringContainsString('Aqui, em k = 1: 1/2 = 0.5000.', $markdown);
         $this->assertStringContainsString('Isso não torna o sinal inevitável', $markdown);
-        $this->assertStringContainsString('- **Fora deste relatório:** cold-start/fallback (Story 10.4).', $markdown);
-        $this->assertStringNotContainsString('Story 10.3)', $markdown);
+        $this->assertStringContainsString('- **Fora deste relatório:** `/metrics` e README (Story 10.5).', $markdown);
+        $this->assertStringNotContainsString('Story 10.4)', $markdown);
 
         $result['concentration']['excessive_at_k'] = [1 => false, 5 => false];
         $markdown = $writer->renderMarkdown($result, '2026-09-24', self::CATALOG);
         $this->assertStringContainsString('**Sinal de concentração:** nenhuma concentração excessiva.', $markdown);
-        $this->assertStringNotContainsString('excessiva em k', $markdown);
+        $this->assertStringNotContainsString('**Sinal de concentração:** excessiva em k', $markdown);
     }
 
     public function test_catalog_section_without_any_recommendation(): void
@@ -98,7 +98,8 @@ final class EvaluationReportWriterTest extends TestCase
         $json = json_decode($writer->renderJson($result, '2026-09-24', self::CATALOG), true, 512, JSON_THROW_ON_ERROR);
 
         $this->assertSame(
-            ['algorithm', 'measured_at', 'catalog', 'split', 'relevance', 'queries', 'metrics', 'coverage', 'diversity', 'concentration'],
+            ['algorithm', 'measured_at', 'catalog', 'split', 'relevance', 'queries', 'metrics', 'coverage', 'diversity', 'concentration',
+                'cold_start'],
             array_keys($json)
         );
         $this->assertSame(8, $json['coverage']['candidate_products']);
@@ -110,6 +111,107 @@ final class EvaluationReportWriterTest extends TestCase
         $this->assertSame(1, $json['concentration']['top_products']);
         $this->assertTrue($json['concentration']['excessive_at_k']['1']);
         $this->assertSame(['product_id' => 3, 'appearances' => 4], $json['concentration']['most_recommended'][0]);
+    }
+
+    public function test_json_carries_the_cold_start_block(): void
+    {
+        $writer = new EvaluationReportWriter();
+        $result = $this->buildResult(0.2, [1 => 1.0, 5 => 0.5], [1 => 0.1, 5 => 0.2], 2, 0);
+
+        $json = json_decode($writer->renderJson($result, '2026-09-24', self::CATALOG), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame('new_product', $json['cold_start']['scenario']);
+        $this->assertSame('hybrid', $json['cold_start']['fallback_strategy']);
+        $this->assertSame(10, $json['cold_start']['limit']);
+        $this->assertSame(1, $json['cold_start']['activation']['activated']);
+        $this->assertSame(0.5, $json['cold_start']['activation']['activation_rate']);
+        $this->assertSame('served_ml_items', $json['cold_start']['populations']['ml']['selection']);
+        $this->assertSame('forced_fallback', $json['cold_start']['populations']['fallback']['selection']);
+        $this->assertSame(0.75, $json['cold_start']['populations']['fallback']['metrics']['precision_at_k']['5']);
+    }
+
+    public function test_cold_start_section_side_by_side(): void
+    {
+        $writer = new EvaluationReportWriter();
+        $result = $this->buildResult(0.2, [1 => 1.0, 5 => 0.5], [1 => 0.1, 5 => 0.2], 2, 0);
+
+        $markdown = $writer->renderMarkdown($result, '2026-09-24', self::CATALOG);
+
+        $this->assertStringContainsString('## Cold-start e fallback', $markdown);
+        $this->assertStringContainsString('Cada execução pede `limit` = 10 itens (o maior k).', $markdown);
+        $this->assertStringContainsString('A ativação depende do `limit`', $markdown);
+        $this->assertStringContainsString('**Ativação do fallback:** 1 de 2 consultas (50%) · itens de fallback: 3/20', $markdown);
+        $this->assertStringContainsString(
+            '| k | precision ML | precision fallback | recall ML | recall fallback | cobertura ML | cobertura fallback '
+                . '| ILD ML | ILD fallback |',
+            $markdown
+        );
+        $this->assertStringContainsString('| 1 | 1.0000 | 1.0000 | 0.1000 | 0.1000 | 0.2500 | 0.1250 | n/a | n/a |', $markdown);
+        $this->assertStringContainsString('| 5 | 0.5000 | 0.7500 | 0.2000 | 0.3000 | 0.6250 | 0.3750 | 0.4000 | 0.1000 |', $markdown);
+        $this->assertStringContainsString('**Sinal de concentração (ML):** excessiva em k = 1.', $markdown);
+        $this->assertStringContainsString('**Sinal de concentração (fallback):** excessiva em k = 1, 5.', $markdown);
+        $this->assertStringContainsString('contrafactual', $markdown);
+        $this->assertStringContainsString('`hybrid`', $markdown);
+        $this->assertStringContainsString('**Relevância por categoria favorece o fallback por categoria:**', $markdown);
+        $this->assertStringContainsString('**"Popularidade" sem sinal de popularidade:**', $markdown);
+        $this->assertStringContainsString('tende a repetir os mesmos produtos em todas as listas', $markdown);
+        $this->assertStringContainsString('Nota: a relevância é a mesma categoria da consulta', $markdown);
+        $this->assertStringContainsString('**Por que a ativação no cenário `new_product` é rara ou nula:**', $markdown);
+        $this->assertStringContainsString('não o completamento de uma lista ML curta', $markdown);
+        $this->assertStringContainsString('A seção de cold-start passa pelo caso de uso real.', $markdown);
+        // A seção vem depois da de cobertura e antes de "Como reproduzir".
+        $this->assertLessThan(strpos($markdown, '## Cold-start e fallback'), strpos($markdown, '## Cobertura, diversidade e concentração'));
+        $this->assertLessThan(strpos($markdown, '## Como reproduzir'), strpos($markdown, '## Cold-start e fallback'));
+    }
+
+    public function test_result_without_cold_start_omits_the_block_and_the_section(): void
+    {
+        $writer = new EvaluationReportWriter();
+        $result = $this->buildResult(0.2, [1 => 1.0, 5 => 0.5], [1 => 0.1, 5 => 0.2], 2, 0);
+        unset($result['cold_start']);
+
+        $json = json_decode($writer->renderJson($result, '2026-09-24', self::CATALOG), true);
+        $markdown = $writer->renderMarkdown($result, '2026-09-24', self::CATALOG);
+
+        $this->assertArrayNotHasKey('cold_start', $json);
+        $this->assertStringNotContainsString('## Cold-start e fallback', $markdown);
+        $this->assertStringNotContainsString('Relevância por categoria favorece o fallback', $markdown);
+        $this->assertStringNotContainsString('A seção de cold-start', $markdown);
+        $this->assertStringContainsString('## Cobertura, diversidade e concentração', $markdown);
+        $this->assertStringContainsString('- **Fora deste relatório:** `/metrics` e README (Story 10.5).', $markdown);
+    }
+
+    public function test_cold_start_section_with_empty_ml_population_shows_n_a(): void
+    {
+        $writer = new EvaluationReportWriter();
+        $result = $this->buildResult(0.2, [1 => 1.0, 5 => 0.5], [1 => 0.1, 5 => 0.2], 2, 0);
+        $result['cold_start']['activation'] = [
+            'queries' => 2, 'activated' => 2, 'activation_rate' => 1.0, 'items' => 10, 'fallback_items' => 10,
+            'fallback_item_share' => 1.0,
+        ];
+        $result['cold_start']['populations']['ml'] = ['selection' => 'served_ml_items'] + $this->population(
+            0,
+            [1 => null, 5 => null],
+            [1 => null, 5 => null],
+            [1 => 0.0, 5 => 0.0],
+            [1 => null, 5 => null],
+            [1 => null, 5 => null]
+        );
+
+        $markdown = $writer->renderMarkdown($result, '2026-09-24', self::CATALOG);
+
+        $this->assertStringContainsString('**Ativação do fallback:** 2 de 2 consultas (100%) · itens de fallback: 10/10', $markdown);
+        $this->assertStringContainsString('| 1 | n/a | 1.0000 | n/a | 0.1000 | 0.0000 | 0.1250 | n/a | n/a |', $markdown);
+        $this->assertStringContainsString('| 5 | n/a | 0.7500 | n/a | 0.3000 | 0.0000 | 0.3750 | n/a | 0.1000 |', $markdown);
+        $this->assertStringContainsString('**Sinal de concentração (ML):** n/a (nenhuma recomendação para medir).', $markdown);
+        $this->assertStringContainsString('População ML: 0 listas', $markdown);
+    }
+
+    public function test_rate_formatting(): void
+    {
+        $this->assertSame('6.25%', EvaluationReportWriter::formatRate(0.0625));
+        $this->assertSame('0%', EvaluationReportWriter::formatRate(0.0));
+        $this->assertSame('n/a', EvaluationReportWriter::formatRate(null));
     }
 
     public function test_concentration_signal_helper(): void
@@ -154,6 +256,75 @@ final class EvaluationReportWriterTest extends TestCase
                     ['product_id' => 3, 'appearances' => 4],
                     ['product_id' => 7, 'appearances' => 1],
                 ],
+            ],
+            'cold_start' => [
+                'scenario' => 'new_product',
+                'fallback_strategy' => 'hybrid',
+                'limit' => 10,
+                'activation' => [
+                    'queries' => 2,
+                    'activated' => 1,
+                    'activation_rate' => 0.5,
+                    'items' => 20,
+                    'fallback_items' => 3,
+                    'fallback_item_share' => 0.15,
+                ],
+                'populations' => [
+                    'ml' => ['selection' => 'served_ml_items'] + $this->population(
+                        2,
+                        [1 => 1.0, 5 => 0.5],
+                        [1 => 0.1, 5 => 0.2],
+                        [1 => 0.25, 5 => 0.625],
+                        [1 => null, 5 => 0.4],
+                        [1 => true, 5 => false]
+                    ),
+                    'fallback' => ['selection' => 'forced_fallback'] + $this->population(
+                        2,
+                        [1 => 1.0, 5 => 0.75],
+                        [1 => 0.1, 5 => 0.3],
+                        [1 => 0.125, 5 => 0.375],
+                        [1 => null, 5 => 0.1],
+                        [1 => true, 5 => true]
+                    ),
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * One cold-start population in the OfflineEvaluation::measure() shape.
+     *
+     * @param array<int, float|null> $precision
+     * @param array<int, float|null> $recall
+     * @param array<int, float> $coverage
+     * @param array<int, float|null> $ild
+     * @param array<int, bool|null> $excessive
+     * @return array<string, mixed>
+     */
+    private function population(int $lists, array $precision, array $recall, array $coverage, array $ild, array $excessive): array
+    {
+        return [
+            'queries' => ['evaluated' => $precision[1] === null ? 0 : $lists, 'without_relevant' => 0],
+            'metrics' => ['precision_at_k' => $precision, 'recall_at_k' => $recall],
+            'coverage' => [
+                'candidate_products' => 8,
+                'lists' => $lists,
+                'covered_products_at_k' => array_map(static fn (float $c): int => (int) round($c * 8), $coverage),
+                'catalog_coverage_at_k' => $coverage,
+            ],
+            'diversity' => [
+                'distance' => 'category',
+                'intra_list_diversity_at_k' => $ild,
+                'distinct_categories_at_k' => array_map(static fn (): ?float => $lists > 0 ? 1.0 : null, $coverage),
+            ],
+            'concentration' => [
+                'top_share_ratio' => 0.1,
+                'excessive_top_share' => 0.5,
+                'top_products' => 1,
+                'gini_at_k' => array_map(static fn (?bool $e): ?float => $e === null ? null : 0.5, $excessive),
+                'top_share_at_k' => array_map(static fn (?bool $e): ?float => $e === null ? null : ($e ? 0.6 : 0.2), $excessive),
+                'excessive_at_k' => $excessive,
+                'most_recommended' => [],
             ],
         ];
     }

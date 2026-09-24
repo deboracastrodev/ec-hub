@@ -10,7 +10,9 @@ use RuntimeException;
  * Story 10.2: renders an OfflineEvaluation result as a versionable report
  * (JSON + Markdown in PT-BR) and writes both files to an output directory.
  * Story 10.3: adds the coverage, diversity and concentration blocks and the
- * explicit concentration signal.
+ * explicit concentration signal. Story 10.4: adds the cold_start block
+ * (ColdStartEvaluation) -- fallback activation rate and the ML and fallback
+ * populations side by side.
  *
  * The only non-deterministic field is measured_at: everything else comes
  * from the result and the catalog, so re-running with the same seed and
@@ -21,7 +23,9 @@ final class EvaluationReportWriter
     public const BASENAME = 'offline-evaluation';
 
     /**
-     * @param array<string, mixed> $result OfflineEvaluation::run() output
+     * @param array<string, mixed> $result OfflineEvaluation::run() output, optionally with the
+     *        key 'cold_start' (ColdStartEvaluation::run() output, Story 10.4); without it the
+     *        cold-start JSON block and Markdown section are omitted
      * @param array{path: string, products: int, sha256: string} $catalog
      * @return array{json: string, markdown: string} paths written
      */
@@ -68,6 +72,9 @@ final class EvaluationReportWriter
             'diversity' => $result['diversity'],
             'concentration' => $result['concentration'],
         ];
+        if (isset($result['cold_start'])) {
+            $report['cold_start'] = $result['cold_start'];
+        }
 
         return json_encode(
             $report,
@@ -131,7 +138,10 @@ final class EvaluationReportWriter
             '',
         ]);
 
-        $lines = array_merge($lines, $this->catalogSection($result), [
+        $hasColdStart = isset($result['cold_start']);
+        $coldStartLines = $hasColdStart ? $this->coldStartSection($result['cold_start']) : [];
+
+        $lines = array_merge($lines, $this->catalogSection($result), $coldStartLines, [
             '## Como reproduzir',
             '',
             '```bash',
@@ -146,7 +156,9 @@ final class EvaluationReportWriter
             'O catálogo é ordenado por id e embaralhado com `Random\\Randomizer(new Random\\Engine\\Mt19937($seed))`. '
                 . 'Os primeiros `max(1, round(n × proporção))` produtos formam o holdout, e o resto é o treino. '
                 . 'O KNN (`KNNService` + `RubixNeighborFinder`) é treinado só com o treino. Cada produto do holdout '
-                . 'é uma consulta: o harness pede o top-k direto à estratégia, sem passar pelo fallback de cold-start.',
+                . 'é uma consulta: nas seções de resultado e de cobertura, o harness pede o top-k direto à estratégia, '
+                . 'sem passar pelo fallback de cold-start.'
+                . ($hasColdStart ? ' A seção de cold-start passa pelo caso de uso real.' : ''),
             '',
             '## Definição de relevância',
             '',
@@ -163,7 +175,22 @@ final class EvaluationReportWriter
             '- **Catálogo fixo:** o catálogo versionado (`database/fixtures/evaluation-catalog.json`) foi gerado uma vez '
                 . 'com a distribuição do `ProductSeeder`. Não é o catálogo do banco, que muda a cada seed.',
             $this->sampleSizeLimitation($result),
-            '- **Fora deste relatório:** cold-start/fallback (Story 10.4).',
+        ]);
+
+        if ($hasColdStart) {
+            $lines = array_merge($lines, [
+                '- **Relevância por categoria favorece o fallback por categoria:** o fallback `category` recomenda '
+                    . 'produtos da mesma categoria da consulta, que é justamente a definição de relevante. A precision '
+                    . 'alta dele é circuito fechado, e não prova de recomendação melhor.',
+                '- **"Popularidade" sem sinal de popularidade:** o fallback `popularity` pega os primeiros N produtos '
+                    . 'do catálogo e os embaralha (não há contagem de visualizações no repositório). Por isso tende a '
+                    . 'repetir os mesmos produtos em todas as listas. Aqui a ordem vem do repositório em memória do '
+                    . 'harness, e o embaralhamento usa a seed do split.',
+            ]);
+        }
+
+        $lines = array_merge($lines, [
+            '- **Fora deste relatório:** `/metrics` e README (Story 10.5).',
             '',
         ]);
 
@@ -269,6 +296,129 @@ final class EvaluationReportWriter
             ),
             '',
         ]);
+    }
+
+    /**
+     * Story 10.4 section: fallback activation and the ML x fallback populations.
+     *
+     * @param array<string, mixed> $coldStart
+     * @return list<string>
+     */
+    private function coldStartSection(array $coldStart): array
+    {
+        $activation = $coldStart['activation'];
+        $ml = $coldStart['populations']['ml'];
+        $fallback = $coldStart['populations']['fallback'];
+
+        $lines = [
+            '## Cold-start e fallback',
+            '',
+            sprintf(
+                'Cenário `%s`: cada consulta do holdout passa pelo caso de uso real (`GenerateRecommendations`), '
+                    . 'com o catálogo = treino + a própria consulta e o modelo treinado só com o treino. '
+                    . 'Cada execução pede `limit` = %d itens (o maior k).',
+                $coldStart['scenario'],
+                $coldStart['limit']
+            ),
+            '',
+            self::activationLine($activation),
+            '',
+            sprintf(
+                'População ML: %d listas (%d consultas avaliadas, %d sem relevante). '
+                    . 'População fallback: %d listas (%d consultas avaliadas, %d sem relevante).',
+                $ml['coverage']['lists'],
+                $ml['queries']['evaluated'],
+                $ml['queries']['without_relevant'],
+                $fallback['coverage']['lists'],
+                $fallback['queries']['evaluated'],
+                $fallback['queries']['without_relevant']
+            ),
+            '',
+            '| k | precision ML | precision fallback | recall ML | recall fallback | cobertura ML | cobertura fallback '
+                . '| ILD ML | ILD fallback |',
+            '|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
+        ];
+
+        foreach ($ml['metrics']['precision_at_k'] as $k => $precision) {
+            $lines[] = sprintf(
+                '| %d | %s | %s | %s | %s | %s | %s | %s | %s |',
+                $k,
+                $this->formatMetric($precision),
+                $this->formatMetric($fallback['metrics']['precision_at_k'][$k] ?? null),
+                $this->formatMetric($ml['metrics']['recall_at_k'][$k] ?? null),
+                $this->formatMetric($fallback['metrics']['recall_at_k'][$k] ?? null),
+                $this->formatMetric($ml['coverage']['catalog_coverage_at_k'][$k] ?? null),
+                $this->formatMetric($fallback['coverage']['catalog_coverage_at_k'][$k] ?? null),
+                $this->formatMetric($ml['diversity']['intra_list_diversity_at_k'][$k] ?? null),
+                $this->formatMetric($fallback['diversity']['intra_list_diversity_at_k'][$k] ?? null)
+            );
+        }
+
+        return array_merge($lines, [
+            '',
+            'Nota: a relevância é a mesma categoria da consulta, e o fallback `category` recomenda exatamente essa '
+                . 'categoria. A precision do fallback é circuito fechado, e não prova de recomendação melhor que a do ML.',
+            '',
+            '**Sinal de concentração (ML):** ' . self::concentrationSignal($ml['concentration']['excessive_at_k']) . '.',
+            '',
+            '**Sinal de concentração (fallback):** '
+                . self::concentrationSignal($fallback['concentration']['excessive_at_k']) . '.',
+            '',
+            '### Definições do cold-start',
+            '',
+            '- **Cenário `new_product`:** o produto da consulta está no catálogo, como na produção (a consulta vem '
+                . 'de uma página de produto), mas o modelo foi treinado sem ele: é o cold-start de item de um modelo '
+                . 'treinado em batch. A chamada não tem sessão nem usuário, então não há personalização.',
+            sprintf(
+                '- **Ativação do fallback:** consultas em que a resposta servida (pedindo `limit` = %d) tem pelo menos '
+                    . 'um item com `source` diferente de `ml`, sobre o total de consultas. Itens de fallback = itens '
+                    . '`rules` ou `popular` sobre o total de itens servidos. A ativação depende do `limit`: com um '
+                    . 'limite maior, uma lista ML curta fica mais provável.',
+                $coldStart['limit']
+            ),
+            '- **População ML (`served_ml_items`):** a lista servida de cada consulta, filtrada para os itens `ml`, '
+                . 'na ordem. Consultas sem nenhum item ML ficam fora.',
+            sprintf(
+                '- **População fallback (`forced_fallback`):** a lista que o caso de uso devolve com o fallback forçado '
+                    . '(`insufficientData: true`), para todas as consultas, com a estratégia de fallback padrão (`%s`). '
+                    . 'É contrafactual: mostra o que seria servido se o fallback ativasse, e não tráfego real. '
+                    . 'É o ramo de fallback completo (a lista inteira vem das regras), e não o completamento de uma '
+                    . 'lista ML curta.',
+                $coldStart['fallback_strategy']
+            ),
+            '- **Por que a ativação no cenário `new_product` é rara ou nula:** o KNN por conteúdo responde a qualquer '
+                . 'produto que tenha features, mesmo sem tê-lo visto no treino. O fallback só entra quando a lista ML '
+                . 'vem mais curta que o pedido, quando o id é desconhecido, quando o ML falha ou quando o catálogo é '
+                . 'pequeno demais para o ML. Por isso a população de fallback é medida forçando o ramo.',
+            '- **Mesmas métricas:** as duas populações usam as mesmas fórmulas, a mesma relevância (`same_category` '
+                . 'do treino), os mesmos candidatos (o treino) e o mesmo limiar de concentração das seções acima.',
+            '',
+        ]);
+    }
+
+    /**
+     * The activation line, shared by the Markdown report and (in plain text) the CLI summary.
+     *
+     * @param array{queries: int, activated: int, activation_rate: float|null, items: int, fallback_items: int} $activation
+     */
+    public static function activationLine(array $activation): string
+    {
+        return sprintf(
+            '**Ativação do fallback:** %d de %d consultas (%s) · itens de fallback: %d/%d',
+            $activation['activated'],
+            $activation['queries'],
+            self::formatRate($activation['activation_rate']),
+            $activation['fallback_items'],
+            $activation['items']
+        );
+    }
+
+    /** A 0..1 rate as a percentage without trailing zeros (0.0625 → 6.25%), or n/a. */
+    public static function formatRate(?float $rate): string
+    {
+        return $rate === null
+            ? 'n/a'
+            : rtrim(rtrim(number_format($rate * 100, 2, '.', ''), '0'), '.') . '%';
     }
 
     /**

@@ -16,6 +16,7 @@
   </testsuites>
   <php>
     <env name="SESSION_COOKIE_SECRET" value="phpunit-only-session-cookie-secret-32" force="true"/>
+    <env name="LOG_LEVEL" value="none" force="true"/>
   </php>
   <source>
     <include>

@@ -261,6 +261,29 @@ A linha "KNN devolve menos que `limit`" vale também para o CF, onde é bem mais
 
 O `source` de cada item é `ml` para itens da estratégia (KNN ou CF), `popular` para itens com `fallback_reason = popular_product` e `rules` para os demais. O `meta.source` da resposta vem do primeiro item de fallback encontrado (`popular` ou `rules`) e, se não houver nenhum, é `ml`. Como uma resposta pode misturar origens, o `source` por item é o dado mais preciso. `RecommendationException` não é convertida em fallback; ela sobe até a borda HTTP.
 
+**Log por resposta (Story 10.4).** Todo retorno de `execute()` com lista (ML, os fallbacks, o cold start de produto desconhecido, `ml_error` e a lista vazia do `ml_error` sem produto) emite exatamente um `info('Recommendations served', …)`, depois da personalização, com a estratégia de cada item na ordem final. Os logs `Fallback activated: …` continuam.
+
+```json
+{
+  "target_product_id": 12,
+  "algorithm": "knn",
+  "fallback_activated": true,
+  "recommendations": [
+    {"product_id": 7, "source": "ml", "strategy": "knn"},
+    {"product_id": 3, "source": "rules", "strategy": "category"},
+    {"product_id": 41, "source": "popular", "strategy": "popularity"}
+  ]
+}
+```
+
+`strategy` é o nome da estratégia ativa para itens `ml` e o `fallback_strategy` do item (`category` ou `popularity`) para itens de fallback, ou `rule_based` quando ele não vem. `fallback_activated` é `true` quando algum item veio do fallback (`source` diferente de `ml`); para a lista vazia é `false`. `algorithm` é o nome da estratégia configurada (`knn` ou `collaborative`) mesmo quando nenhum item de ML foi servido (fallback forçado, catálogo pequeno, produto desconhecido). Uma `RecommendationException` sobe sem gerar o log `Recommendations served`. Os logs emitidos pelo próprio `GenerateRecommendations` (`Recommendations served`, `Recommendation algorithm used`, `Recommendation model ready`, `Fallback activated: …` e `ML failed, using fallback`) passam por um helper que descarta falhas do logger, então uma falha deles não muda a resposta nem cai no ramo `ml_error`. Os avisos da personalização e os logs do `RuleBasedFallback` não têm essa proteção. O exemplo acima é ilustrativo, não um log real.
+
+**Onde ver o log.** O container liga `LoggerInterface` ao [`StreamLogger`](../app/Infrastructure/Logging/StreamLogger.php), que grava uma linha JSON por registro (`{"ts","level","message","context"}`) no **stderr** do processo: o terminal do `php -S` ou `docker compose logs app`. O nível mínimo vem de `LOG_LEVEL` (padrão `info`; aceita qualquer nível PSR-3, e `none` desliga). Nos testes o `phpunit.xml` usa `LOG_LEVEL=none`. Para filtrar só as respostas servidas:
+
+```bash
+docker compose logs app 2>&1 | grep '"Recommendations served"'
+```
+
 ## 5. Fallback baseado em regras
 
 [`RuleBasedFallback`](../app/Domain/Recommendation/Service/RuleBasedFallback.php) tem três estratégias:
@@ -379,7 +402,7 @@ Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **
 
 ## 9. Avaliação offline
 
-Mede a **qualidade** do KNN (precision@k e recall@k, cobertura de catálogo, diversidade intra-lista e concentração, k = 1, 5 e 10), e não só o tempo. Roda local, sem Docker, MySQL nem Redis:
+Mede a **qualidade** do KNN (precision@k e recall@k, cobertura de catálogo, diversidade intra-lista e concentração, k = 1, 5 e 10) e a taxa de ativação do fallback de cold-start, com o fallback medido pelas mesmas métricas, e não só o tempo. Roda local, sem Docker, MySQL nem Redis:
 
 ```bash
 make eval        # = php bin/evaluate.php [--seed=42] [--catalog=...] [--output-dir=docs/evaluation]
@@ -396,7 +419,15 @@ make eval        # = php bin/evaluate.php [--seed=42] [--catalog=...] [--output-
   - **Concentração@k:** Gini das aparições de cada candidato (incluindo os que aparecem 0 vezes) e *top share*, a fração das aparições que fica com os `ceil(0.1 × candidatos)` mais recomendados. O relatório sinaliza **concentração excessiva** quando o top share publicado (4 casas) é ≥ 0.5 (10% do catálogo recomendável com metade das recomendações). Esse limiar foi fixado antes da medição. Um id repetido dentro da mesma lista conta uma vez na cobertura, na diversidade e na concentração.
   - **Tamanho da amostra:** com listas cheias há listas × k aparições. Quando esse número é pequeno perto do número de candidatos, o menor top share possível (cada aparição num produto diferente) é `top_products / aparições`, então um k pequeno infla o top share e o Gini. Isso não torna o sinal inevitável: ele depende de quanto os mesmos produtos se repetem.
 
-Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluation/offline-evaluation.md) (e `.json`), e não são copiados para cá. Cold-start (Story 10.4) ainda não entra no relatório.
+- **Cold-start e fallback (Story 10.4):** o harness roda cada consulta do holdout pelo caso de uso real (`GenerateRecommendations`), no cenário `new_product`: o catálogo da consulta é o treino (na ordem do split) mais a própria consulta, e o modelo foi treinado só com o treino. Cada consulta roda duas vezes, sem sessão nem usuário:
+  - **Taxa de ativação do fallback:** na execução servida, consultas com pelo menos um item de `source` diferente de `ml` ÷ total de consultas. O relatório mostra numerador e denominador, e também itens de fallback ÷ itens servidos.
+  - **População ML (`served_ml_items`):** a lista servida de cada consulta, filtrada para os itens `ml`. Consultas sem nenhum item ML ficam fora.
+  - **População fallback (`forced_fallback`):** a lista com o fallback forçado (`insufficientData: true`) para todas as consultas, com a estratégia padrão `hybrid` (`RecommendationSettings::fromArray([])`, independente de env). É **contrafactual**: mostra o que o fallback serviria, e não tráfego real. É o ramo de fallback completo (a lista inteira vem das regras), e não o completamento de uma lista ML curta.
+  - **Por que a ativação espontânea é rara ou nula nesse cenário:** o KNN por conteúdo responde a qualquer produto que tenha features, mesmo sem tê-lo visto no treino. O fallback só entra com lista ML mais curta que o pedido, id desconhecido, erro de ML ou catálogo pequeno demais para o ML. Por isso a população de fallback é medida forçando o ramo.
+  - As duas populações usam as mesmas métricas e fórmulas das seções acima (`OfflineEvaluation::measure()`), lado a lado. A popularidade usa `shuffle()`, então o harness chama `mt_srand(seed)` antes das execuções e `mt_srand(seed + id da consulta)` logo antes de cada execução forçada: o relatório é reproduzível, e a população forçada depende só da seed e do catálogo, e não do quanto a execução servida consumiu de aleatoriedade. As duas execuções pedem `limit` = maior k (10), publicado em `cold_start.limit`; a taxa de ativação depende desse limite.
+  - **Limitações:** a relevância por categoria favorece o fallback `category` (circuito fechado), e a "popularidade" é a ordem do catálogo embaralhada ([seção 10](#10-limitações-conhecidas)).
+
+Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluation/offline-evaluation.md) (e `.json`), e não são copiados para cá.
 
 ## 10. Limitações conhecidas
 
@@ -411,7 +442,7 @@ Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluatio
 - **O A/B compara operação, não resultado.** As métricas por algoritmo são volume, % de itens `ml`, latência e score médio. Não há CTR nem conversão (os eventos de clique e carrinho não são ligados à recomendação que os originou) e não há teste de significância estatística: a diferença entre os braços é só descritiva. O score médio mistura escalas diferentes (KNN × CF, ver seção 1), então não serve para dizer qual algoritmo acerta mais.
 - **O sujeito do A/B não é autenticado.** O `user_id` é um parâmetro de query sem autenticação: um cliente que o envia escolhe o próprio braço (basta testar valores até cair na variante desejada) e pode inflar `unique_subjects` mandando um `user_id` diferente a cada requisição. Um mesmo visitante que às vezes manda `user_id` e às vezes não é atribuído ora pelo `user_id`, ora pelo `session_id`, e pode cair nos dois braços. Trate os números do A/B como indicativos, não como prova.
 - **Métricas do A/B sem janela de tempo.** Os contadores no Redis não expiram e acumulam desde a última limpeza manual (`DEL` das chaves `ec-hub:ab-metrics:*`). Trocar as variantes sem zerar mistura os períodos. Sujeitos únicos vêm de um HyperLogLog, uma contagem aproximada.
-- **Qualidade medida só offline e só por categoria.** precision@k e recall@k são medidos pelo harness offline ([seção 9](#9-avaliação-offline)) num catálogo versionado, com a categoria como rótulo de relevância. A cobertura de catálogo, a diversidade intra-lista e a concentração saem do mesmo harness e do mesmo holdout pequeno (uma lista por produto do holdout). Não há medição com comportamento real de usuário.
+- **Qualidade medida só offline e só por categoria.** precision@k e recall@k são medidos pelo harness offline ([seção 9](#9-avaliação-offline)) num catálogo versionado, com a categoria como rótulo de relevância. A cobertura de catálogo, a diversidade intra-lista e a concentração saem do mesmo harness e do mesmo holdout pequeno (uma lista por produto do holdout). O fallback rule-based é medido pelo mesmo harness e com as mesmas métricas, mas a população dele é contrafactual (fallback forçado), não tráfego real. Não há medição com comportamento real de usuário.
 
 ## Roadmap (não implementado)
 

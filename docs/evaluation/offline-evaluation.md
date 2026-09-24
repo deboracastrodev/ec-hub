@@ -47,6 +47,35 @@ Mais recomendados (k = 10):
 - **Top share@k:** fração das aparições que fica com os `ceil(0.1 × candidatos)` candidatos mais recomendados (os 10% do catálogo recomendável mais recomendados): aqui, os 7 candidatos mais recomendados (`top_products`).
 - **Concentração excessiva:** top share ≥ 0.5, ou seja, 10% do catálogo recomendável fica com 50% ou mais das recomendações. O limiar foi fixado antes da medição.
 
+## Cold-start e fallback
+
+Cenário `new_product`: cada consulta do holdout passa pelo caso de uso real (`GenerateRecommendations`), com o catálogo = treino + a própria consulta e o modelo treinado só com o treino. Cada execução pede `limit` = 10 itens (o maior k).
+
+**Ativação do fallback:** 0 de 16 consultas (0%) · itens de fallback: 0/160
+
+População ML: 16 listas (16 consultas avaliadas, 0 sem relevante). População fallback: 16 listas (16 consultas avaliadas, 0 sem relevante).
+
+| k | precision ML | precision fallback | recall ML | recall fallback | cobertura ML | cobertura fallback | ILD ML | ILD fallback |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1.0000 | 1.0000 | 0.1155 | 0.1155 | 0.1875 | 0.0938 | n/a | n/a |
+| 5 | 0.9500 | 0.9500 | 0.4939 | 0.4939 | 0.6875 | 0.4375 | 0.0875 | 0.0812 |
+| 10 | 0.8125 | 0.4750 | 0.7083 | 0.4939 | 0.9219 | 0.4375 | 0.2736 | 0.5745 |
+
+Nota: a relevância é a mesma categoria da consulta, e o fallback `category` recomenda exatamente essa categoria. A precision do fallback é circuito fechado, e não prova de recomendação melhor que a do ML.
+
+**Sinal de concentração (ML):** excessiva em k = 1.
+
+**Sinal de concentração (fallback):** excessiva em k = 1, 5, 10.
+
+### Definições do cold-start
+
+- **Cenário `new_product`:** o produto da consulta está no catálogo, como na produção (a consulta vem de uma página de produto), mas o modelo foi treinado sem ele: é o cold-start de item de um modelo treinado em batch. A chamada não tem sessão nem usuário, então não há personalização.
+- **Ativação do fallback:** consultas em que a resposta servida (pedindo `limit` = 10) tem pelo menos um item com `source` diferente de `ml`, sobre o total de consultas. Itens de fallback = itens `rules` ou `popular` sobre o total de itens servidos. A ativação depende do `limit`: com um limite maior, uma lista ML curta fica mais provável.
+- **População ML (`served_ml_items`):** a lista servida de cada consulta, filtrada para os itens `ml`, na ordem. Consultas sem nenhum item ML ficam fora.
+- **População fallback (`forced_fallback`):** a lista que o caso de uso devolve com o fallback forçado (`insufficientData: true`), para todas as consultas, com a estratégia de fallback padrão (`hybrid`). É contrafactual: mostra o que seria servido se o fallback ativasse, e não tráfego real. É o ramo de fallback completo (a lista inteira vem das regras), e não o completamento de uma lista ML curta.
+- **Por que a ativação no cenário `new_product` é rara ou nula:** o KNN por conteúdo responde a qualquer produto que tenha features, mesmo sem tê-lo visto no treino. O fallback só entra quando a lista ML vem mais curta que o pedido, quando o id é desconhecido, quando o ML falha ou quando o catálogo é pequeno demais para o ML. Por isso a população de fallback é medida forçando o ramo.
+- **Mesmas métricas:** as duas populações usam as mesmas fórmulas, a mesma relevância (`same_category` do treino), os mesmos candidatos (o treino) e o mesmo limiar de concentração das seções acima.
+
 ## Como reproduzir
 
 ```bash
@@ -58,7 +87,7 @@ Mesma seed e mesmo catálogo produzem o mesmo split e as mesmas métricas; só a
 
 ## Como o split é feito
 
-O catálogo é ordenado por id e embaralhado com `Random\Randomizer(new Random\Engine\Mt19937($seed))`. Os primeiros `max(1, round(n × proporção))` produtos formam o holdout, e o resto é o treino. O KNN (`KNNService` + `RubixNeighborFinder`) é treinado só com o treino. Cada produto do holdout é uma consulta: o harness pede o top-k direto à estratégia, sem passar pelo fallback de cold-start.
+O catálogo é ordenado por id e embaralhado com `Random\Randomizer(new Random\Engine\Mt19937($seed))`. Os primeiros `max(1, round(n × proporção))` produtos formam o holdout, e o resto é o treino. O KNN (`KNNService` + `RubixNeighborFinder`) é treinado só com o treino. Cada produto do holdout é uma consulta: nas seções de resultado e de cobertura, o harness pede o top-k direto à estratégia, sem passar pelo fallback de cold-start. A seção de cold-start passa pelo caso de uso real.
 
 ## Definição de relevância
 
@@ -70,4 +99,6 @@ Para uma consulta `q` do holdout, os relevantes são os produtos **do treino** c
 - **precision@k cai por falta de relevantes, não por erro:** quando a categoria da consulta tem menos de k produtos no treino, os acertos não chegam a k e a precisão fica abaixo de 1 mesmo com o ranking perfeito.
 - **Catálogo fixo:** o catálogo versionado (`database/fixtures/evaluation-catalog.json`) foi gerado uma vez com a distribuição do `ProductSeeder`. Não é o catálogo do banco, que muda a cada seed.
 - **Top share sensível ao tamanho da amostra:** com listas cheias há listas × k aparições. Quando esse número é pequeno perto do número de candidatos, o menor top share possível (cada aparição num produto diferente) é `top_products / aparições`, então um k pequeno infla o top share e o Gini. Aqui, em k = 1: 7/16 = 0.4375. Isso não torna o sinal inevitável: ele depende de quanto os mesmos produtos se repetem. O limiar não muda por causa disso: ele foi fixado antes da medição.
-- **Fora deste relatório:** cold-start/fallback (Story 10.4).
+- **Relevância por categoria favorece o fallback por categoria:** o fallback `category` recomenda produtos da mesma categoria da consulta, que é justamente a definição de relevante. A precision alta dele é circuito fechado, e não prova de recomendação melhor.
+- **"Popularidade" sem sinal de popularidade:** o fallback `popularity` pega os primeiros N produtos do catálogo e os embaralha (não há contagem de visualizações no repositório). Por isso tende a repetir os mesmos produtos em todas as listas. Aqui a ordem vem do repositório em memória do harness, e o embaralhamento usa a seed do split.
+- **Fora deste relatório:** `/metrics` e README (Story 10.5).

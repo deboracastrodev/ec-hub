@@ -115,5 +115,196 @@
                 "appearances": 6
             }
         ]
+    },
+    "cold_start": {
+        "scenario": "new_product",
+        "fallback_strategy": "hybrid",
+        "limit": 10,
+        "activation": {
+            "queries": 16,
+            "activated": 0,
+            "activation_rate": 0.0,
+            "items": 160,
+            "fallback_items": 0,
+            "fallback_item_share": 0.0
+        },
+        "populations": {
+            "ml": {
+                "selection": "served_ml_items",
+                "queries": {
+                    "evaluated": 16,
+                    "without_relevant": 0
+                },
+                "metrics": {
+                    "precision_at_k": {
+                        "1": 1.0,
+                        "5": 0.95,
+                        "10": 0.8125
+                    },
+                    "recall_at_k": {
+                        "1": 0.1155,
+                        "5": 0.4939,
+                        "10": 0.7083
+                    }
+                },
+                "coverage": {
+                    "candidate_products": 64,
+                    "lists": 16,
+                    "covered_products_at_k": {
+                        "1": 12,
+                        "5": 44,
+                        "10": 59
+                    },
+                    "catalog_coverage_at_k": {
+                        "1": 0.1875,
+                        "5": 0.6875,
+                        "10": 0.9219
+                    }
+                },
+                "diversity": {
+                    "distance": "category",
+                    "intra_list_diversity_at_k": {
+                        "1": null,
+                        "5": 0.0875,
+                        "10": 0.2736
+                    },
+                    "distinct_categories_at_k": {
+                        "1": 1.0,
+                        "5": 1.25,
+                        "10": 2.375
+                    }
+                },
+                "concentration": {
+                    "top_share_ratio": 0.1,
+                    "excessive_top_share": 0.5,
+                    "top_products": 7,
+                    "gini_at_k": {
+                        "1": 0.8496,
+                        "5": 0.5199,
+                        "10": 0.3879
+                    },
+                    "top_share_at_k": {
+                        "1": 0.6875,
+                        "5": 0.3625,
+                        "10": 0.2938
+                    },
+                    "excessive_at_k": {
+                        "1": true,
+                        "5": false,
+                        "10": false
+                    },
+                    "most_recommended": [
+                        {
+                            "product_id": 11,
+                            "appearances": 8
+                        },
+                        {
+                            "product_id": 37,
+                            "appearances": 8
+                        },
+                        {
+                            "product_id": 3,
+                            "appearances": 7
+                        },
+                        {
+                            "product_id": 22,
+                            "appearances": 7
+                        },
+                        {
+                            "product_id": 25,
+                            "appearances": 6
+                        }
+                    ]
+                }
+            },
+            "fallback": {
+                "selection": "forced_fallback",
+                "queries": {
+                    "evaluated": 16,
+                    "without_relevant": 0
+                },
+                "metrics": {
+                    "precision_at_k": {
+                        "1": 1.0,
+                        "5": 0.95,
+                        "10": 0.475
+                    },
+                    "recall_at_k": {
+                        "1": 0.1155,
+                        "5": 0.4939,
+                        "10": 0.4939
+                    }
+                },
+                "coverage": {
+                    "candidate_products": 64,
+                    "lists": 16,
+                    "covered_products_at_k": {
+                        "1": 6,
+                        "5": 28,
+                        "10": 28
+                    },
+                    "catalog_coverage_at_k": {
+                        "1": 0.0938,
+                        "5": 0.4375,
+                        "10": 0.4375
+                    }
+                },
+                "diversity": {
+                    "distance": "category",
+                    "intra_list_diversity_at_k": {
+                        "1": null,
+                        "5": 0.0812,
+                        "10": 0.5745
+                    },
+                    "distinct_categories_at_k": {
+                        "1": 1.0,
+                        "5": 1.1875,
+                        "10": 2.5
+                    }
+                },
+                "concentration": {
+                    "top_share_ratio": 0.1,
+                    "excessive_top_share": 0.5,
+                    "top_products": 7,
+                    "gini_at_k": {
+                        "1": 0.9434,
+                        "5": 0.7422,
+                        "10": 0.8016
+                    },
+                    "top_share_at_k": {
+                        "1": 1.0,
+                        "5": 0.5875,
+                        "10": 0.7424
+                    },
+                    "excessive_at_k": {
+                        "1": true,
+                        "5": true,
+                        "10": true
+                    },
+                    "most_recommended": [
+                        {
+                            "product_id": 7,
+                            "appearances": 16
+                        },
+                        {
+                            "product_id": 9,
+                            "appearances": 16
+                        },
+                        {
+                            "product_id": 33,
+                            "appearances": 16
+                        },
+                        {
+                            "product_id": 49,
+                            "appearances": 16
+                        },
+                        {
+                            "product_id": 68,
+                            "appearances": 16
+                        }
+                    ]
+                }
+            }
+        }
     }
 }

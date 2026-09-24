@@ -86,7 +86,7 @@ class GenerateRecommendations
                 $fallbackResults = $this->fallbackService->getPopularRecommendations($limit);
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
 
-                return $this->personalize($fallbackResults, $sessionId, $userId);
+                return $this->served($this->personalize($fallbackResults, $sessionId, $userId), $targetProductId);
             }
 
             // Check if we should use fallback
@@ -102,7 +102,7 @@ class GenerateRecommendations
                 $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
                 $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
 
-                return $this->personalize($fallbackResults, $sessionId, $userId);
+                return $this->served($this->personalize($fallbackResults, $sessionId, $userId), $targetProductId);
             }
 
             // Ensure the strategy's model is trained
@@ -111,7 +111,7 @@ class GenerateRecommendations
             // Generate recommendations using the configured strategy
             $recommendations = $this->strategy->recommend($targetProduct, $limit);
 
-            $this->logger->info('Recommendation algorithm used', [
+            $this->log('info', 'Recommendation algorithm used', [
                 'algorithm' => $this->strategy->getName(),
                 'target_product_id' => $targetProductId,
                 'count' => count($recommendations),
@@ -133,12 +133,14 @@ class GenerateRecommendations
                 $formatted = $this->mergeRecommendations($formatted, $fallbackResults, $limit);
             }
 
-            return $this->personalize($formatted, $sessionId, $userId);
+            $served = $this->personalize($formatted, $sessionId, $userId);
+
+            return $this->served($served, $targetProductId);
 
         } catch (RecommendationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            $this->logger->error('ML failed, using fallback', [
+            $this->log('error', 'ML failed, using fallback', [
                 'error' => $e->getMessage(),
                 'algorithm' => $this->strategy->getName(),
             ]);
@@ -146,7 +148,7 @@ class GenerateRecommendations
             // Fallback to rule-based on error
             $targetProduct = $this->productRepository->findById($targetProductId);
             if ($targetProduct === null) {
-                return [];
+                return $this->served([], $targetProductId);
             }
 
             $this->logFallbackActivated('ml_error', $targetProductId, $strategy);
@@ -158,8 +160,75 @@ class GenerateRecommendations
             $fallbackResults = $this->normalizeFallbackResults($fallbackResults);
             $fallbackResults = $this->filterOutTargetProduct($fallbackResults, $targetProductId);
 
-            return $this->personalize($fallbackResults, $sessionId, $userId);
+            return $this->served($this->personalize($fallbackResults, $sessionId, $userId), $targetProductId);
         }
+    }
+
+    /**
+     * Story 10.4: one 'Recommendations served' log per response, after
+     * personalization, naming the strategy behind each item in final order:
+     * the algorithm name for ML items, the item's fallback_strategy
+     * (category | popularity) for fallback items, or 'rule_based' when absent.
+     * fallback_activated = some item did not come from ML (an empty list: false).
+     *
+     * @param array<array<string, mixed>> $recommendations
+     * @return array<array<string, mixed>> the same list, untouched
+     */
+    private function served(array $recommendations, int $targetProductId): array
+    {
+        $algorithm = $this->strategy->getName();
+        $items = [];
+        foreach ($recommendations as $recommendation) {
+            $source = (string) ($recommendation['source'] ?? 'rules');
+            $items[] = [
+                'product_id' => isset($recommendation['product_id']) ? (int) $recommendation['product_id'] : null,
+                'source' => $source,
+                'strategy' => $source === 'ml'
+                    ? $algorithm
+                    : (string) ($recommendation['fallback_strategy'] ?? 'rule_based'),
+            ];
+        }
+
+        $this->log('info', 'Recommendations served', [
+            'target_product_id' => $targetProductId,
+            'algorithm' => $algorithm,
+            'fallback_activated' => $this->hasFallbackItem($recommendations),
+            'recommendations' => $items,
+        ]);
+
+        return $recommendations;
+    }
+
+    /**
+     * Logging never derails a response: a failing logger must not fall into
+     * the ml_error catch (which would serve a different list and log twice).
+     *
+     * @param array<string, mixed> $context
+     */
+    private function log(string $level, string $message, array $context): void
+    {
+        try {
+            // Chama o método nomeado (info/error), e não log(), para manter o contrato observável.
+            if ($level === 'error') {
+                $this->logger->error($message, $context);
+            } else {
+                $this->logger->info($message, $context);
+            }
+        } catch (\Throwable) {
+            // Falha de log é descartada: a resposta segue intacta.
+        }
+    }
+
+    /** @param array<array<string, mixed>> $recommendations */
+    private function hasFallbackItem(array $recommendations): bool
+    {
+        foreach ($recommendations as $recommendation) {
+            if (($recommendation['source'] ?? null) !== 'ml') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -204,7 +273,7 @@ class GenerateRecommendations
         $this->strategy->train($products);
         $this->modelTrained = true;
 
-        $this->logger->info('Recommendation model ready', [
+        $this->log('info', 'Recommendation model ready', [
             'algorithm' => $this->strategy->getName(),
         ]);
     }
@@ -353,7 +422,7 @@ class GenerateRecommendations
 
     private function logFallbackActivated(string $reason, int $targetProductId, string $strategy): void
     {
-        $this->logger->info('Fallback activated: ' . $reason, [
+        $this->log('info', 'Fallback activated: ' . $reason, [
             'strategy_used' => $strategy,
             'products_count' => count($this->productsCache ?? []),
             'target_product_id' => $targetProductId,

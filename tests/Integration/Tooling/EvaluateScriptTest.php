@@ -108,7 +108,70 @@ final class EvaluateScriptTest extends TestCase
             $stdout
         );
 
+        // Story 10.4: a linha de ativação e a tabela ML × fallback vêm do mesmo JSON.
+        $coldStart = $report['cold_start'];
+        $activation = $coldStart['activation'];
+        $this->assertSame('new_product', $coldStart['scenario']);
+        $this->assertSame('hybrid', $coldStart['fallback_strategy']);
+        $this->assertSame(10, $coldStart['limit']);
+        $this->assertStringContainsString(sprintf(
+            "ML × fallback (limit %d, %d listas ML, %d listas de fallback forçado, estratégia %s):\n",
+            $coldStart['limit'],
+            $coldStart['populations']['ml']['coverage']['lists'],
+            $coldStart['populations']['fallback']['coverage']['lists'],
+            $coldStart['fallback_strategy']
+        ), $stdout);
+        $this->assertSame(16, $activation['queries']);
+        $this->assertStringContainsString(sprintf(
+            "\nAtivação do fallback: %d de %d consultas (%s) · itens de fallback: %d/%d\n",
+            $activation['activated'],
+            $activation['queries'],
+            EvaluationReportWriter::formatRate($activation['activation_rate']),
+            $activation['fallback_items'],
+            $activation['items']
+        ), $stdout);
+        $ml = $coldStart['populations']['ml'];
+        $fallback = $coldStart['populations']['fallback'];
+        foreach (['ml' => $ml, 'fallback' => $fallback] as $name => $population) {
+            foreach (['precision_at_k', 'recall_at_k'] as $metric) {
+                $this->assertSame(['1', '5', '10'], array_map('strval', array_keys($population['metrics'][$metric])), $name);
+            }
+            $this->assertSame(['1', '5', '10'], array_map('strval', array_keys($population['coverage']['catalog_coverage_at_k'])), $name);
+        }
+        foreach ($ml['metrics']['precision_at_k'] as $k => $precision) {
+            $this->assertStringContainsString(sprintf(
+                "| %3d | %9s | %9s | %9s | %9s | %9s | %9s | %9s | %9s |\n",
+                $k,
+                $fmt($precision),
+                $fmt($fallback['metrics']['precision_at_k'][$k]),
+                $fmt($ml['metrics']['recall_at_k'][$k]),
+                $fmt($fallback['metrics']['recall_at_k'][$k]),
+                $fmt($ml['coverage']['catalog_coverage_at_k'][$k]),
+                $fmt($fallback['coverage']['catalog_coverage_at_k'][$k]),
+                $fmt($ml['diversity']['intra_list_diversity_at_k'][$k]),
+                $fmt($fallback['diversity']['intra_list_diversity_at_k'][$k])
+            ), $stdout);
+        }
+        $this->assertStringContainsString(
+            "Sinal de concentração (ML): "
+                . EvaluationReportWriter::concentrationSignal($ml['concentration']['excessive_at_k']) . "\n",
+            $stdout
+        );
+        $this->assertStringContainsString(
+            "Sinal de concentração (fallback): "
+                . EvaluationReportWriter::concentrationSignal($fallback['concentration']['excessive_at_k']) . "\n",
+            $stdout
+        );
+        if ($activation['activated'] === 0) {
+            // Sem ativação, a população ML é exatamente a avaliação offline da 10.2/10.3.
+            foreach (['metrics', 'coverage', 'diversity', 'concentration'] as $block) {
+                $this->assertSame($report[$block], $ml[$block], "cold_start.populations.ml.{$block}");
+            }
+        }
+
         $markdown = (string) file_get_contents($dir . '/offline-evaluation.md');
+        $this->assertStringContainsString('## Cold-start e fallback', $markdown);
+        $this->assertStringContainsString(EvaluationReportWriter::activationLine($activation), $markdown);
         $this->assertStringContainsString('| k | precision@k | recall@k |', $markdown);
         $this->assertStringContainsString('## Cobertura, diversidade e concentração', $markdown);
         $this->assertMatchesRegularExpression('/^\*\*Sinal de concentração:\*\* /m', $markdown);
@@ -153,7 +216,10 @@ final class EvaluateScriptTest extends TestCase
         $fresh = $this->readJson($dir . '/offline-evaluation.json');
         $committed = $this->readJson(self::COMMITTED_JSON);
 
-        $keys = ['algorithm', 'catalog', 'split', 'relevance', 'queries', 'metrics', 'coverage', 'diversity', 'concentration'];
+        $keys = [
+            'algorithm', 'catalog', 'split', 'relevance', 'queries', 'metrics', 'coverage', 'diversity', 'concentration',
+            'cold_start',
+        ];
         foreach ($keys as $key) {
             $this->assertSame($fresh[$key], $committed[$key], "docs/evaluation diverge em '{$key}': rode make eval");
         }

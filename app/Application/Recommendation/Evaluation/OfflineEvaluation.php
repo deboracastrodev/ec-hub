@@ -34,8 +34,9 @@ use InvalidArgumentException;
  * kept) before taking the top-k; precision/recall keep the raw list.
  *
  * The strategy is called directly -- not through GenerateRecommendations,
- * whose cold-start fallback would answer for holdout products (they are
- * not in any repository). That fallback is Story 10.4's subject.
+ * so every list here is pure ML output. The rule-based fallback is measured
+ * by ColdStartEvaluation (Story 10.4), which runs the real use case and
+ * reuses measure() so both populations get exactly these formulas.
  */
 final class OfflineEvaluation
 {
@@ -111,12 +112,73 @@ final class OfflineEvaluation
         $strategy = ($this->strategyFactory)($split->train());
         $strategy->train($split->train());
 
+        $limit = max($this->ks);
+        $listsByQuery = [];
+        foreach ($split->holdout() as $query) {
+            // Toda consulta gera uma lista: cobertura e diversidade não dependem de relevante.
+            $items = [];
+            foreach ($strategy->recommend($query, $limit) as $result) {
+                $items[] = ['product_id' => $result->getProductId(), 'category' => $result->getCategory()];
+            }
+            $listsByQuery[(int) $query->getId()] = $items;
+        }
+
+        $holdoutIds = array_map(static fn (Product $p): int => (int) $p->getId(), $split->holdout());
+        sort($holdoutIds);
+
+        return [
+            'algorithm' => $strategy->getName(),
+            'split' => [
+                'seed' => $seed,
+                'holdout_ratio' => $this->holdoutRatio,
+                'train_size' => count($split->train()),
+                'holdout_size' => count($split->holdout()),
+                'holdout_ids' => $holdoutIds,
+            ],
+            'relevance' => self::RELEVANCE,
+        ] + $this->measure($split, $listsByQuery);
+    }
+
+    /**
+     * Story 10.4: the per-population aggregation, shared by run() and
+     * ColdStartEvaluation. One list per holdout query that appears in
+     * $listsByQuery (keyed by the query's product id, visited in holdout
+     * order); a query missing from the map is left out of the population.
+     * Relevance = train products with the query's category; candidates = train.
+     *
+     * @param array<int, list<array{product_id: int, category: string}>> $listsByQuery
+     * @return array{
+     *     queries: array{evaluated: int, without_relevant: int},
+     *     metrics: array{precision_at_k: array<int, float|null>, recall_at_k: array<int, float|null>},
+     *     coverage: array{
+     *         candidate_products: int,
+     *         lists: int,
+     *         covered_products_at_k: array<int, int>,
+     *         catalog_coverage_at_k: array<int, float>
+     *     },
+     *     diversity: array{
+     *         distance: string,
+     *         intra_list_diversity_at_k: array<int, float|null>,
+     *         distinct_categories_at_k: array<int, float|null>
+     *     },
+     *     concentration: array{
+     *         top_share_ratio: float,
+     *         excessive_top_share: float,
+     *         top_products: int,
+     *         gini_at_k: array<int, float|null>,
+     *         top_share_at_k: array<int, float|null>,
+     *         excessive_at_k: array<int, bool|null>,
+     *         most_recommended: list<array{product_id: int, appearances: int}>
+     *     }
+     * }
+     */
+    public function measure(HoldoutSplit $split, array $listsByQuery): array
+    {
         $trainIdsByCategory = [];
         foreach ($split->train() as $product) {
             $trainIdsByCategory[$product->getCategory()][] = (int) $product->getId();
         }
 
-        $limit = max($this->ks);
         $precisionSums = array_fill_keys($this->ks, 0.0);
         $recallSums = array_fill_keys($this->ks, 0.0);
         $evaluated = 0;
@@ -125,13 +187,17 @@ final class OfflineEvaluation
         $lists = [];
 
         foreach ($split->holdout() as $query) {
-            // Toda consulta gera uma lista: cobertura e diversidade não dependem de relevante.
+            $items = $listsByQuery[(int) $query->getId()] ?? null;
+            if ($items === null) {
+                continue;
+            }
+
             $recommendedIds = [];
             $unique = [];
-            foreach ($strategy->recommend($query, $limit) as $result) {
-                $recommendedIds[] = $result->getProductId();
+            foreach ($items as $item) {
+                $recommendedIds[] = $item['product_id'];
                 // Nas métricas de catálogo, id repetido na lista conta uma vez (primeira ocorrência).
-                $unique[$result->getProductId()] ??= $result->getCategory();
+                $unique[$item['product_id']] ??= $item['category'];
             }
             $lists[] = ['ids' => array_keys($unique), 'categories' => array_values($unique)];
 
@@ -151,19 +217,7 @@ final class OfflineEvaluation
 
         $candidateIds = array_map(static fn (Product $p): int => (int) $p->getId(), $split->train());
 
-        $holdoutIds = array_map(static fn (Product $p): int => (int) $p->getId(), $split->holdout());
-        sort($holdoutIds);
-
         return [
-            'algorithm' => $strategy->getName(),
-            'split' => [
-                'seed' => $seed,
-                'holdout_ratio' => $this->holdoutRatio,
-                'train_size' => count($split->train()),
-                'holdout_size' => count($split->holdout()),
-                'holdout_ids' => $holdoutIds,
-            ],
-            'relevance' => self::RELEVANCE,
             'queries' => [
                 'evaluated' => $evaluated,
                 'without_relevant' => $withoutRelevant,
@@ -176,6 +230,12 @@ final class OfflineEvaluation
             'diversity' => $this->diversity($lists),
             'concentration' => $this->concentration($lists, $candidateIds),
         ];
+    }
+
+    /** @return list<int> the ks, ascending and unique */
+    public function ks(): array
+    {
+        return $this->ks;
     }
 
     /**

@@ -57,6 +57,7 @@ use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
+use App\Infrastructure\Logging\StreamLogger;
 use App\Infrastructure\Mail\FileOrderConfirmationMailer;
 use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Messaging\RedisEventStore;
@@ -76,7 +77,6 @@ use App\Shared\Http\SessionCsrf;
 use Predis\Client;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Twig\Environment;
 
 // Load .env for local (non-Docker) development. Docker Compose already
@@ -164,7 +164,26 @@ return new Container([
         require __DIR__ . '/recommendation.php'
     ),
 
-    LoggerInterface::class => fn () => new NullLogger(),
+    // Story 10.4: one JSON line per record on stderr (what `php -S` and
+    // `docker compose logs` show). LOG_LEVEL = a PSR-3 level or 'none'.
+    // An invalid LOG_LEVEL must not break every request: fall back to 'info'
+    // and say so once through the logger itself.
+    LoggerInterface::class => function (): StreamLogger {
+        $level = strtolower(trim((string) getenv('LOG_LEVEL')));
+        $level = $level === '' ? 'info' : $level;
+
+        try {
+            return new StreamLogger($level);
+        } catch (InvalidArgumentException $exception) {
+            $logger = new StreamLogger('info');
+            $logger->warning('LOG_LEVEL inválido; usando info.', [
+                'log_level' => getenv('LOG_LEVEL'),
+                'error' => $exception->getMessage(),
+            ]);
+
+            return $logger;
+        }
+    },
 
     Client::class => fn () => new Client([
         'scheme' => 'tcp',

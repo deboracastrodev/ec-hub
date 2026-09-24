@@ -10,8 +10,11 @@ declare(strict_types=1);
  * precision@k e recall@k para k = 1, 5 e 10. Story 10.3: mede também, sobre as
  * listas de todas as consultas do holdout, a cobertura de catálogo, a
  * diversidade intra-lista (por categoria) e a concentração (Gini e top share),
- * com um sinal explícito de concentração excessiva. Grava o relatório em
- * Markdown e JSON. Não precisa de Docker, MySQL nem Redis.
+ * com um sinal explícito de concentração excessiva. Story 10.4: roda cada
+ * consulta do holdout pelo caso de uso real (GenerateRecommendations), mede a
+ * taxa de ativação do fallback rule-based e compara, com as mesmas métricas,
+ * a população de itens de ML com a do fallback forçado (contrafactual).
+ * Grava o relatório em Markdown e JSON. Não precisa de Docker, MySQL nem Redis.
  *
  * Uso: php bin/evaluate.php [--catalog=CAMINHO] [--seed=N] [--output-dir=DIR]
  *      (ou make eval)
@@ -19,11 +22,13 @@ declare(strict_types=1);
  * Saída: 0 em sucesso; 1 em opção inválida ou catálogo inválido (nada é gravado).
  */
 
+use App\Application\Recommendation\Evaluation\ColdStartEvaluation;
 use App\Application\Recommendation\Evaluation\EvaluationReportWriter;
 use App\Application\Recommendation\Evaluation\OfflineEvaluation;
 use App\Domain\Product\Model\Product;
 use App\Domain\Recommendation\Evaluation\HoldoutSplit;
 use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Infrastructure\ML\RubixNeighborFinder;
 use Tests\Support\InMemoryProductRepository;
 
@@ -161,16 +166,30 @@ try {
 // --- avaliação -----------------------------------------------------------
 // O repositório exigido pelo KNNService só enxerga o treino: nem um retreino
 // lazy a partir dele conseguiria vazar o holdout para o índice.
-$evaluation = new OfflineEvaluation(
-    static fn (array $train): KNNService => new KNNService(
-        new InMemoryProductRepository(array_map(static fn (Product $p): array => $p->toArray(), $train)),
-        new RubixNeighborFinder()
-    ),
-    [1, 5, 10]
+$repositoryFactory = static fn (array $catalog): InMemoryProductRepository => new InMemoryProductRepository(
+    array_map(static fn (Product $p): array => $p->toArray(), $catalog)
+);
+$strategyFactory = static fn (array $train): KNNService => new KNNService(
+    $repositoryFactory($train),
+    new RubixNeighborFinder()
+);
+// Os mesmos ks e a mesma proporção de holdout valem para as duas avaliações.
+$ks = [1, 5, 10];
+$holdoutRatio = 0.2;
+$evaluation = new OfflineEvaluation($strategyFactory, $ks, $holdoutRatio);
+// Cold-start (10.4): o repositório de cada consulta é o treino + a própria consulta;
+// o fallback usa as configurações padrão (independentes de env).
+$coldStart = new ColdStartEvaluation(
+    $strategyFactory,
+    $repositoryFactory,
+    $ks,
+    $holdoutRatio,
+    RecommendationSettings::fromArray([])
 );
 
 try {
     $result = $evaluation->run($products, $seed);
+    $result['cold_start'] = $coldStart->run($products, $seed);
 } catch (Throwable $e) {
     fail(sprintf('a avaliação falhou: %s', $e->getMessage()));
 }
@@ -242,6 +261,61 @@ foreach ($coverage['catalog_coverage_at_k'] as $k => $value) {
 printf(
     "Sinal de concentração: %s\n",
     EvaluationReportWriter::concentrationSignal($result['concentration']['excessive_at_k'])
+);
+
+$coldStartResult = $result['cold_start'];
+$activation = $coldStartResult['activation'];
+printf(
+    "\nAtivação do fallback: %d de %d consultas (%s) · itens de fallback: %d/%d\n",
+    $activation['activated'],
+    $activation['queries'],
+    EvaluationReportWriter::formatRate($activation['activation_rate']),
+    $activation['fallback_items'],
+    $activation['items']
+);
+$ml = $coldStartResult['populations']['ml'];
+$fallback = $coldStartResult['populations']['fallback'];
+printf(
+    "ML × fallback (limit %d, %d listas ML, %d listas de fallback forçado, estratégia %s):\n",
+    $coldStartResult['limit'],
+    $ml['coverage']['lists'],
+    $fallback['coverage']['lists'],
+    $coldStartResult['fallback_strategy']
+);
+printf(
+    "| %3s | %9s | %9s | %9s | %9s | %9s | %9s | %9s | %9s |\n",
+    'k',
+    'prec ML',
+    'prec fb',
+    'rec ML',
+    'rec fb',
+    'cob ML',
+    'cob fb',
+    'ILD ML',
+    'ILD fb'
+);
+printf("|%s:|%s|\n", str_repeat('-', 4), implode('|', array_fill(0, 8, str_repeat('-', 10) . ':')));
+foreach ($ml['metrics']['precision_at_k'] as $k => $precision) {
+    printf(
+        "| %3d | %9s | %9s | %9s | %9s | %9s | %9s | %9s | %9s |\n",
+        $k,
+        $fmt($precision),
+        $fmt($fallback['metrics']['precision_at_k'][$k]),
+        $fmt($ml['metrics']['recall_at_k'][$k]),
+        $fmt($fallback['metrics']['recall_at_k'][$k]),
+        $fmt($ml['coverage']['catalog_coverage_at_k'][$k]),
+        $fmt($fallback['coverage']['catalog_coverage_at_k'][$k]),
+        $fmt($ml['diversity']['intra_list_diversity_at_k'][$k]),
+        $fmt($fallback['diversity']['intra_list_diversity_at_k'][$k])
+    );
+}
+printf(
+    "Sinal de concentração (ML): %s\n",
+    EvaluationReportWriter::concentrationSignal($ml['concentration']['excessive_at_k'])
+);
+printf(
+    "Sinal de concentração (fallback): %s\n",
+    EvaluationReportWriter::concentrationSignal($fallback['concentration']['excessive_at_k'])
 );
 
 printf("\nRelatório gravado em:\n  %s\n  %s\n", displayPath($paths['markdown'], $root), displayPath($paths['json'], $root));
