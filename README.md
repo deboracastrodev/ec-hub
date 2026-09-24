@@ -176,6 +176,7 @@ docker compose exec app vendor/bin/phpunit --group redis
 - [docs/STRUCTURE.md](docs/STRUCTURE.md) — estrutura de pastas e fluxo de requisição
 - [docs/architecture.md](docs/architecture.md) — decisões arquiteturais (ADRs)
 - [docs/ML.md](docs/ML.md) — KNN com Rubix ML: pipeline, features e similaridade, fallback e benchmarks medidos
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — build da imagem Docker, variáveis de produção, checklist pré-deploy, rollback e troubleshooting
 - [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) — PSR-12 e convenções específicas do projeto
 - [docs/remediation-spec.md](docs/remediation-spec.md) — histórico da remediação que trouxe o projeto ao estado atual
 
