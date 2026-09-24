@@ -1519,3 +1519,174 @@ footer[role="contentinfo"] {
     color: #b91c1c;
     border-color: #b91c1c;
 }
+
+/* ==========================================================================
+   Simulated checkout (Story 8.7) - BEM checkout*, order-confirmation*
+   (buttons and alerts reuse .cart-button* and .cart__alert*)
+   ========================================================================== */
+.checkout,
+.order-confirmation {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: var(--spacing-lg) var(--spacing-sm);
+}
+
+.checkout__title,
+.order-confirmation__title {
+    font-size: var(--font-size-2xl);
+    line-height: var(--line-height-tight);
+    margin-bottom: var(--spacing-md);
+}
+
+.checkout__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-md);
+}
+
+@media (min-width: 768px) {
+    .checkout__layout {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+        align-items: start;
+    }
+}
+
+.checkout-form,
+.checkout-summary {
+    padding: var(--spacing-sm);
+    background: var(--color-white);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+}
+
+.checkout-form__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+}
+
+.checkout-form__label {
+    font-weight: 600;
+}
+
+.checkout-form__input {
+    width: 100%;
+    min-height: var(--touch-target-min);
+    padding: var(--spacing-xs);
+    font: inherit;
+    font-size: var(--font-size-md);
+    color: var(--color-text);
+    background: var(--color-white);
+    border: 1px solid var(--color-text-light);
+    border-radius: var(--border-radius);
+}
+
+.checkout-form__textarea {
+    resize: vertical;
+}
+
+.checkout-form__input:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.checkout-form__input--invalid {
+    border-color: #b91c1c;
+    border-width: 2px;
+}
+
+.checkout-form__error {
+    color: #991b1b;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+.checkout-form__notice {
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    color: var(--color-text);
+    background: var(--color-bg);
+    border-left: 4px solid var(--color-primary-dark);
+    font-size: var(--font-size-sm);
+}
+
+.checkout-form__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.checkout-summary__title,
+.order-confirmation__subtitle {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--spacing-sm);
+}
+
+.checkout-summary__lines,
+.order-confirmation__lines {
+    list-style: none;
+    display: grid;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+}
+
+.checkout-summary__line,
+.order-confirmation__line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.checkout-summary__name,
+.order-confirmation__name {
+    overflow-wrap: anywhere;
+}
+
+.checkout-summary__subtotal,
+.order-confirmation__subtotal {
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.checkout-summary__total,
+.order-confirmation__total {
+    font-size: var(--font-size-lg);
+}
+
+.order-confirmation__number {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--spacing-xs);
+    overflow-wrap: anywhere;
+}
+
+.order-confirmation__status {
+    margin-bottom: var(--spacing-md);
+}
+
+.order-confirmation__total {
+    margin-bottom: var(--spacing-md);
+}
+
+.order-confirmation__customer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background: var(--color-white);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+}
+
+.order-confirmation__customer dt {
+    font-weight: 600;
+}
+
+.order-confirmation__customer dd {
+    margin: 0 0 var(--spacing-xs);
+    overflow-wrap: anywhere;
+}

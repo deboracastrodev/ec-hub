@@ -18,6 +18,7 @@ use App\Application\Monitoring\HttpMetricsRepositoryInterface;
 use App\Application\Monitoring\HttpRequestRecorder;
 use App\Application\Monitoring\MemoryMonitor;
 use App\Application\Monitoring\PrometheusFormatter;
+use App\Application\Order\PlaceOrder;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Product\ManageProducts;
@@ -28,6 +29,7 @@ use App\Controller\AbTestResultsController;
 use App\Controller\Admin\AdminAuthController;
 use App\Controller\Admin\AdminProductController;
 use App\Controller\CartController;
+use App\Controller\CheckoutController;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\MetricsController;
@@ -39,6 +41,8 @@ use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventStoreInterface;
+use App\Domain\Order\Repository\OrderRepositoryInterface;
+use App\Domain\Order\Service\OrderConfirmationMailerInterface;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
 use App\Domain\Recommendation\Repository\AlgorithmMetricsRepositoryInterface;
@@ -52,9 +56,11 @@ use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
+use App\Infrastructure\Mail\FileOrderConfirmationMailer;
 use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Messaging\RedisEventStore;
 use App\Infrastructure\ML\RubixNeighborFinder;
+use App\Infrastructure\Persistence\MySQL\OrderRepository;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Infrastructure\Redis\RedisAlgorithmMetricsRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
@@ -232,6 +238,34 @@ return new Container([
     CartController::class => fn (ContainerInterface $c) => new CartController(
         $c->get(ManageCart::class),
         $c->get(TrackProductInteraction::class),
+        $c->get(SessionContext::class),
+        $c->get(SessionCsrf::class),
+        $c->get(Environment::class)
+    ),
+
+    // Story 8.7: simulated checkout. The confirmation email is a .eml file
+    // in var/mail (nothing is sent); orders live in MySQL.
+    OrderRepositoryInterface::class => fn (ContainerInterface $c) => new OrderRepository(
+        $c->get(PDO::class)
+    ),
+
+    OrderConfirmationMailerInterface::class => fn (ContainerInterface $c) => new FileOrderConfirmationMailer(
+        dirname(__DIR__) . '/var/mail',
+        $c->get(Environment::class)
+    ),
+
+    PlaceOrder::class => fn (ContainerInterface $c) => new PlaceOrder(
+        $c->get(SessionRepositoryInterface::class),
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(OrderRepositoryInterface::class),
+        $c->get(OrderConfirmationMailerInterface::class),
+        $c->get(LoggerInterface::class)
+    ),
+
+    CheckoutController::class => fn (ContainerInterface $c) => new CheckoutController(
+        $c->get(PlaceOrder::class),
+        $c->get(ManageCart::class),
+        $c->get(OrderRepositoryInterface::class),
         $c->get(SessionContext::class),
         $c->get(SessionCsrf::class),
         $c->get(Environment::class)

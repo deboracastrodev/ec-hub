@@ -11,7 +11,8 @@
 - **Catálogo de produtos** — listagem paginada, filtro por categoria, busca por palavra-chave (`/products?q=`, formulário no header: termos em OU, sem diferenciar maiúsculas nem acentos, relevância nome > descrição; casa por trecho da palavra — `fone` acha "microfone"; termos com menos de 2 caracteres são ignorados, no máximo 8 termos e 100 caracteres; filtro via `LIKE`, sem índice full-text, com no máximo 500 candidatos ranqueados por busca — adequado ao catálogo pequeno do POC), página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
 - **API de recomendações** — `GET /api/recommendations?product_id=X` devolve produtos similares via KNN (Rubix ML: `OneHotEncoder` + `MinMaxNormalizer` + `BallTree`), com fallback automático baseado em regras (categoria/popularidade) quando o catálogo é pequeno demais ou o ML falha
 - **Export de métricas** — `GET /api/metrics?format=json|prometheus` com requisições, erros e tempos de resposta HTTP (contados no Redis a cada requisição, com o rótulo da rota ou `unmatched`), memória, métricas por algoritmo de recomendação e estado do event bus; o formato `prometheus` serve direto como alvo de scrape (ver [DEPLOYMENT.md — Métricas](docs/DEPLOYMENT.md#métricas-get-apimetrics))
-- **Carrinho de compras** — botão "Adicionar ao carrinho" no detalhe do produto (funciona sem JavaScript; com JS usa `POST /api/cart/items`, que publica o evento `cart.item_added` e agora devolve também `cart_item_count` — a soma das quantidades após gravar, omitido quando o carrinho não pôde ser salvo), contador "Carrinho: N itens" no header de todas as páginas e página `/cart` com preço unitário, subtotal, total, alteração de quantidade (0 a 99) e remoção; o carrinho vive na sessão Redis (`cart.items`), formulários com CSRF, sem checkout ainda
+- **Carrinho de compras** — botão "Adicionar ao carrinho" no detalhe do produto (funciona sem JavaScript; com JS usa `POST /api/cart/items`, que publica o evento `cart.item_added` e agora devolve também `cart_item_count` — a soma das quantidades após gravar, omitido quando o carrinho não pôde ser salvo), contador "Carrinho: N itens" no header de todas as páginas e página `/cart` com preço unitário, subtotal, total, alteração de quantidade (0 a 99) e remoção; o carrinho vive na sessão Redis (`cart.items`), formulários com CSRF
+- **Checkout simulado** — "Ir para o checkout" em `/cart` leva a `/checkout` (nome, email e endereço, com resumo do pedido); ao confirmar, o pedido é gravado no MySQL (`orders`/`order_items`, status `completed`, número `EC-XXXXXXXXXX`), o carrinho é esvaziado e a página `/checkout/confirmation` mostra o pedido (só para a sessão que o fez). Não há pagamento nem envio de email real: a "confirmação por email" é um arquivo `var/mail/{número}.eml` que dá para abrir em qualquer cliente de email. Instalação que já existia antes do checkout: rode `make migrate` para criar as tabelas de pedidos
 - **Painel admin** — `/admin/products` com listagem, criação, edição e exclusão (soft delete) de produtos, para um único admin configurado no `.env` (ver [Painel admin](#painel-admin))
 - **Clean Architecture** — 4 camadas (Controller/Application/Domain/Infrastructure); o Domain não importa nenhuma biblioteca externa, nem o Rubix ML (fica atrás de uma porta, em `App\Infrastructure\ML`)
 - **PHP 8.4**, MySQL 8, Redis 7, Twig, servidor embutido do PHP (`php -S`) — sem Swoole
@@ -80,15 +81,17 @@ Com as duas variáveis vazias (ou o hash inválido) o painel fica **desligado**:
 
 ```
 app/
-├── Controller/       # HTTP handlers (ProductController, CartController, RecommendationController, Admin/)
+├── Controller/       # HTTP handlers (ProductController, CartController, CheckoutController, RecommendationController, Admin/)
 ├── Application/      # Casos de uso (GetProductList, GenerateRecommendations, ...)
 ├── Domain/
 │   ├── Cart/         # Carrinho — modelo imutável sobre o campo de sessão cart.items
+│   ├── Order/        # Pedido do checkout simulado — entidade, repositório e mailer (interfaces)
 │   ├── Product/      # Catálogo — entidade, repositório (interface), CategoryService
 │   └── Recommendation/  # KNNService, RuleBasedFallback, NeighborFinderInterface
 ├── Infrastructure/
+│   ├── Mail/          # FileOrderConfirmationMailer — email simulado em var/mail/*.eml
 │   ├── ML/            # RubixNeighborFinder — único arquivo que importa Rubix\*
-│   └── Persistence/    # ProductRepository (MySQL/PDO)
+│   └── Persistence/    # ProductRepository, OrderRepository (MySQL/PDO)
 └── Shared/
     ├── Container/     # Container PSR-11 mínimo
     └── Http/          # Router, ErrorHandler, SessionContext, SessionCsrf, AdminAuth

@@ -35,6 +35,10 @@ try {
     );
 
     echo "🧼 Limpando schema existente...\n";
+    // Story 8.7: children first (order_items -> orders), then products.
+    $pdo->exec('DROP TABLE IF EXISTS order_items');
+    $pdo->exec('DROP TABLE IF EXISTS orders');
+    echo "✅ Tabelas order_items e orders removidas\n";
     $pdo->exec('DROP TABLE IF EXISTS products');
     echo "✅ Tabela products removida\n\n";
 

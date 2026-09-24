@@ -1,0 +1,50 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}{{ order ? 'Pedido confirmado' : 'Confirmação do pedido' }} - ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="order-confirmation" aria-labelledby="order-confirmation-title">
+    {# Story 8.7: "Pedido confirmado" only once the order was actually loaded. #}
+    <h1 class="order-confirmation__title" id="order-confirmation-title">{{ order ? 'Pedido confirmado' : 'Confirmação do pedido' }}</h1>
+
+    {% if error_message %}
+        <p class="cart__alert cart__alert--error" role="alert">{{ error_message }}</p>
+    {% endif %}
+
+    {% if order %}
+        <p class="order-confirmation__number">Número do pedido: <strong data-order-number>{{ order.orderNumber }}</strong></p>
+        <p class="order-confirmation__status">Status: {{ status_label }}</p>
+
+        {% if email_sent %}
+            <p class="cart__alert cart__alert--success" role="status">Enviamos a confirmação para {{ order.customerEmail }} (email simulado: nenhum email real é enviado).</p>
+        {% else %}
+            <p class="cart__alert cart__alert--error" role="alert">Não foi possível gerar o email de confirmação simulado.</p>
+        {% endif %}
+
+        <h2 class="order-confirmation__subtitle">Itens</h2>
+        <ul class="order-confirmation__lines">
+            {% for line in lines %}
+                <li class="order-confirmation__line">
+                    <span class="order-confirmation__name">{{ line.name }} × {{ line.quantity }}</span>
+                    <span class="order-confirmation__subtotal">{{ line.subtotal|BRL }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+        <p class="order-confirmation__total">Total: <strong>{{ total|BRL }}</strong></p>
+
+        <h2 class="order-confirmation__subtitle">Entrega</h2>
+        <dl class="order-confirmation__customer">
+            <dt>Nome</dt>
+            <dd>{{ order.customerName }}</dd>
+            <dt>Email</dt>
+            <dd>{{ order.customerEmail }}</dd>
+            <dt>Endereço</dt>
+            <dd class="order-confirmation__address">{{ order.shippingAddress|e|nl2br }}</dd>
+        </dl>
+    {% endif %}
+
+    <a class="cart-button cart-button--primary" href="/products">Continuar comprando</a>
+</section>
+{% endblock %}

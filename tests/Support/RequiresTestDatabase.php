@@ -63,6 +63,45 @@ trait RequiresTestDatabase
             $pdo->exec('ALTER TABLE products ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL');
         }
 
+        // Story 8.7: orders (same DDL as bin/migrate.php).
+        $pdo->exec(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS orders (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                order_number VARCHAR(20) NOT NULL,
+                customer_name VARCHAR(120) NOT NULL,
+                customer_email VARCHAR(254) NOT NULL,
+                shipping_address TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                total DECIMAL(10, 2) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY idx_orders_order_number (order_number),
+                INDEX idx_orders_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            SQL);
+        $pdo->exec(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS order_items (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                order_id BIGINT UNSIGNED NOT NULL,
+                product_id BIGINT UNSIGNED NOT NULL,
+                product_name VARCHAR(255) NOT NULL,
+                unit_price DECIMAL(10, 2) NOT NULL,
+                quantity INT UNSIGNED NOT NULL,
+                INDEX idx_order_items_order_id (order_id),
+                INDEX idx_order_items_product_id (product_id),
+                CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            SQL);
+
+        // TRUNCATE refuses a table referenced by a FK, even an empty one.
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+
+        try {
+            $pdo->exec('TRUNCATE TABLE order_items');
+            $pdo->exec('TRUNCATE TABLE orders');
+        } finally {
+            // Never leave the connection with FK checks off, even on failure.
+            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+        }
         $pdo->exec('TRUNCATE TABLE products');
         $seed = $pdo->prepare(
             'INSERT INTO products (name, description, price, category, slug, image_url)

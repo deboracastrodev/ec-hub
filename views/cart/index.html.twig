@@ -52,6 +52,7 @@
             <p class="cart__count">{{ item_count }} {{ item_count == 1 ? 'item' : 'itens' }}</p>
             <p class="cart__total">Total: <strong>{{ total|BRL }}</strong></p>
             <a class="cart-button cart-button--secondary" href="/products">Continuar comprando</a>
+            <a class="cart-button cart-button--primary" href="/checkout">Ir para o checkout</a>
         </div>
     {% endif %}
 </section>

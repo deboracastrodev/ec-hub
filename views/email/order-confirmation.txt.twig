@@ -1,0 +1,17 @@
+{% autoescape false %}
+Olá, {{ order.customerName }}!
+
+Recebemos o seu pedido {{ order.orderNumber }} e ele está concluído.
+
+Itens:
+{% for item in items %}
+- {{ item.name }} × {{ item.quantity }}: {{ item.subtotal|BRL }}
+{% endfor %}
+
+Total: {{ total|BRL }}
+
+Endereço de entrega:
+{{ order.shippingAddress }}
+
+Este é um email simulado do ec-hub: nenhum email real foi enviado e nenhuma cobrança foi feita.
+{% endautoescape %}

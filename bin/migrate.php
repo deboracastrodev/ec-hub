@@ -96,6 +96,36 @@ try {
         ]);
     }
 
+    // Story 8.7: simulated checkout. Orders keep a snapshot of each item
+    // (name and unit price at checkout time); product_id has no FK because
+    // products are soft deleted and the order must outlive catalog edits.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS orders (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        order_number VARCHAR(20) NOT NULL,
+        customer_name VARCHAR(120) NOT NULL,
+        customer_email VARCHAR(254) NOT NULL,
+        shipping_address TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        total DECIMAL(10, 2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY idx_orders_order_number (order_number),
+        INDEX idx_orders_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    echo "✅ Tabela 'orders' criada com sucesso\n";
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS order_items (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        order_id BIGINT UNSIGNED NOT NULL,
+        product_id BIGINT UNSIGNED NOT NULL,
+        product_name VARCHAR(255) NOT NULL,
+        unit_price DECIMAL(10, 2) NOT NULL,
+        quantity INT UNSIGNED NOT NULL,
+        INDEX idx_order_items_order_id (order_id),
+        INDEX idx_order_items_product_id (product_id),
+        CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    echo "✅ Tabela 'order_items' criada com sucesso\n";
+
     // Show indexes
     $stmt = $pdo->query("SHOW INDEX FROM products");
     $indexes = $stmt->fetchAll();

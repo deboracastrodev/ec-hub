@@ -7,6 +7,7 @@ use App\Controller\AbTestResultsController;
 use App\Controller\Admin\AdminAuthController;
 use App\Controller\Admin\AdminProductController;
 use App\Controller\CartController;
+use App\Controller\CheckoutController;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
@@ -126,6 +127,10 @@ $router = new Router(
         // Story 8.6: cart page (Request in, Response out, without the admin headers).
         'GET /cart' => ['controller' => CartController::class, 'action' => 'index', 'request' => true],
         'POST /cart/items' => ['controller' => CartController::class, 'action' => 'add', 'request' => true],
+        // Story 8.7: simulated checkout.
+        'GET /checkout' => ['controller' => CheckoutController::class, 'action' => 'form', 'request' => true],
+        'POST /checkout' => ['controller' => CheckoutController::class, 'action' => 'place', 'request' => true],
+        'GET /checkout/confirmation' => ['controller' => CheckoutController::class, 'action' => 'confirmation', 'request' => true],
     ],
     [
         '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => ProductController::class, 'action' => 'show'],

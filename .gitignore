@@ -63,3 +63,6 @@ _bmad/render/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Story 8.7: runtime files (simulated emails in var/mail, Twig cache)
+/var/

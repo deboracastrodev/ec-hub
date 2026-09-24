@@ -1,0 +1,78 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}Checkout - ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="checkout" aria-labelledby="checkout-title">
+    <h1 class="checkout__title" id="checkout-title">Checkout</h1>
+
+    {% if error_message %}
+        <p class="cart__alert cart__alert--error" role="alert">{{ error_message }}</p>
+    {% endif %}
+
+    {% if load_failed %}
+        <a class="cart-button cart-button--secondary" href="/cart">Voltar ao carrinho</a>
+    {% else %}
+        <div class="checkout__layout">
+            <form class="checkout-form" method="post" action="/checkout" novalidate>
+                <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+                <div class="checkout-form__field">
+                    <label class="checkout-form__label" for="checkout-name">Nome completo</label>
+                    <input class="checkout-form__input{% if errors.name is defined %} checkout-form__input--invalid{% endif %}"
+                           type="text" id="checkout-name" name="name" autocomplete="name" required
+                           maxlength="{{ limits.name }}" value="{{ values.name }}"
+                           {% if errors.name is defined %}aria-invalid="true" aria-describedby="checkout-name-error"{% endif %}>
+                    {% if errors.name is defined %}
+                        <p class="checkout-form__error" id="checkout-name-error">{{ errors.name }}</p>
+                    {% endif %}
+                </div>
+
+                <div class="checkout-form__field">
+                    <label class="checkout-form__label" for="checkout-email">Email</label>
+                    <input class="checkout-form__input{% if errors.email is defined %} checkout-form__input--invalid{% endif %}"
+                           type="email" id="checkout-email" name="email" autocomplete="email" required
+                           maxlength="{{ limits.email }}" value="{{ values.email }}"
+                           {% if errors.email is defined %}aria-invalid="true" aria-describedby="checkout-email-error"{% endif %}>
+                    {% if errors.email is defined %}
+                        <p class="checkout-form__error" id="checkout-email-error">{{ errors.email }}</p>
+                    {% endif %}
+                </div>
+
+                <div class="checkout-form__field">
+                    <label class="checkout-form__label" for="checkout-address">Endereço de entrega</label>
+                    <textarea class="checkout-form__input checkout-form__textarea{% if errors.address is defined %} checkout-form__input--invalid{% endif %}"
+                              id="checkout-address" name="address" autocomplete="street-address" required rows="4"
+                              maxlength="{{ limits.address }}"
+                              {% if errors.address is defined %}aria-invalid="true" aria-describedby="checkout-address-error"{% endif %}>{{ values.address }}</textarea>
+                    {% if errors.address is defined %}
+                        <p class="checkout-form__error" id="checkout-address-error">{{ errors.address }}</p>
+                    {% endif %}
+                </div>
+
+                <p class="checkout-form__notice">Pagamento simulado: nenhuma cobrança é feita.</p>
+
+                <div class="checkout-form__actions">
+                    <button class="cart-button cart-button--primary" type="submit">Confirmar pedido</button>
+                    <a class="cart-button cart-button--secondary" href="/cart">Voltar ao carrinho</a>
+                </div>
+            </form>
+
+            <aside class="checkout-summary" aria-labelledby="checkout-summary-title">
+                <h2 class="checkout-summary__title" id="checkout-summary-title">Resumo do pedido</h2>
+                <ul class="checkout-summary__lines">
+                    {% for line in lines %}
+                        <li class="checkout-summary__line">
+                            <span class="checkout-summary__name">{{ line.name }} × {{ line.quantity }}</span>
+                            <span class="checkout-summary__subtotal">{{ line.subtotal|BRL }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+                <p class="checkout-summary__total">Total: <strong>{{ total|BRL }}</strong></p>
+            </aside>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}
