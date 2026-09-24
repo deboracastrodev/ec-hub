@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Tooling;
 
+use App\Application\Recommendation\Evaluation\EvaluationReportWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -65,9 +66,52 @@ final class EvaluateScriptTest extends TestCase
         $this->assertSame(['1', '5', '10'], array_map('strval', array_keys($report['metrics']['precision_at_k'])));
         $this->assertSame(['1', '5', '10'], array_map('strval', array_keys($report['metrics']['recall_at_k'])));
         $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $report['measured_at']);
+        foreach (
+            [
+                $report['coverage']['catalog_coverage_at_k'],
+                $report['coverage']['covered_products_at_k'],
+                $report['diversity']['intra_list_diversity_at_k'],
+                $report['diversity']['distinct_categories_at_k'],
+                $report['concentration']['gini_at_k'],
+                $report['concentration']['top_share_at_k'],
+                $report['concentration']['excessive_at_k'],
+            ] as $byK
+        ) {
+            $this->assertSame(['1', '5', '10'], array_map('strval', array_keys($byK)));
+        }
+        $this->assertSame(64, $report['coverage']['candidate_products']);
+        $this->assertSame(16, $report['coverage']['lists']);
+        $this->assertNull($report['diversity']['intra_list_diversity_at_k']['1']);
+        $this->assertSame(7, $report['concentration']['top_products']);
+
+        // O resumo do stdout vem dos mesmos números que o JSON gravado.
+        $coverage = $report['coverage'];
+        $this->assertStringContainsString(sprintf(
+            "Cobertura, diversidade e concentração (%d listas, %d candidatos do treino):\n",
+            $coverage['lists'],
+            $coverage['candidate_products']
+        ), $stdout);
+        $fmt = static fn (mixed $v): string => $v === null ? 'n/a' : sprintf('%.4f', $v);
+        foreach ($coverage['catalog_coverage_at_k'] as $k => $value) {
+            $this->assertStringContainsString(sprintf(
+                "| %3d | %9s | %9s | %6s | %9s |\n",
+                $k,
+                $fmt($value),
+                $coverage['covered_products_at_k'][$k] . '/' . $coverage['candidate_products'],
+                $fmt($report['diversity']['intra_list_diversity_at_k'][$k]),
+                $fmt($report['concentration']['top_share_at_k'][$k])
+            ), $stdout);
+        }
+        $this->assertStringContainsString(
+            "\nSinal de concentração: "
+                . EvaluationReportWriter::concentrationSignal($report['concentration']['excessive_at_k']) . "\n",
+            $stdout
+        );
 
         $markdown = (string) file_get_contents($dir . '/offline-evaluation.md');
         $this->assertStringContainsString('| k | precision@k | recall@k |', $markdown);
+        $this->assertStringContainsString('## Cobertura, diversidade e concentração', $markdown);
+        $this->assertMatchesRegularExpression('/^\*\*Sinal de concentração:\*\* /m', $markdown);
         foreach ([1, 5, 10] as $k) {
             $this->assertMatchesRegularExpression('/^\| ' . $k . ' \| \d\.\d{4} \| \d\.\d{4} \|$/m', $markdown);
         }
@@ -109,7 +153,8 @@ final class EvaluateScriptTest extends TestCase
         $fresh = $this->readJson($dir . '/offline-evaluation.json');
         $committed = $this->readJson(self::COMMITTED_JSON);
 
-        foreach (['algorithm', 'catalog', 'split', 'relevance', 'queries', 'metrics'] as $key) {
+        $keys = ['algorithm', 'catalog', 'split', 'relevance', 'queries', 'metrics', 'coverage', 'diversity', 'concentration'];
+        foreach ($keys as $key) {
             $this->assertSame($fresh[$key], $committed[$key], "docs/evaluation diverge em '{$key}': rode make eval");
         }
 

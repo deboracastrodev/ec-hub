@@ -379,7 +379,7 @@ Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **
 
 ## 9. Avaliação offline
 
-Mede a **qualidade** do KNN (precision@k e recall@k, k = 1, 5 e 10), e não só o tempo. Roda local, sem Docker, MySQL nem Redis:
+Mede a **qualidade** do KNN (precision@k e recall@k, cobertura de catálogo, diversidade intra-lista e concentração, k = 1, 5 e 10), e não só o tempo. Roda local, sem Docker, MySQL nem Redis:
 
 ```bash
 make eval        # = php bin/evaluate.php [--seed=42] [--catalog=...] [--output-dir=docs/evaluation]
@@ -390,7 +390,13 @@ make eval        # = php bin/evaluate.php [--seed=42] [--catalog=...] [--output-
 - **Relevância:** os produtos **do treino** da mesma categoria da consulta. Limitação: a categoria também é feature do modelo, então o número mede o quanto o KNN respeita a categoria, e não o gosto do usuário. A precision@k cai abaixo de 1 principalmente quando a categoria tem menos de k produtos no treino.
 - **Reprodutível:** mesma seed e mesmo catálogo geram o mesmo relatório, exceto a data. O [`EvaluateScriptTest`](../tests/Integration/Tooling/EvaluateScriptTest.php) (roda no `make test`) confere que o relatório commitado bate com uma execução nova.
 
-Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluation/offline-evaluation.md) (e `.json`), e não são copiados para cá. Cobertura de catálogo e diversidade (Story 10.3) e cold-start (Story 10.4) ainda não entram no relatório.
+- **Cobertura, diversidade e concentração (Story 10.3):** medidas por k (1, 5 e 10) sobre as listas top-k de **todas** as consultas do holdout, incluindo as sem relevante no treino. Os candidatos são os produtos do treino, os únicos que o índice pode recomendar.
+  - **Cobertura de catálogo@k:** produtos distintos do treino que aparecem em pelo menos uma lista@k ÷ total de candidatos. O relatório mostra também `cobertos/candidatos`.
+  - **Diversidade intra-lista@k (ILD):** distância por categoria (0 se igual, 1 se diferente), pares de categorias diferentes ÷ `n·(n−1)/2`, com média sobre as listas de n ≥ 2 (n/a em k = 1). Também sai a média de categorias distintas por lista. Como a categoria domina a distância ([seção 3](#3-features-similaridade-e-score)), a ILD tende a ficar perto de 0 enquanto a categoria da consulta tem itens no treino.
+  - **Concentração@k:** Gini das aparições de cada candidato (incluindo os que aparecem 0 vezes) e *top share*, a fração das aparições que fica com os `ceil(0.1 × candidatos)` mais recomendados. O relatório sinaliza **concentração excessiva** quando o top share publicado (4 casas) é ≥ 0.5 (10% do catálogo recomendável com metade das recomendações). Esse limiar foi fixado antes da medição. Um id repetido dentro da mesma lista conta uma vez na cobertura, na diversidade e na concentração.
+  - **Tamanho da amostra:** com listas cheias há listas × k aparições. Quando esse número é pequeno perto do número de candidatos, o menor top share possível (cada aparição num produto diferente) é `top_products / aparições`, então um k pequeno infla o top share e o Gini. Isso não torna o sinal inevitável: ele depende de quanto os mesmos produtos se repetem.
+
+Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluation/offline-evaluation.md) (e `.json`), e não são copiados para cá. Cold-start (Story 10.4) ainda não entra no relatório.
 
 ## 10. Limitações conhecidas
 
@@ -405,7 +411,7 @@ Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluatio
 - **O A/B compara operação, não resultado.** As métricas por algoritmo são volume, % de itens `ml`, latência e score médio. Não há CTR nem conversão (os eventos de clique e carrinho não são ligados à recomendação que os originou) e não há teste de significância estatística: a diferença entre os braços é só descritiva. O score médio mistura escalas diferentes (KNN × CF, ver seção 1), então não serve para dizer qual algoritmo acerta mais.
 - **O sujeito do A/B não é autenticado.** O `user_id` é um parâmetro de query sem autenticação: um cliente que o envia escolhe o próprio braço (basta testar valores até cair na variante desejada) e pode inflar `unique_subjects` mandando um `user_id` diferente a cada requisição. Um mesmo visitante que às vezes manda `user_id` e às vezes não é atribuído ora pelo `user_id`, ora pelo `session_id`, e pode cair nos dois braços. Trate os números do A/B como indicativos, não como prova.
 - **Métricas do A/B sem janela de tempo.** Os contadores no Redis não expiram e acumulam desde a última limpeza manual (`DEL` das chaves `ec-hub:ab-metrics:*`). Trocar as variantes sem zerar mistura os períodos. Sujeitos únicos vêm de um HyperLogLog, uma contagem aproximada.
-- **Qualidade medida só offline e só por categoria.** precision@k e recall@k são medidos pelo harness offline ([seção 9](#9-avaliação-offline)) num catálogo versionado, com a categoria como rótulo de relevância. Não há medição com comportamento real de usuário, e a cobertura de catálogo ainda não é medida.
+- **Qualidade medida só offline e só por categoria.** precision@k e recall@k são medidos pelo harness offline ([seção 9](#9-avaliação-offline)) num catálogo versionado, com a categoria como rótulo de relevância. A cobertura de catálogo, a diversidade intra-lista e a concentração saem do mesmo harness e do mesmo holdout pequeno (uma lista por produto do holdout). Não há medição com comportamento real de usuário.
 
 ## Roadmap (não implementado)
 
@@ -413,7 +419,6 @@ Nada nesta seção existe no código hoje. Não há números para estes itens po
 
 - **Cache do modelo serializado (Story 10.1):** persistir o índice treinado para não retreinar a cada requisição.
 - **Export Prometheus das métricas por algoritmo (Story 8.4):** pode reaproveitar `RecommendationExperiment::results()`.
-- **Cobertura de catálogo e diversidade (Story 10.3):** estender o harness offline da [seção 9](#9-avaliação-offline), que já mede precision@k e recall@k.
 
 ---
 

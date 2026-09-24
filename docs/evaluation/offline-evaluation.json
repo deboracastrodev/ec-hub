@@ -46,5 +46,74 @@
             "5": 0.4939,
             "10": 0.7083
         }
+    },
+    "coverage": {
+        "candidate_products": 64,
+        "lists": 16,
+        "covered_products_at_k": {
+            "1": 12,
+            "5": 44,
+            "10": 59
+        },
+        "catalog_coverage_at_k": {
+            "1": 0.1875,
+            "5": 0.6875,
+            "10": 0.9219
+        }
+    },
+    "diversity": {
+        "distance": "category",
+        "intra_list_diversity_at_k": {
+            "1": null,
+            "5": 0.0875,
+            "10": 0.2736
+        },
+        "distinct_categories_at_k": {
+            "1": 1.0,
+            "5": 1.25,
+            "10": 2.375
+        }
+    },
+    "concentration": {
+        "top_share_ratio": 0.1,
+        "excessive_top_share": 0.5,
+        "top_products": 7,
+        "gini_at_k": {
+            "1": 0.8496,
+            "5": 0.5199,
+            "10": 0.3879
+        },
+        "top_share_at_k": {
+            "1": 0.6875,
+            "5": 0.3625,
+            "10": 0.2938
+        },
+        "excessive_at_k": {
+            "1": true,
+            "5": false,
+            "10": false
+        },
+        "most_recommended": [
+            {
+                "product_id": 11,
+                "appearances": 8
+            },
+            {
+                "product_id": 37,
+                "appearances": 8
+            },
+            {
+                "product_id": 3,
+                "appearances": 7
+            },
+            {
+                "product_id": 22,
+                "appearances": 7
+            },
+            {
+                "product_id": 25,
+                "appearances": 6
+            }
+        ]
     }
 }

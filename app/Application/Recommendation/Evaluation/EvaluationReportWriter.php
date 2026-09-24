@@ -9,6 +9,8 @@ use RuntimeException;
 /**
  * Story 10.2: renders an OfflineEvaluation result as a versionable report
  * (JSON + Markdown in PT-BR) and writes both files to an output directory.
+ * Story 10.3: adds the coverage, diversity and concentration blocks and the
+ * explicit concentration signal.
  *
  * The only non-deterministic field is measured_at: everything else comes
  * from the result and the catalog, so re-running with the same seed and
@@ -62,6 +64,9 @@ final class EvaluationReportWriter
             'relevance' => $result['relevance'],
             'queries' => $result['queries'],
             'metrics' => $result['metrics'],
+            'coverage' => $result['coverage'],
+            'diversity' => $result['diversity'],
+            'concentration' => $result['concentration'],
         ];
 
         return json_encode(
@@ -124,6 +129,9 @@ final class EvaluationReportWriter
             'Macro-média sobre as consultas avaliadas. precision@k = acertos no top-k / k, sempre dividido por k, '
                 . 'mesmo quando a lista vem menor. recall@k = acertos no top-k / total de relevantes da consulta.',
             '',
+        ]);
+
+        $lines = array_merge($lines, $this->catalogSection($result), [
             '## Como reproduzir',
             '',
             '```bash',
@@ -154,12 +162,169 @@ final class EvaluationReportWriter
                 . 'produtos no treino, os acertos não chegam a k e a precisão fica abaixo de 1 mesmo com o ranking perfeito.',
             '- **Catálogo fixo:** o catálogo versionado (`database/fixtures/evaluation-catalog.json`) foi gerado uma vez '
                 . 'com a distribuição do `ProductSeeder`. Não é o catálogo do banco, que muda a cada seed.',
-            '- **Fora deste relatório:** cobertura de catálogo, diversidade e concentração (Story 10.3) e '
-                . 'cold-start/fallback (Story 10.4).',
+            $this->sampleSizeLimitation($result),
+            '- **Fora deste relatório:** cold-start/fallback (Story 10.4).',
             '',
         ]);
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Story 10.3 section: coverage, intra-list diversity and concentration per k.
+     *
+     * @param array<string, mixed> $result
+     * @return list<string>
+     */
+    private function catalogSection(array $result): array
+    {
+        $coverage = $result['coverage'];
+        $diversity = $result['diversity'];
+        $concentration = $result['concentration'];
+        $ratioPercent = $this->formatPercent($concentration['top_share_ratio']);
+        $thresholdPercent = $this->formatPercent($concentration['excessive_top_share']);
+
+        $lines = [
+            '## Cobertura, diversidade e concentração',
+            '',
+            sprintf(
+                'Medido sobre as %d listas do holdout (uma por consulta, com ou sem relevante no treino). '
+                    . 'Candidatos: os %d produtos do treino, os únicos que o índice pode recomendar.',
+                $coverage['lists'],
+                $coverage['candidate_products']
+            ),
+            '',
+            '| k | cobertura | cobertos/candidatos | ILD | categorias distintas | Gini | top share | concentração |',
+            '|---:|---:|---:|---:|---:|---:|---:|:---|',
+        ];
+
+        foreach ($coverage['catalog_coverage_at_k'] as $k => $value) {
+            $excessive = $concentration['excessive_at_k'][$k] ?? null;
+            $lines[] = sprintf(
+                '| %d | %s | %d/%d | %s | %s | %s | %s | %s |',
+                $k,
+                $this->formatMetric($value),
+                $coverage['covered_products_at_k'][$k] ?? 0,
+                $coverage['candidate_products'],
+                $this->formatMetric($diversity['intra_list_diversity_at_k'][$k] ?? null),
+                $this->formatMetric($diversity['distinct_categories_at_k'][$k] ?? null),
+                $this->formatMetric($concentration['gini_at_k'][$k] ?? null),
+                $this->formatMetric($concentration['top_share_at_k'][$k] ?? null),
+                $excessive === null ? 'n/a' : ($excessive ? 'excessiva' : 'ok')
+            );
+        }
+
+        $lines[] = '';
+        $lines[] = '**Sinal de concentração:** ' . self::concentrationSignal($concentration['excessive_at_k']) . '.';
+        $lines[] = '';
+
+        $maxK = $coverage['catalog_coverage_at_k'] === [] ? null : max(array_keys($coverage['catalog_coverage_at_k']));
+        if ($concentration['most_recommended'] === [] || $maxK === null) {
+            $lines[] = 'Mais recomendados: nenhum produto recomendado.';
+        } else {
+            $lines[] = sprintf('Mais recomendados (k = %d):', $maxK);
+            $lines[] = '';
+            foreach ($concentration['most_recommended'] as $item) {
+                $lines[] = sprintf(
+                    '- produto %d: %d %s',
+                    $item['product_id'],
+                    $item['appearances'],
+                    $item['appearances'] === 1 ? 'aparição' : 'aparições'
+                );
+            }
+        }
+
+        return array_merge($lines, [
+            '',
+            '### Definições',
+            '',
+            '- **Cobertura de catálogo@k:** produtos distintos do treino que aparecem em pelo menos uma lista@k, '
+                . 'divididos pelo total de candidatos. A coluna cobertos/candidatos traz a contagem e o denominador, '
+                . 'para quem quiser dividir pelo catálogo inteiro.',
+            '- **Diversidade intra-lista@k (ILD):** distância por categoria (0 se igual, 1 se diferente). Numa lista '
+                . 'com n ≥ 2 itens, ILD = pares de categorias diferentes / (n·(n−1)/2). O valor é a média sobre as listas '
+                . 'com n ≥ 2, e fica n/a quando não há nenhuma (sempre em k = 1). Categorias distintas = média de '
+                . 'categorias diferentes por lista, com lista vazia contando 0. Para cobertura, diversidade e concentração, '
+                . 'um id repetido dentro da mesma lista conta uma vez (a primeira ocorrência).',
+            '- **Leitura esperada da ILD:** a categoria domina a distância do KNN, então a ILD tende a ficar perto de 0 '
+                . 'enquanto a categoria da consulta tem itens suficientes no treino, e sobe quando eles acabam. '
+                . 'É consequência do modelo, e o número não foi ajustado.',
+            '- **Gini@k:** Σᵢ(2i − n − 1)·cᵢ / (n·Σc) sobre as aparições de cada candidato nas listas@k, incluindo os '
+                . 'que aparecem 0 vezes (contagens em ordem crescente). 0 = recomendações espalhadas por igual; perto '
+                . 'de 1 = poucas recomendações dominam.',
+            sprintf(
+                '- **Top share@k:** fração das aparições que fica com os `ceil(%s × candidatos)` candidatos mais '
+                    . 'recomendados (os %s%% do catálogo recomendável mais recomendados): aqui, os %d candidatos mais '
+                    . 'recomendados (`top_products`).',
+                $this->formatRatio($concentration['top_share_ratio']),
+                $ratioPercent,
+                $concentration['top_products']
+            ),
+            sprintf(
+                '- **Concentração excessiva:** top share ≥ %s, ou seja, %s%% do catálogo recomendável fica com %s%% '
+                    . 'ou mais das recomendações. O limiar foi fixado antes da medição.',
+                $this->formatRatio($concentration['excessive_top_share']),
+                $ratioPercent,
+                $thresholdPercent
+            ),
+            '',
+        ]);
+    }
+
+    /**
+     * Limitation bullet: with few appearances (lists × k) relative to the candidates,
+     * the minimum possible top share is top_products / appearances.
+     *
+     * @param array<string, mixed> $result
+     */
+    private function sampleSizeLimitation(array $result): string
+    {
+        $text = '- **Top share sensível ao tamanho da amostra:** com listas cheias há listas × k aparições. Quando esse '
+            . 'número é pequeno perto do número de candidatos, o menor top share possível (cada aparição num produto '
+            . 'diferente) é `top_products / aparições`, então um k pequeno infla o top share e o Gini.';
+
+        $ks = array_keys($result['coverage']['catalog_coverage_at_k']);
+        $appearances = $ks === [] ? 0 : $result['coverage']['lists'] * min($ks);
+        if ($appearances > 0) {
+            $top = min($result['concentration']['top_products'], $appearances);
+            $text .= sprintf(
+                ' Aqui, em k = %d: %d/%d = %s.',
+                min($ks),
+                $top,
+                $appearances,
+                $this->formatMetric($top / $appearances)
+            );
+        }
+
+        return $text . ' Isso não torna o sinal inevitável: ele depende de quanto os mesmos produtos se repetem. '
+            . 'O limiar não muda por causa disso: ele foi fixado antes da medição.';
+    }
+
+    /**
+     * The explicit signal line, shared by the Markdown report and the CLI summary.
+     *
+     * @param array<int, bool|null> $excessiveAtK
+     */
+    public static function concentrationSignal(array $excessiveAtK): string
+    {
+        $excessiveKs = array_keys(array_filter($excessiveAtK, static fn (?bool $v): bool => $v === true));
+        $measured = array_filter($excessiveAtK, static fn (?bool $v): bool => $v !== null) !== [];
+
+        if ($excessiveKs !== []) {
+            return 'excessiva em k = ' . implode(', ', $excessiveKs);
+        }
+
+        return $measured ? 'nenhuma concentração excessiva' : 'n/a (nenhuma recomendação para medir)';
+    }
+
+    private function formatPercent(float $ratio): string
+    {
+        return rtrim(rtrim(number_format($ratio * 100, 2, '.', ''), '0'), '.');
+    }
+
+    private function formatRatio(float $ratio): string
+    {
+        return rtrim(rtrim(number_format($ratio, 4, '.', ''), '0'), '.');
     }
 
     private function formatMetric(mixed $value): string

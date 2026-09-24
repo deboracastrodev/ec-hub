@@ -7,8 +7,11 @@ declare(strict_types=1);
  *
  * Carrega um catálogo versionado, faz o split treino/holdout com seed fixa,
  * treina o KNN real (KNNService + RubixNeighborFinder) só com o treino e mede
- * precision@k e recall@k para k = 1, 5 e 10. Grava o relatório em Markdown e
- * JSON. Não precisa de Docker, MySQL nem Redis.
+ * precision@k e recall@k para k = 1, 5 e 10. Story 10.3: mede também, sobre as
+ * listas de todas as consultas do holdout, a cobertura de catálogo, a
+ * diversidade intra-lista (por categoria) e a concentração (Gini e top share),
+ * com um sinal explícito de concentração excessiva. Grava o relatório em
+ * Markdown e JSON. Não precisa de Docker, MySQL nem Redis.
  *
  * Uso: php bin/evaluate.php [--catalog=CAMINHO] [--seed=N] [--output-dir=DIR]
  *      (ou make eval)
@@ -210,6 +213,37 @@ foreach ($result['metrics']['precision_at_k'] as $k => $precision) {
         $recall === null ? 'n/a' : sprintf('%.4f', $recall)
     );
 }
+$coverage = $result['coverage'];
+$fmt = static fn (mixed $v): string => $v === null ? 'n/a' : sprintf('%.4f', $v);
+printf(
+    "\nCobertura, diversidade e concentração (%d listas, %d candidatos do treino):\n",
+    $coverage['lists'],
+    $coverage['candidate_products']
+);
+printf("| %3s | %9s | %9s | %6s | %9s |\n", 'k', 'cobertura', 'cobertos', 'ILD', 'top share');
+printf(
+    "|%s:|%s:|%s:|%s:|%s:|\n",
+    str_repeat('-', 4),
+    str_repeat('-', 10),
+    str_repeat('-', 10),
+    str_repeat('-', 7),
+    str_repeat('-', 10)
+);
+foreach ($coverage['catalog_coverage_at_k'] as $k => $value) {
+    printf(
+        "| %3d | %9s | %9s | %6s | %9s |\n",
+        $k,
+        $fmt($value),
+        $coverage['covered_products_at_k'][$k] . '/' . $coverage['candidate_products'],
+        $fmt($result['diversity']['intra_list_diversity_at_k'][$k]),
+        $fmt($result['concentration']['top_share_at_k'][$k])
+    );
+}
+printf(
+    "Sinal de concentração: %s\n",
+    EvaluationReportWriter::concentrationSignal($result['concentration']['excessive_at_k'])
+);
+
 printf("\nRelatório gravado em:\n  %s\n  %s\n", displayPath($paths['markdown'], $root), displayPath($paths['json'], $root));
 
 exit(0);
