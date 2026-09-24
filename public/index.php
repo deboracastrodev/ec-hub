@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Application\Monitoring\HttpRequestRecorder;
 use App\Controller\AbTestResultsController;
 use App\Controller\Admin\AdminAuthController;
 use App\Controller\Admin\AdminProductController;
@@ -9,6 +10,7 @@ use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\MetricsController;
+use App\Controller\MetricsExportController;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
@@ -34,12 +36,37 @@ use Twig\Environment;
 // antes do container e de qualquer dependência da rota de diagnóstico.
 $GLOBALS['EC_HUB_MEMORY_BASELINE'] = memory_get_usage();
 
+// Story 8.4: start of the request, for the HTTP duration histogram.
+$requestStartedAt = hrtime(true);
+
 require_once __DIR__ . '/../vendor/autoload.php';
 
 // Allow test harness to inject a container and bypass infrastructure bootstrapping.
 $container = isset($GLOBALS['EC_HUB_TEST_CONTAINER']) && $GLOBALS['EC_HUB_TEST_CONTAINER'] instanceof ContainerInterface
     ? $GLOBALS['EC_HUB_TEST_CONTAINER']
     : (require __DIR__ . '/../config/bootstrap.php');
+
+/**
+ * Story 8.4: records the request in the global HTTP metrics. Static assets
+ * are not counted; the status is whatever was sent (200 when unknown). A
+ * metrics failure never changes the response.
+ */
+$recordHttpRequest = static function (ContainerInterface $container, string $method, string $route, int $startedAt): void {
+    try {
+        if (! $container->has(HttpRequestRecorder::class)) {
+            return;
+        }
+        $status = http_response_code();
+        $container->get(HttpRequestRecorder::class)->record(
+            $method,
+            $route,
+            is_int($status) ? $status : 200,
+            (hrtime(true) - $startedAt) / 1e9
+        );
+    } catch (\Throwable) {
+        // HttpRequestRecorder already logs repository failures.
+    }
+};
 
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -85,6 +112,7 @@ $router = new Router(
         'GET /health' => ['controller' => HealthCheckController::class, 'action' => 'index', 'api' => true],
         'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
         'GET /api/ab-tests/results' => ['controller' => AbTestResultsController::class, 'action' => 'results', 'api' => true],
+        'GET /api/metrics' => ['controller' => MetricsExportController::class, 'action' => 'export', 'api' => true],
         'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
         'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
         // Story 8.3: admin panel (Request in, Response out; see the admin branch below).
@@ -108,10 +136,10 @@ $matchedRoute = $router->match($method, $uri);
 if ($matchedRoute === null) {
     http_response_code(404);
     echo $container->get(Environment::class)->render('error/404.html.twig', ['message' => 'Página não encontrada']);
+    $recordHttpRequest($container, $method, 'unmatched', $requestStartedAt);
     exit;
 }
 
-$controller = $container->get($matchedRoute->controller);
 $action = $matchedRoute->action;
 $isApiRoute = $matchedRoute->isApi;
 
@@ -124,8 +152,13 @@ if ($matchedRoute->isAdmin) {
 }
 
 $response = null;
+$output = null;
 
 try {
+    // Inside the try (Story 8.4): a wiring failure becomes a 500 from the
+    // ErrorHandler and is still counted in the HTTP metrics.
+    $controller = $container->get($matchedRoute->controller);
+
     if ($matchedRoute->isAdmin) {
         $response = $controller->$action(new Request($method, $matchedRoute->params, $_GET, $_POST));
         if (! $response instanceof Response) {
@@ -150,15 +183,22 @@ try {
         $output = $controller->$action($_GET, $headers, $sessionId);
     }
 
+    // Story 8.4: a non-admin action may return a Response too (GET /api/metrics).
+    if ($output instanceof Response) {
+        $response = $output;
+    }
+
     if ($response instanceof Response) {
         http_response_code($response->status);
         header('Content-Type: text/html; charset=utf-8');
         foreach ($response->headers as $name => $value) {
             header($name . ': ' . $value);
         }
-        // Admin pages are private and not frameable, whatever the controller returned.
-        foreach (Response::SECURITY_HEADERS as $name => $value) {
-            header($name . ': ' . $value);
+        if ($matchedRoute->isAdmin) {
+            // Admin pages are private and not frameable, whatever the controller returned.
+            foreach (Response::SECURITY_HEADERS as $name => $value) {
+                header($name . ': ' . $value);
+            }
         }
         echo $response->body;
     } elseif ($isApiRoute) {
@@ -184,3 +224,5 @@ try {
     $errorHandler = new ErrorHandler($container->get(Environment::class));
     $errorHandler->handleUnexpected($e, $isApiRoute);
 }
+
+$recordHttpRequest($container, $method, $matchedRoute->route !== '' ? $matchedRoute->route : 'unknown', $requestStartedAt);

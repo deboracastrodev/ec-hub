@@ -14,6 +14,9 @@ namespace App\Shared\Http;
  *
  * Either shape may carry `'admin' => true` (Story 8.3): public/index.php then
  * dispatches it with a Request and expects a Response back.
+ *
+ * Every match carries a route label for the HTTP metrics (Story 8.4): the
+ * exact route's path, or the pattern with its groups replaced by {param}.
  */
 final class Router
 {
@@ -36,7 +39,8 @@ final class Router
                 $route['action'],
                 [],
                 $route['api'] ?? false,
-                $route['admin'] ?? false
+                $route['admin'] ?? false,
+                $uri
             );
         }
 
@@ -51,11 +55,28 @@ final class Router
                     $route['action'],
                     array_slice($matches, 1),
                     false,
-                    $route['admin'] ?? false
+                    $route['admin'] ?? false,
+                    self::patternLabel($pattern)
                 );
             }
         }
 
         return null;
+    }
+
+    /**
+     * Story 8.4: metrics label for a pattern route -- each capture group
+     * becomes {param}, so the label never carries the raw URI.
+     */
+    private static function patternLabel(string $pattern): string
+    {
+        // Innermost groups first, until none is left (nested groups); an
+        // escaped parenthesis is a literal, not a group.
+        do {
+            $pattern = (string) preg_replace('/(?<!\\\\)\((?:[^()\\\\]|\\\\.)*\)/', '{param}', $pattern, -1, $count);
+        } while ($count > 0);
+
+        // Drop regex escapes so literals read as a path (\. -> .).
+        return (string) preg_replace('/\\\\(.)/', '$1', $pattern);
     }
 }

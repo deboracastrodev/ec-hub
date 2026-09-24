@@ -10,8 +10,12 @@ declare(strict_types=1);
  */
 
 use App\Application\Event\TrackProductInteraction;
+use App\Application\Monitoring\ExportMetrics;
 use App\Application\Monitoring\HealthCheck;
+use App\Application\Monitoring\HttpMetricsRepositoryInterface;
+use App\Application\Monitoring\HttpRequestRecorder;
 use App\Application\Monitoring\MemoryMonitor;
+use App\Application\Monitoring\PrometheusFormatter;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Product\ManageProducts;
@@ -24,6 +28,7 @@ use App\Controller\Admin\AdminProductController;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\MetricsController;
+use App\Controller\MetricsExportController;
 use App\Controller\ProductController;
 use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
@@ -50,6 +55,7 @@ use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Infrastructure\Redis\RedisAlgorithmMetricsRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
+use App\Infrastructure\Redis\RedisHttpMetricsRepository;
 use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
 use App\Shared\Http\AdminAuth;
@@ -237,6 +243,40 @@ return new Container([
 
     MemoryMonitoringController::class => fn (ContainerInterface $c) => new MemoryMonitoringController(
         $c->get(MemoryMonitor::class)
+    ),
+
+    // Story 8.4: global HTTP metrics (public/index.php records every routed
+    // request) and GET /api/metrics, which aggregates them with the existing
+    // sources. Every source is lazy, so a broken one only nulls its section.
+    // Story 8.4: written on every routed request, so it gets its own client
+    // with short timeouts -- an unreachable Redis costs at most ~0.25 s per
+    // request instead of Predis' default 5 s connect timeout.
+    HttpMetricsRepositoryInterface::class => fn () => new RedisHttpMetricsRepository(
+        new Client([
+            'scheme' => 'tcp',
+            ...require __DIR__ . '/redis.php',
+            'timeout' => 0.25,
+            'read_write_timeout' => 0.25,
+        ])
+    ),
+
+    HttpRequestRecorder::class => fn (ContainerInterface $c) => new HttpRequestRecorder(
+        $c->get(HttpMetricsRepositoryInterface::class),
+        $c->get(LoggerInterface::class)
+    ),
+
+    ExportMetrics::class => fn (ContainerInterface $c) => new ExportMetrics(
+        fn (): array => $c->get(HttpMetricsRepositoryInterface::class)->routes(),
+        fn () => $c->get(MemoryMonitor::class)->snapshot(),
+        fn (): array => $c->get(RecommendationExperiment::class)->results(),
+        fn () => $c->get(EventBusStatusInterface::class)->status(),
+    ),
+
+    PrometheusFormatter::class => fn () => new PrometheusFormatter(),
+
+    MetricsExportController::class => fn (ContainerInterface $c) => new MetricsExportController(
+        $c->get(ExportMetrics::class),
+        $c->get(PrometheusFormatter::class)
     ),
 
     HealthCheck::class => fn (ContainerInterface $c) => new HealthCheck(

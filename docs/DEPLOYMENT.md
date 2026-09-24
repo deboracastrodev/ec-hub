@@ -186,7 +186,7 @@ Segunda rodada, em 2026-09-23 23:29 (-03), depois da revisão. Nela foram execut
 
 ## 6. Migrations e dados
 
-A única tabela no MySQL é `products`. Sessões, eventos e as métricas do A/B (`ec-hub:ab-metrics:*`) ficam no Redis.
+A única tabela no MySQL é `products`. Sessões, eventos, as métricas do A/B (`ec-hub:ab-metrics:*`) e os contadores HTTP de `/api/metrics` (hash `ec-hub:http-metrics`, sem TTL) ficam no Redis.
 
 Rode a migration com a mesma imagem. O arquivo de ambiente é uma **cópia do da aplicação com `DB_USERNAME`/`DB_PASSWORD` de um usuário com privilégios de schema** (ver privilégios abaixo). O usuário da aplicação só tem `SELECT` e não consegue migrar:
 
@@ -218,7 +218,7 @@ docker run --rm --env-file /caminho/seguro/ec-hub-migrate.env ec-hub:<sha> php b
 - [ ] MySQL e Redis alcançáveis a partir do host do container.
 - [ ] **Backup do MySQL feito** antes de rodar a migration (ver [seção 9](#9-rollback)).
 - [ ] `php bin/migrate.php` executado via imagem, **sem** `seed` e **sem** `migrate-fresh`.
-- [ ] Proxy reverso com TLS na frente do `php -S`, bloqueando `/debug/memory`, `/metrics` e `/api/ab-tests/results` se não devem ser públicos. `/admin/*` só por HTTPS; se possível, restrinja por IP ou VPN no proxy (o login não tem rate limit).
+- [ ] Proxy reverso com TLS na frente do `php -S`, bloqueando `/debug/memory`, `/metrics`, `/api/ab-tests/results` e `/api/metrics` se não devem ser públicos (o Prometheus pode continuar raspando por dentro da rede). `/admin/*` só por HTTPS; se possível, restrinja por IP ou VPN no proxy (o login não tem rate limit).
 - [ ] Container rodando com `-d display_errors=0 -d log_errors=1` (ver [seção 5](#5-execução)).
 - [ ] Catálogo de produtos carregado na base (uma base nova fica vazia, ver [seção 6](#6-migrations-e-dados)).
 - [ ] Imagem da versão atual (a do rollback) ainda disponível no host ou no registry.
@@ -267,6 +267,37 @@ E acompanhe os logs:
 ```bash
 docker logs --tail 50 ec-hub
 ```
+
+### Métricas (`GET /api/metrics`)
+
+Export das métricas do sistema (Story 8.4), em JSON (padrão) ou no formato de texto do Prometheus 0.0.4:
+
+```bash
+curl -s "http://localhost:9501/api/metrics"                     # JSON: data.{requests, errors, response_times, memory, recommendations, event_bus} + meta.sources
+curl -s "http://localhost:9501/api/metrics?format=prometheus"   # Content-Type: text/plain; version=0.0.4
+```
+
+- `format` aceita `json` ou `prometheus` (com `trim` e sem diferenciar maiúsculas). Ausente ou vazio vira `json`; outro valor devolve `400`.
+- As duas respostas levam `Cache-Control: no-store`.
+- Cada fonte é lida à parte. Se uma falhar (Redis fora do ar, `RECOMMENDATION_AB_TEST` inválida), a resposta continua `200`: a seção dela sai `null`, `meta.sources.<fonte>` vira `false` e no Prometheus as famílias dela somem e `ec_hub_metrics_source_up{source="<fonte>"}` vale `0`.
+- Famílias Prometheus: `ec_hub_http_requests_total{method,route,status}`, `ec_hub_http_errors_total{method,route}` (5xx), o histograma `ec_hub_http_request_duration_seconds{method,route}` (buckets de 5 ms a 5 s e `+Inf`), `ec_hub_memory_usage_bytes`, `ec_hub_memory_peak_usage_bytes`, `ec_hub_memory_growth_percent`, `ec_hub_recommendation_{requests,items,ml_items}_total{algorithm}`, o summary `ec_hub_recommendation_response_time_seconds{algorithm}` (só `_sum` e `_count`, sem quantis; o `_sum` sai da média arredondada em 2 casas vezes o número de requisições, então pode recuar um pouco entre dois scrapes; use a razão `_sum / _count`, não `rate()` do `_sum`), `ec_hub_event_bus_connected`, `ec_hub_events_published_total` e `ec_hub_metrics_source_up{source}`.
+- O rótulo `route` é a rota do roteador, nunca a URI: `/products/{param}`, `/admin/products/{param}/edit`, e `unmatched` para uma URL sem rota (inclusive um caminho conhecido com o método errado). O rótulo `method` vira `OTHER` para verbos fora de `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` e `OPTIONS`. Assim a cardinalidade fica limitada ao número de rotas.
+
+Exemplo de `scrape_config`:
+
+```yaml
+scrape_configs:
+  - job_name: ec-hub
+    metrics_path: /api/metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["ec-hub:9501"]
+```
+
+O alvo precisa alcançar a aplicação sem passar pelo proxy que bloqueia `/api/metrics` para o público: rode o Prometheus na mesma rede Docker (porta interna) ou libere o IP dele no proxy.
+
+Os contadores HTTP acumulam desde a criação do hash, inclusive entre deploys. Para zerar: `redis-cli DEL ec-hub:http-metrics`. Em Prometheus isso aparece como um reset de counter, que `rate()` e `increase()` já tratam.
 
 ## 9. Rollback
 
@@ -331,7 +362,10 @@ Problemas do ambiente de desenvolvimento (Docker não sobe, Composer, conexão M
 - **Roda como root:** o `Dockerfile` faz `chown www-data`, mas não tem `USER`.
 - **Sem `php.ini` ativo:** `display_errors=STDOUT` e `log_errors=Off` com o `CMD` padrão (mitigação na [seção 5](#5-execução)).
 - **`/health` sempre HTTP 200:** o estado está só no JSON. Orquestradores que olham apenas o código HTTP não detectam `unhealthy`.
-- **`/debug/memory`, `/metrics` e `/api/ab-tests/results` são públicos**, sem autenticação. Bloqueie no proxy se não devem ficar expostos.
+- **`/debug/memory`, `/metrics`, `/api/ab-tests/results` e `/api/metrics` são públicos**, sem autenticação. Bloqueie no proxy se não devem ficar expostos.
+- **Métricas HTTP de `/api/metrics` com cobertura parcial:** assets estáticos servidos pelo `public/index.php` não são contados, nem as falhas fatais que escapam do `try/catch` principal (por exemplo, erro no bootstrap). A requisição do próprio scrape só aparece no scrape seguinte.
+- **Memória em `/api/metrics` é a da requisição do scrape:** com `php -S` cada requisição é isolada, então `ec_hub_memory_*` mede o processo que respondeu ao export, não um agregado da aplicação.
+- **+1 transação no Redis por requisição roteada:** o `MULTI/EXEC` dos contadores HTTP (3 comandos, alguns round-trips). Ela usa um cliente Predis próprio com timeouts de 0,25 s: com o Redis fora do ar a resposta não muda, mas cada requisição pode esperar até ~0,25 s pela tentativa de conexão (em vez dos 5 s padrão do Predis) e registra um `warning` no logger.
 - **`AUTH_REQUIRED=true` só exige a presença do header** `Authorization`. Não há validação de token.
 - **Painel admin com um único admin** (usuário e hash no ambiente), sem tabela de usuários, papéis, cadastro ou recuperação de senha.
 - **Login do admin sem rate limit** nem bloqueio por tentativas. A senha é verificada com `password_verify`, mas nada impede força bruta além do custo do hash: restrinja `/admin` no proxy.
