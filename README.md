@@ -179,6 +179,7 @@ docker compose exec app vendor/bin/phpunit --group redis
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — build da imagem Docker, variáveis de produção, checklist pré-deploy, rollback e troubleshooting
 - [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) — PSR-12 e convenções específicas do projeto
 - [docs/remediation-spec.md](docs/remediation-spec.md) — histórico da remediação que trouxe o projeto ao estado atual
+- [LEARNING_JOURNAL.md](LEARNING_JOURNAL.md) — desafios reais do projeto, com baseline, soluções ligadas a commits e before/after medido
 
 ## License
 
