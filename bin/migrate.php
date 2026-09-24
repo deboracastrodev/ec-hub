@@ -64,9 +64,10 @@ try {
     $hasSlugColumn = (bool) $columnStmt->fetch();
 
     if (! $hasSlugColumn) {
+        // DW-8: nullable first; NOT NULL and the unique index only after the
+        // backfill below, otherwise every row gets '' and the index collides.
         echo "ℹ️  Adicionando coluna 'slug' em tabela existente...\n";
-        $pdo->exec("ALTER TABLE products ADD COLUMN slug VARCHAR(255) NOT NULL AFTER category");
-        $pdo->exec("CREATE UNIQUE INDEX idx_products_slug ON products(slug)");
+        $pdo->exec("ALTER TABLE products ADD COLUMN slug VARCHAR(255) NULL AFTER category");
     }
 
     // Story 8.3: soft delete (FR106). Idempotent for existing installations:
@@ -94,6 +95,19 @@ try {
             'slug' => $generatedSlug,
             'id' => (int) $row['id'],
         ]);
+    }
+
+    // DW-8: state checks (not a flag). No-ops on fresh and migrated databases;
+    // they finish legacy tables and repair ones left broken by the old
+    // ordering (NOT NULL '' slugs, no index) or by an interrupted run.
+    $slugColumn = $pdo->query("SHOW COLUMNS FROM products LIKE 'slug'")->fetch();
+    if (is_array($slugColumn) && $slugColumn['Null'] === 'YES') {
+        $pdo->exec("ALTER TABLE products MODIFY COLUMN slug VARCHAR(255) NOT NULL");
+    }
+
+    $slugIndexStmt = $pdo->query("SHOW INDEX FROM products WHERE Key_name = 'idx_products_slug'");
+    if (! (bool) $slugIndexStmt->fetch()) {
+        $pdo->exec("CREATE UNIQUE INDEX idx_products_slug ON products(slug)");
     }
 
     // Story 8.7: simulated checkout. Orders keep a snapshot of each item
