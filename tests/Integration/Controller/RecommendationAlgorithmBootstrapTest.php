@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Controller;
 
+use App\Application\Product\ManageProducts;
 use App\Application\Recommendation\GenerateRecommendations;
+use App\Application\Recommendation\TrainedModelCacheInterface;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Service\CollaborativeFilteringService;
 use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\Service\NeighborFinderInterface;
 use App\Domain\Recommendation\Service\RecommendationStrategy;
+use App\Infrastructure\ML\CachedNeighborFinder;
+use App\Infrastructure\Redis\RedisTrainedModelCache;
 use App\Shared\Container\Container;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
@@ -65,6 +70,46 @@ final class RecommendationAlgorithmBootstrapTest extends TestCase
         $container = $this->container();
 
         self::assertSame('collaborative', $container->get(GenerateRecommendations::class)->getAlgorithmName());
+    }
+
+    /** Story 10.1: the KNN index is served through the Redis model cache. */
+    public function testNeighborFinderIsTheRedisCachedDecorator(): void
+    {
+        $container = $this->container();
+
+        self::assertInstanceOf(CachedNeighborFinder::class, $container->get(NeighborFinderInterface::class));
+        self::assertInstanceOf(RedisTrainedModelCache::class, $container->get(TrainedModelCacheInterface::class));
+    }
+
+    /** Story 10.1: the admin CRUD gets the same model cache, so its writes invalidate it. */
+    public function testManageProductsIsWiredToTheModelCache(): void
+    {
+        $container = $this->container();
+
+        self::assertSame(
+            $container->get(TrainedModelCacheInterface::class),
+            (new ReflectionProperty(ManageProducts::class, 'modelCache'))->getValue($container->get(ManageProducts::class))
+        );
+    }
+
+    /** Story 10.1: an unreachable Redis must cost ~0.25 s, not Predis' default 5 s. */
+    public function testModelCacheClientHasShortTimeouts(): void
+    {
+        $cache = $this->container()->get(TrainedModelCacheInterface::class);
+        $client = (new ReflectionProperty(RedisTrainedModelCache::class, 'client'))->getValue($cache);
+        $parameters = $client->getConnection()->getParameters();
+
+        self::assertSame(0.25, (float) $parameters->timeout);
+        self::assertSame(0.25, (float) $parameters->read_write_timeout);
+    }
+
+    /** Story 10.1: ManageProducts gets the container's logger for failed invalidations. */
+    public function testManageProductsReceivesTheContainerLogger(): void
+    {
+        $container = $this->container();
+        $logger = (new ReflectionProperty(ManageProducts::class, 'logger'))->getValue($container->get(ManageProducts::class));
+
+        self::assertSame($container->get(\Psr\Log\LoggerInterface::class), $logger);
     }
 
     public function testUnknownAlgorithmFailsFast(): void

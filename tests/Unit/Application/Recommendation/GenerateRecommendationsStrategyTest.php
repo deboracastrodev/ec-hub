@@ -40,7 +40,7 @@ final class GenerateRecommendationsStrategyTest extends TestCase
         $useCase->execute(1, 2);
 
         self::assertContains(
-            ['info', 'Recommendation model trained', ['algorithm' => 'collaborative']],
+            ['info', 'Recommendation model ready', ['algorithm' => 'collaborative']],
             $this->logger->records
         );
         self::assertContains(

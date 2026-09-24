@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\Product;
 
+use App\Application\Recommendation\TrainedModelCacheInterface;
 use App\Domain\Product\Model\Product;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Admin product CRUD use cases (Story 8.3), only through the repository port.
@@ -13,16 +16,24 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
  * Delete is a soft delete (FR106): the repository stamps deleted_at and the
  * product disappears from every public read, recommendations included.
  *
- * Hook for Story 10.1: there is no model cache today, so nothing needs to be
- * invalidated here. When a serialized KNN model is introduced, create/update/
- * delete are the three places that must invalidate it.
+ * Story 10.1: a successful create/update/delete invalidates the cached KNN
+ * model. This is hygiene, not correctness -- the cache is validated against a
+ * fingerprint of the catalog, which also covers changes made outside this
+ * class (seed, migrations, manual SQL). A failing invalidation is logged and
+ * never breaks the CRUD.
  */
 final class ManageProducts
 {
     public const PER_PAGE = 20;
 
-    public function __construct(private readonly ProductRepositoryInterface $products)
-    {
+    private readonly LoggerInterface $logger;
+
+    public function __construct(
+        private readonly ProductRepositoryInterface $products,
+        private readonly ?TrainedModelCacheInterface $modelCache = null,
+        ?LoggerInterface $logger = null,
+    ) {
+        $this->logger = $logger ?? new NullLogger();
     }
 
     /**
@@ -51,7 +62,10 @@ final class ManageProducts
 
     public function create(ProductInput $input): int
     {
-        return $this->products->create($input->toData());
+        $id = $this->products->create($input->toData());
+        $this->invalidateModelCache();
+
+        return $id;
     }
 
     /**
@@ -61,18 +75,40 @@ final class ManageProducts
      */
     public function update(int $id, ProductInput $input): bool
     {
-        if ($this->products->update($id, $input->toData())) {
-            return true;
-        }
-
         // The repository reports changed rows, so false is ambiguous: an
         // identical resubmission (still true here) or a product that is
         // missing or was deleted concurrently.
-        return $this->products->findById($id) !== null;
+        $updated = $this->products->update($id, $input->toData())
+            || $this->products->findById($id) !== null;
+
+        if ($updated) {
+            $this->invalidateModelCache();
+        }
+
+        return $updated;
     }
 
     public function delete(int $id): bool
     {
-        return $this->products->delete($id);
+        $deleted = $this->products->delete($id);
+
+        if ($deleted) {
+            $this->invalidateModelCache();
+        }
+
+        return $deleted;
+    }
+
+    private function invalidateModelCache(): void
+    {
+        if ($this->modelCache === null) {
+            return;
+        }
+
+        try {
+            $this->modelCache->invalidate();
+        } catch (\Throwable $exception) {
+            $this->logger->warning('Falha ao invalidar o cache do modelo KNN', ['error' => $exception->getMessage()]);
+        }
     }
 }

@@ -24,6 +24,7 @@ use App\Application\Product\GetProductList;
 use App\Application\Product\ManageProducts;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\Recommendation\RecommendationExperiment;
+use App\Application\Recommendation\TrainedModelCacheInterface;
 use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\AbTestResultsController;
 use App\Controller\Admin\AdminAuthController;
@@ -59,12 +60,13 @@ use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Infrastructure\Mail\FileOrderConfirmationMailer;
 use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Messaging\RedisEventStore;
-use App\Infrastructure\ML\RubixNeighborFinder;
+use App\Infrastructure\ML\CachedNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\OrderRepository;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
 use App\Infrastructure\Redis\RedisAlgorithmMetricsRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
 use App\Infrastructure\Redis\RedisHttpMetricsRepository;
+use App\Infrastructure\Redis\RedisTrainedModelCache;
 use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
 use App\Shared\Http\AdminAuth;
@@ -205,7 +207,9 @@ return new Container([
     ),
 
     ManageProducts::class => fn (ContainerInterface $c) => new ManageProducts(
-        $c->get(ProductRepositoryInterface::class)
+        $c->get(ProductRepositoryInterface::class),
+        $c->get(TrainedModelCacheInterface::class),
+        $c->get(LoggerInterface::class)
     ),
 
     AdminAuthController::class => fn (ContainerInterface $c) => new AdminAuthController(
@@ -365,7 +369,24 @@ return new Container([
         $c->get(HealthCheck::class)
     ),
 
-    NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
+    // Story 10.1 (R4.4): the trained KNN index is served from Redis; the
+    // catalog fingerprint decides between hydrating and refitting.
+    // Own client with short timeouts (same as Story 8.4): an unreachable
+    // Redis costs a recommendation or an admin write ~0.25 s, not Predis'
+    // default 5 s, before degrading to training in memory.
+    TrainedModelCacheInterface::class => fn () => new RedisTrainedModelCache(
+        new Client([
+            'scheme' => 'tcp',
+            ...require __DIR__ . '/redis.php',
+            'timeout' => 0.25,
+            'read_write_timeout' => 0.25,
+        ])
+    ),
+
+    NeighborFinderInterface::class => fn (ContainerInterface $c) => new CachedNeighborFinder(
+        $c->get(TrainedModelCacheInterface::class),
+        $c->get(LoggerInterface::class)
+    ),
 
     KNNService::class => fn (ContainerInterface $c) => new KNNService(
         $c->get(ProductRepositoryInterface::class),

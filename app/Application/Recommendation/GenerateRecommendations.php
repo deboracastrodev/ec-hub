@@ -204,7 +204,7 @@ class GenerateRecommendations
         $this->strategy->train($products);
         $this->modelTrained = true;
 
-        $this->logger->info('Recommendation model trained', [
+        $this->logger->info('Recommendation model ready', [
             'algorithm' => $this->strategy->getName(),
         ]);
     }

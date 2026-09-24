@@ -8,6 +8,8 @@ use App\Application\Product\ManageProducts;
 use App\Application\Product\ProductInput;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\InMemoryProductRepository;
+use Tests\Support\InMemoryTrainedModelCache;
+use Tests\Support\RecordingLogger;
 
 final class ManageProductsTest extends TestCase
 {
@@ -172,5 +174,58 @@ final class ManageProductsTest extends TestCase
         $id = $manage->create($this->input(['name' => 'Mouse Gamer RGB']));
 
         self::assertSame('mouse-gamer-rgb-1', $manage->find($id)?->getSlug());
+    }
+
+    /** Story 10.1: a successful write frees the cached KNN model slot. */
+    public function testSuccessfulWritesInvalidateTheModelCache(): void
+    {
+        $cache = new InMemoryTrainedModelCache();
+        $manage = new ManageProducts(new InMemoryProductRepository(), $cache);
+
+        $cache->payload = 'model';
+        $id = $manage->create($this->input());
+        self::assertSame(1, $cache->invalidations);
+        self::assertNull($cache->payload);
+
+        $cache->payload = 'model';
+        self::assertTrue($manage->update($id, $this->input(['name' => 'Headset Novo'])));
+        self::assertSame(2, $cache->invalidations);
+
+        self::assertTrue($manage->update($id, $this->input(['name' => 'Headset Novo'])), 'identical resubmission');
+        self::assertSame(3, $cache->invalidations);
+
+        $cache->payload = 'model';
+        self::assertTrue($manage->delete($id));
+        self::assertSame(4, $cache->invalidations);
+        self::assertNull($cache->payload);
+    }
+
+    public function testWritesOnMissingProductsKeepTheModelCache(): void
+    {
+        $cache = new InMemoryTrainedModelCache();
+        $cache->payload = 'model';
+        $manage = new ManageProducts(new InMemoryProductRepository(), $cache);
+
+        self::assertFalse($manage->update(999, $this->input()));
+        self::assertFalse($manage->delete(999));
+
+        self::assertSame(0, $cache->invalidations);
+        self::assertSame('model', $cache->payload);
+    }
+
+    public function testFailingInvalidationIsLoggedAndTheCrudGoesOn(): void
+    {
+        $cache = new InMemoryTrainedModelCache();
+        $cache->failOnInvalidate = true;
+        $logger = new RecordingLogger();
+        $repository = new InMemoryProductRepository();
+        $manage = new ManageProducts($repository, $cache, $logger);
+
+        $id = $manage->create($this->input());
+        self::assertTrue($manage->update($id, $this->input(['name' => 'Headset Novo'])));
+        self::assertTrue($manage->delete($id));
+
+        self::assertNotNull($repository->rawRow($id)['deleted_at']);
+        self::assertSame(array_fill(0, 3, 'Falha ao invalidar o cache do modelo KNN'), $logger->messages('warning'));
     }
 }
