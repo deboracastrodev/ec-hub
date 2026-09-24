@@ -81,6 +81,7 @@ A maioria dos valores é lida com `getenv('X') ?: default` e usa o default tamb�
 | `REDIS_HOST` | Não | `redis` | host do seu Redis | `config/redis.php` |
 | `REDIS_PORT` | Não | `6379` | `6379` | `config/redis.php` |
 | `AUTH_REQUIRED` | Não | desligado | ver nota abaixo | `app/Controller/RecommendationController.php` |
+| `RECOMMENDATION_ALGORITHM` | Não | `knn` | `knn` | `config/recommendation.php` |
 | `RECOMMENDATION_FALLBACK_STRATEGY` | Não | `hybrid` | `hybrid` | `config/recommendation.php` |
 | `RECOMMENDATION_MIN_PRODUCTS_FOR_ML` | Não | `5` | `5` | `config/recommendation.php` |
 | `APP_ENV` | Não (convenção) | não é lida pelo código | `production` | só `tests/docker/*.sh`; mantida no `.env.example` por convenção |
@@ -93,6 +94,7 @@ Regras de validação que derrubam a aplicação:
 - **`APP_DEBUG`** só liga o modo debug com o valor exato `true`. Qualquer outro valor (inclusive ausente) desliga debug e liga o cache do Twig em `var/cache/twig`.
 - **`AUTH_REQUIRED=true`** (sem diferenciar maiúsculas) só exige a **presença** de um header `Authorization` não vazio em `GET /api/recommendations`. Nenhum token é validado. Não trate isso como autenticação.
 - **`DB_PORT`** e **`RECOMMENDATION_MIN_PRODUCTS_FOR_ML`** são convertidas com `(int)` **sem validação**: um valor não numérico vira `0` sem erro (porta 0 derruba a conexão; limiar 0 faz o ML ser tentado com qualquer catálogo). Use inteiros positivos.
+- **`RECOMMENDATION_ALGORITHM`** aceita `knn` e `collaborative` (sem diferenciar maiúsculas, espaços nas pontas são ignorados; ausente ou vazia usa `knn`). Qualquer outro valor lança `InvalidArgumentException` com a lista de valores aceitos, em vez de cair no default em silêncio. A configuração é carregada sob demanda, então a falha aparece em **toda** requisição a `GET /api/recommendations`; as demais rotas não são afetadas.
 - **`RECOMMENDATION_FALLBACK_STRATEGY`** aceita `hybrid`, `category_only` e `popularity_only`. Um valor desconhecido cai em `hybrid` sem erro.
 
 A lista canônica de variáveis é o [`.env.example`](../.env.example). O script `php bin/ci/check-env-vars.php` (roda no CI) garante que ela bate com os `getenv()` do código nos dois sentidos.
@@ -112,6 +114,7 @@ REDIS_PORT=6379
 SESSION_TTL=1800
 SESSION_COOKIE_SECRET=<saida de: openssl rand -hex 32>
 AUTH_REQUIRED=false
+RECOMMENDATION_ALGORITHM=knn
 RECOMMENDATION_FALLBACK_STRATEGY=hybrid
 RECOMMENDATION_MIN_PRODUCTS_FOR_ML=5
 ```

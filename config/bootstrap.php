@@ -16,31 +16,33 @@ use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Application\SEO\Service\MetaTagsService;
-use App\Controller\ProductController;
-use App\Controller\ProductInteractionController;
-use App\Controller\MetricsController;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
+use App\Controller\MetricsController;
+use App\Controller\ProductController;
+use App\Controller\ProductInteractionController;
 use App\Controller\RecommendationController;
-use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Event\EventBusStatusInterface;
-use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
+use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventStoreInterface;
+use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
+use App\Domain\Recommendation\Service\CollaborativeFilteringService;
 use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
 use App\Domain\Recommendation\Service\NeighborFinderInterface;
+use App\Domain\Recommendation\Service\RecommendationStrategy;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
-use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Messaging\RedisEventStore;
+use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
-use App\Infrastructure\Redis\SessionRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
+use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
 use App\Shared\Http\SessionContext;
 use Predis\Client;
@@ -202,6 +204,26 @@ return new Container([
         $c->get(NeighborFinderInterface::class)
     ),
 
+    CollaborativeFilteringService::class => fn (ContainerInterface $c) => new CollaborativeFilteringService(
+        $c->get(EventStoreInterface::class),
+        $c->get(ExplanationGenerator::class)
+    ),
+
+    // Story 8.1: the active algorithm comes from RECOMMENDATION_ALGORITHM,
+    // already validated by RecommendationSettings (unknown values fail fast).
+    RecommendationStrategy::class => fn (ContainerInterface $c) => match (
+        $c->get(RecommendationSettings::class)->getAlgorithm()
+    ) {
+        KNNService::NAME => $c->get(KNNService::class),
+        CollaborativeFilteringService::NAME => $c->get(CollaborativeFilteringService::class),
+        // Reachable only if RecommendationSettings::ALGORITHMS grows without
+        // a matching arm here -- never silently fall back to KNN.
+        default => throw new \LogicException(sprintf(
+            'Algoritmo de recomendação sem estratégia registrada: "%s".',
+            $c->get(RecommendationSettings::class)->getAlgorithm()
+        )),
+    },
+
     // Story 3.5: confidence scores and explanations for recommendations.
     ConfidenceCalculator::class => fn () => new ConfidenceCalculator(),
 
@@ -217,7 +239,7 @@ return new Container([
 
     GenerateRecommendations::class => fn (ContainerInterface $c) => new GenerateRecommendations(
         $c->get(ProductRepositoryInterface::class),
-        $c->get(KNNService::class),
+        $c->get(RecommendationStrategy::class),
         $c->get(RuleBasedFallback::class),
         $c->get(LoggerInterface::class),
         $c->get(RecommendationSettings::class),

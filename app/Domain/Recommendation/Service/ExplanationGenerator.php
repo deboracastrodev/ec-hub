@@ -23,6 +23,7 @@ class ExplanationGenerator
     private const ML_EXPLANATION_TEMPLATE = 'Recomendado com base em %s que você visualizou (%d%% de similaridade)';
     private const CATEGORY_FALLBACK_TEMPLATE = 'Produtos populares na categoria %s';
     private const POPULARITY_FALLBACK_TEMPLATE = 'Produtos mais visualizados';
+    private const COLLABORATIVE_EXPLANATION_TEMPLATE = 'Quem se interessou por %s também se interessou por este produto (%d%% de afinidade)';
 
     /** AC7: never show more than 3 reasons at once. */
     private const MAX_REASONS = 3;
@@ -77,6 +78,51 @@ class ExplanationGenerator
         ];
 
         if ($target !== null && $target->getCategory() === $result->getCategory()) {
+            $reasons[] = [
+                'type' => 'category',
+                'description' => sprintf('Mesma categoria: %s', $result->getCategory()),
+            ];
+        }
+
+        return array_slice($reasons, 0, self::MAX_REASONS);
+    }
+
+    /**
+     * Story 8.1: explanation for an item-based collaborative filtering
+     * result -- the link is shared interest across sessions, not
+     * category/price similarity, so it must not reuse the KNN template.
+     */
+    public function generateForCollaborative(RecommendationResult $result, Product $targetProduct): string
+    {
+        return sprintf(
+            self::COLLABORATIVE_EXPLANATION_TEMPLATE,
+            $targetProduct->getName(),
+            (int) floor($result->getScore())
+        );
+    }
+
+    /**
+     * Story 8.1: structured reasons behind a collaborative filtering
+     * result (max 3): how many sessions interacted with both products and,
+     * when it applies, the shared category.
+     *
+     * @return list<array{type: string, description: string}>
+     */
+    public function buildCollaborativeReasons(
+        RecommendationResult $result,
+        Product $targetProduct,
+        int $sharedSessions
+    ): array {
+        $reasons = [
+            [
+                'type' => 'co_interaction',
+                'description' => $sharedSessions === 1
+                    ? sprintf('1 sessão se interessou por este produto e por %s', $targetProduct->getName())
+                    : sprintf('%d sessões se interessaram por este produto e por %s', $sharedSessions, $targetProduct->getName()),
+            ],
+        ];
+
+        if ($targetProduct->getCategory() === $result->getCategory()) {
             $reasons[] = [
                 'type' => 'category',
                 'description' => sprintf('Mesma categoria: %s', $result->getCategory()),

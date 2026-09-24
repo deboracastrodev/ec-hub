@@ -10,7 +10,7 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Recommendation\Model\RecommendationResult;
 use App\Domain\Recommendation\Service\ExplanationGenerator;
-use App\Domain\Recommendation\Service\KNNService;
+use App\Domain\Recommendation\Service\RecommendationStrategy;
 use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Domain\Recommendation\Utility\ConfidenceCalculator;
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
@@ -19,14 +19,15 @@ use Psr\Log\LoggerInterface;
 /**
  * Generate Recommendations Use Case
  *
- * Orchestrates product recommendation generation using KNN ML service
- * with rule-based fallback when ML has insufficient data.
+ * Orchestrates product recommendation generation using the configured
+ * RecommendationStrategy (KNN or collaborative filtering, Story 8.1) with
+ * rule-based fallback when ML has insufficient data.
  * Handles data preparation, caching, and graceful degradation.
  */
 class GenerateRecommendations
 {
     private ProductRepositoryInterface $productRepository;
-    private KNNService $knnService;
+    private RecommendationStrategy $strategy;
     private RuleBasedFallback $fallbackService;
     private LoggerInterface $logger;
     private RecommendationSettings $settings;
@@ -35,12 +36,12 @@ class GenerateRecommendations
     /** @var array<int, Product>|null */
     private ?array $productsCache = null;
 
-    /** @var bool Whether KNN model has been trained */
+    /** @var bool Whether the strategy's model has been trained */
     private bool $modelTrained = false;
 
     public function __construct(
         ProductRepositoryInterface $productRepository,
-        KNNService $knnService,
+        RecommendationStrategy $strategy,
         RuleBasedFallback $fallbackService,
         LoggerInterface $logger,
         ?RecommendationSettings $settings = null,
@@ -48,7 +49,7 @@ class GenerateRecommendations
         private readonly ?EventHistoryRepositoryInterface $history = null,
     ) {
         $this->productRepository = $productRepository;
-        $this->knnService = $knnService;
+        $this->strategy = $strategy;
         $this->fallbackService = $fallbackService;
         $this->logger = $logger;
         $this->settings = $settings ?? RecommendationSettings::fromArray([]);
@@ -104,11 +105,17 @@ class GenerateRecommendations
                 return $this->personalize($fallbackResults, $sessionId, $userId);
             }
 
-            // Ensure KNN model is trained
+            // Ensure the strategy's model is trained
             $this->ensureModelTrained();
 
-            // Generate recommendations using KNN
-            $recommendations = $this->knnService->recommend($targetProduct, $limit);
+            // Generate recommendations using the configured strategy
+            $recommendations = $this->strategy->recommend($targetProduct, $limit);
+
+            $this->logger->info('Recommendation algorithm used', [
+                'algorithm' => $this->strategy->getName(),
+                'target_product_id' => $targetProductId,
+                'count' => count($recommendations),
+            ]);
 
             // Convert to DTO format (Story 3.5: enriched with explanation/confidence metadata)
             $formatted = $this->formatRecommendations($recommendations, $targetProduct);
@@ -133,6 +140,7 @@ class GenerateRecommendations
         } catch (\Exception $e) {
             $this->logger->error('ML failed, using fallback', [
                 'error' => $e->getMessage(),
+                'algorithm' => $this->strategy->getName(),
             ]);
 
             // Fallback to rule-based on error
@@ -164,11 +172,20 @@ class GenerateRecommendations
     }
 
     /**
-     * Ensure KNN model is trained with current product catalog
+     * Canonical name of the active recommendation algorithm ('knn',
+     * 'collaborative'), exposed by the API as meta.algorithm.
+     */
+    public function getAlgorithmName(): string
+    {
+        return $this->strategy->getName();
+    }
+
+    /**
+     * Ensure the strategy's model is trained with current product catalog
      */
     private function ensureModelTrained(): void
     {
-        if ($this->knnService->isTrained()) {
+        if ($this->strategy->isTrained()) {
             $this->modelTrained = true;
 
             return;
@@ -184,11 +201,11 @@ class GenerateRecommendations
             throw new \RuntimeException('At least 2 products required for recommendations');
         }
 
-        $this->knnService->train($products, 5);
+        $this->strategy->train($products);
         $this->modelTrained = true;
 
-        $this->logger->info('KNN model trained', [
-            'k' => 5,
+        $this->logger->info('Recommendation model trained', [
+            'algorithm' => $this->strategy->getName(),
         ]);
     }
 
@@ -209,17 +226,26 @@ class GenerateRecommendations
     }
 
     /**
-     * Format KNN results to recommendation DTOs, enriched with the
+     * Format strategy results to recommendation DTOs, enriched with the
      * Story 3.5 explanation/confidence metadata (AC2, AC3, AC7, AC8).
      *
-     * @param RecommendationResult[] $knnResults Raw results from KNNService
+     * A result that already carries reasons (collaborative filtering builds
+     * its own explanation, Story 8.1) is kept as is; one without reasons
+     * (KNN) gets the ML explanation/reasons generated here, as before.
+     *
+     * @param RecommendationResult[] $strategyResults Raw results from the strategy
      * @return array<array<string, mixed>>
      */
-    private function formatRecommendations(array $knnResults, Product $targetProduct): array
+    private function formatRecommendations(array $strategyResults, Product $targetProduct): array
     {
         return array_map(function (RecommendationResult $result) use ($targetProduct): array {
-            $explanation = $this->explanationGenerator->generateForML($result, $targetProduct);
-            $reasons = $this->explanationGenerator->buildReasonsArray($result, $targetProduct);
+            if ($result->getReasons() !== []) {
+                $explanation = $result->getExplanation();
+                $reasons = $result->getReasons();
+            } else {
+                $explanation = $this->explanationGenerator->generateForML($result, $targetProduct);
+                $reasons = $this->explanationGenerator->buildReasonsArray($result, $targetProduct);
+            }
 
             $enriched = new RecommendationResult(
                 $result->getProductId(),
@@ -238,7 +264,7 @@ class GenerateRecommendations
             $data['source'] = 'ml';
 
             return $data;
-        }, $knnResults);
+        }, $strategyResults);
     }
 
     /**

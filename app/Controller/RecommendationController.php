@@ -216,6 +216,8 @@ class RecommendationController
             'data' => $data,
             'meta' => [
                 'source' => $source,
+                // Story 8.1: active RecommendationStrategy (additive field).
+                'algorithm' => $this->generateRecommendations->getAlgorithmName(),
                 'count' => count($data),
                 'response_time_ms' => round($responseTime, 2),
                 'generated_at' => date('c'),

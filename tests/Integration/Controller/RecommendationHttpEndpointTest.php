@@ -6,12 +6,17 @@ namespace Tests\Integration\Controller;
 
 use App\Application\Recommendation\GenerateRecommendations;
 use App\Controller\RecommendationController;
+use App\Domain\Recommendation\Service\CollaborativeFilteringService;
+use App\Domain\Recommendation\Service\ExplanationGenerator;
+use App\Domain\Recommendation\Service\RuleBasedFallback;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use App\Shared\Container\Container;
 use App\Shared\Http\SessionContext;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Tests\Support\InMemoryEventStore;
+use Tests\Support\InMemoryProductRepository;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
@@ -68,6 +73,58 @@ class RecommendationHttpEndpointTest extends TestCase
         $this->assertSame('ml', $decoded['meta']['source'] ?? null);
         $this->assertArrayHasKey('response_time_ms', $decoded['meta']);
 
+        unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
+    }
+
+    /** Story 8.1: CF strategy end to end through public/index.php. */
+    #[RunInSeparateProcess]
+    public function testApiEndpointServesCollaborativeFilteringRecommendations(): void
+    {
+        header_remove();
+        http_response_code(200);
+
+        $rows = [];
+        foreach ([[1, 'Fone', 'Eletrônicos', 200.0], [2, 'Monitor', 'Eletrônicos', 1200.0],
+            [3, 'Bola', 'Esportes', 100.0], [4, 'Tênis', 'Esportes', 400.0],
+            [5, 'Luminária', 'Casa', 250.0]] as [$id, $name, $category, $price]) {
+            $rows[] = ['id' => $id, 'name' => $name, 'slug' => 'p-' . $id, 'description' => '',
+                'price' => $price, 'category' => $category, 'image_url' => '', 'created_at' => '2026-01-01 10:00:00'];
+        }
+        $repository = new InMemoryProductRepository($rows);
+        $store = new InMemoryEventStore();
+        foreach (['s1' => [1, 2, 3], 's2' => [1, 2], 's3' => [1, 3], 's4' => [2]] as $session => $products) {
+            foreach ($products as $productId) {
+                $store->interaction('product.viewed', $session, $productId);
+            }
+        }
+        $logger = new NullLogger();
+        $useCase = new GenerateRecommendations(
+            $repository,
+            new CollaborativeFilteringService($store, new ExplanationGenerator()),
+            new RuleBasedFallback($repository, $logger),
+            $logger
+        );
+        $controller = new RecommendationController($useCase, $logger);
+        $twig = new Environment(new FilesystemLoader(dirname(__DIR__, 3) . '/views'));
+        $GLOBALS['EC_HUB_TEST_CONTAINER'] = new Container([
+            Environment::class => fn () => $twig,
+            RecommendationController::class => fn () => $controller,
+        ]);
+
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/api/recommendations?product_id=1&limit=2';
+        $_GET = ['product_id' => '1', 'limit' => '2'];
+
+        ob_start();
+        require dirname(__DIR__, 3) . '/public/index.php';
+        $decoded = json_decode((string) ob_get_clean(), true);
+
+        self::assertSame(200, http_response_code());
+        self::assertSame('collaborative', $decoded['meta']['algorithm']);
+        self::assertSame('ml', $decoded['meta']['source']);
+        self::assertSame([3, 2], array_column($decoded['data'], 'product_id'));
+        self::assertSame(['ml', 'ml'], array_column($decoded['data'], 'source'));
+        self::assertStringStartsWith('Quem se interessou por Fone', $decoded['data'][0]['explanation']);
         unset($GLOBALS['EC_HUB_TEST_CONTAINER']);
     }
 

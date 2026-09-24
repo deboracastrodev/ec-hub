@@ -128,4 +128,26 @@ final class ExplanationGeneratorTest extends TestCase
 
         $this->assertLessThanOrEqual(3, count($reasons));
     }
+
+    public function testGenerateForCollaborativeUsesTargetNameAndFlooredAffinity(): void
+    {
+        $target = $this->makeProduct('Fone', 'Eletrônicos');
+        $result = new RecommendationResult(3, 'Cabo', 'Eletrônicos', 20.0, 81.6, 1, '');
+
+        $this->assertSame(
+            'Quem se interessou por Fone também se interessou por este produto (81% de afinidade)',
+            $this->generator->generateForCollaborative($result, $target)
+        );
+    }
+
+    public function testBuildCollaborativeReasonsUsesSingularForOneSharedSession(): void
+    {
+        $target = $this->makeProduct('Fone', 'Eletrônicos');
+        $result = new RecommendationResult(3, 'Camiseta', 'Roupas', 50.0, 100.0, 1, '');
+
+        $this->assertSame(
+            [['type' => 'co_interaction', 'description' => '1 sessão se interessou por este produto e por Fone']],
+            $this->generator->buildCollaborativeReasons($result, $target, 1)
+        );
+    }
 }

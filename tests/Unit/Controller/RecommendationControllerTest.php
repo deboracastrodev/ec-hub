@@ -66,6 +66,23 @@ class RecommendationControllerTest extends TestCase
         $this->assertEquals(2, $response['data'][0]['id']);
     }
 
+    public function testResponseMetaExposesTheActiveAlgorithm(): void
+    {
+        $this->mockGenerateRecommendations->method('execute')->willReturn([
+            ['product_id' => 2, 'name' => 'Mouse Gamer', 'score' => 80.0, 'source' => 'ml'],
+        ]);
+        $this->mockGenerateRecommendations->expects($this->once())
+            ->method('getAlgorithmName')
+            ->willReturn('collaborative');
+        $this->mockLogger->expects($this->never())->method('error');
+
+        $response = $this->controller->getRecommendations(['product_id' => '1']);
+
+        $this->assertSame('collaborative', $response['meta']['algorithm']);
+        $this->assertSame('ml', $response['meta']['source']);
+        $this->assertSame(1, $response['meta']['count']);
+    }
+
     public function testGetRecommendationsThrowsExceptionWithoutProductId(): void
     {
         // Arrange - Empty query params

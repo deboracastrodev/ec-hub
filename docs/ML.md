@@ -31,7 +31,9 @@ Controller      RecommendationController        valida product_id/limit, mede te
 Application     GenerateRecommendations         decide ML × fallback, completa, personaliza
         │
         ▼
-Domain          KNNService ──► NeighborFinderInterface (porta, sem tipos Rubix)
+Domain          RecommendationStrategy (porta, Strategy Pattern)
+                  ├── KNNService ──► NeighborFinderInterface (porta, sem tipos Rubix)   'knn' (padrão)
+                  └── CollaborativeFilteringService ──► EventStoreInterface             'collaborative'
                 RuleBasedFallback, ConfidenceCalculator, ExplanationGenerator
                                    ▲
                                    │ implementa
@@ -40,21 +42,49 @@ Infrastructure  RubixNeighborFinder             único arquivo que importa Rubix
 
 | Peça | Arquivo | Responsabilidade |
 |---|---|---|
+| Estratégia | [`RecommendationStrategy`](../app/Domain/Recommendation/Service/RecommendationStrategy.php) | porta do algoritmo: `getName()`, `isTrained()`, `train(array $products)`, `recommend(Product $target, int $limit)`. O caso de uso depende só dela |
 | Porta | [`NeighborFinderInterface`](../app/Domain/Recommendation/Service/NeighborFinderInterface.php) | `train(array $products)`, `isTrained()`, `nearest(Product $target, int $k)`, que devolve `list<array{product: Product, distance: float}>` |
 | Implementação | [`RubixNeighborFinder`](../app/Infrastructure/ML/RubixNeighborFinder.php) | pipeline Rubix: encoding, normalização e índice `BallTree` |
-| Regra de negócio | [`KNNService`](../app/Domain/Recommendation/Service/KNNService.php) | pede vizinhos, descarta o próprio produto, calcula score e rank |
+| Regra de negócio | [`KNNService`](../app/Domain/Recommendation/Service/KNNService.php) | estratégia `knn`: pede vizinhos, descarta o próprio produto, calcula score e rank |
+| Regra de negócio | [`CollaborativeFilteringService`](../app/Domain/Recommendation/Service/CollaborativeFilteringService.php) | estratégia `collaborative`: similaridade item-item por co-ocorrência de interações entre sessões (ver abaixo) |
 | Caso de uso | [`GenerateRecommendations`](../app/Application/Recommendation/GenerateRecommendations.php) | escolhe entre ML e fallback, completa resultados, re-ordena por histórico |
 | Fallback | [`RuleBasedFallback`](../app/Domain/Recommendation/Service/RuleBasedFallback.php) | recomendações por categoria e popularidade |
 | Confiança | [`ConfidenceCalculator`](../app/Domain/Recommendation/Utility/ConfidenceCalculator.php) | score → `high`/`medium`/`low` e rótulo em português |
 | Explicação | [`ExplanationGenerator`](../app/Domain/Recommendation/Service/ExplanationGenerator.php) | textos de `explanation` e `reasons` |
-| Configuração | [`RecommendationSettings`](../app/Domain/Recommendation/ValueObject/RecommendationSettings.php) + [`config/recommendation.php`](../config/recommendation.php) | estratégia de fallback, mínimo de produtos, faixas de score |
-| HTTP | [`RecommendationController`](../app/Controller/RecommendationController.php) | `DEFAULT_LIMIT = 10`, `MAX_LIMIT = 50` (acima disso o valor é truncado para 50, sem erro; `limit` que não seja inteiro positivo, `product_id` ausente ou inválido e `user_id` presente mas vazio ou não-string respondem 400), log `Slow recommendation` acima de 200 ms |
+| Configuração | [`RecommendationSettings`](../app/Domain/Recommendation/ValueObject/RecommendationSettings.php) + [`config/recommendation.php`](../config/recommendation.php) | algoritmo ativo, estratégia de fallback, mínimo de produtos, faixas de score |
+| HTTP | [`RecommendationController`](../app/Controller/RecommendationController.php) | `meta.algorithm` com o nome do algoritmo ativo, `DEFAULT_LIMIT = 10`, `MAX_LIMIT = 50` (acima disso o valor é truncado para 50, sem erro; `limit` que não seja inteiro positivo, `product_id` ausente ou inválido e `user_id` presente mas vazio ou não-string respondem 400), log `Slow recommendation` acima de 200 ms |
 
 A troca de implementação acontece em um único ponto, o container em [`config/bootstrap.php`](../config/bootstrap.php):
 
 ```php
 NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
+
+RecommendationStrategy::class => fn (ContainerInterface $c) => match (
+    $c->get(RecommendationSettings::class)->getAlgorithm()
+) {
+    KNNService::NAME => $c->get(KNNService::class),
+    CollaborativeFilteringService::NAME => $c->get(CollaborativeFilteringService::class),
+    default => throw new \LogicException('Unsupported recommendation algorithm'),
+},
 ```
+
+O algoritmo vem de `RECOMMENDATION_ALGORITHM` (ver [Configuração](#configuração)). O caso de uso loga `info` `Recommendation algorithm used` com `algorithm`, `target_product_id` e `count` (itens devolvidos pela estratégia) sempre que a estratégia responde, e a API devolve o nome em `meta.algorithm`. Não há A/B testing nem divisão de usuários: um processo usa um algoritmo só.
+
+### Filtragem colaborativa item-a-item (`collaborative`)
+
+[`CollaborativeFilteringService`](../app/Domain/Recommendation/Service/CollaborativeFilteringService.php) é Domain puro (sem Rubix, sem biblioteca nova). No `train()`, lê do `EventStoreInterface` os eventos `product.viewed`, `product.clicked` e `cart.item_added` gravados por `TrackProductInteraction` e monta, para cada produto do catálogo treinado, o conjunto de sessões (`session_id`, nunca `user_id`) que interagiram com ele. Uma sessão conta uma vez por produto, qualquer que seja o número ou o tipo de eventos. A similaridade entre dois produtos é o cosseno entre esses conjuntos:
+
+```
+sim(a, b) = |S_a ∩ S_b| / sqrt(|S_a| * |S_b|)          score = sim × 100, em (0, 100]
+```
+
+Exemplo: sessões s1 {1,2,3}, s2 {1,2}, s3 {1,3}, s4 {2}. Para o produto 1: sim(1,3) = 2/√6 ≈ 0,816 (score 81,6) e sim(1,2) = 2/√9 ≈ 0,667 (score 66,7), então a ordem é [3, 2]. Empates são desfeitos por `product_id` crescente, e o produto-alvo nunca aparece.
+
+- Eventos com `data` sem `session_id` ou `product_id` válido, e eventos de produtos fora do catálogo treinado, são ignorados.
+- Produto sem nenhuma sessão em comum com outro: a estratégia devolve lista vazia e o caso de uso completa com o fallback (itens `rules`/`popular`), com `meta.algorithm` ainda `collaborative`.
+- Se o event store falhar no `train()`, a exceção cai no fallback `ml_error` (seção 4).
+- A explicação (`Quem se interessou por %s também se interessou por este produto (%d%% de afinidade)`) e os `reasons` (`co_interaction` e, se a categoria for a mesma, `category`) vêm do `ExplanationGenerator`. O caso de uso preserva explicação e `reasons` que a estratégia já preencheu; só gera o texto do KNN quando `reasons` chega vazio.
+- Os itens continuam com `source: "ml"`. O score do CF (afinidade entre sessões) e o do KNN (distância de features) não são comparáveis entre si, e as faixas de `confidence_level` da seção 3 foram pensadas para o KNN.
 
 As convenções gerais (Domain sem biblioteca externa, configuração injetada, dinheiro) estão em [CODING-STANDARDS.md](CODING-STANDARDS.md).
 
@@ -194,11 +224,13 @@ A decisão fica em [`GenerateRecommendations::execute()`](../app/Application/Rec
 | `product_id` não existe no catálogo | `RuleBasedFallback::getPopularRecommendations()` (cold start) | `cold_start_unknown_product` | `popular` |
 | Catálogo com menos de `min_products_for_ml` produtos (padrão 5) | fallback com a estratégia configurada | `insufficient_catalog_data` | `rules` / `popular` |
 | Parâmetro `insufficientData = true` do caso de uso (o controller HTTP sempre passa `false`) | fallback com a estratégia configurada | `insufficient_session_data` | `rules` / `popular` |
-| Caminho normal | `KNNService::recommend()` | — | `ml` |
+| Caminho normal | `RecommendationStrategy::recommend()` (KNN ou CF, conforme `RECOMMENDATION_ALGORITHM`) | — (log `Recommendation algorithm used`) | `ml` |
 | KNN devolve menos que `limit` (só acontece quando o índice tem `limit` produtos ou menos; como o índice é treinado com no máximo 1.000 produtos, na prática isso é um catálogo pequeno, em que o índice é o catálogo inteiro) | tenta completar com fallback, descartando duplicatas (`mergeRecommendations`) e o próprio produto. Como o fallback busca no mesmo catálogo que o KNN já devolveu inteiro, na prática nada é acrescentado e a resposta fica com menos de `limit` itens | (log do `RuleBasedFallback`) | `ml` |
-| Exceção no ML (`\Exception`, ex.: índice não treina; um `\Error` como `TypeError` não é capturado e sobe até a borda HTTP) | `ML failed, using fallback` (nível error) e depois fallback. O `try` envolve o método inteiro, então uma exceção do próprio fallback nos ramos acima (cold start, catálogo insuficiente) também cai aqui com a mesma mensagem. Se, nessa nova tentativa, `findById` não encontrar o produto, a resposta é uma lista vazia, sem fallback nem log `ml_error` | `ml_error` | `rules` / `popular` |
+| Exceção no ML (`\Exception`, ex.: índice não treina ou event store do CF indisponível; um `\Error` como `TypeError` não é capturado e sobe até a borda HTTP) | `ML failed, using fallback` (nível error, com `algorithm` no contexto) e depois fallback. O `try` envolve o método inteiro, então uma exceção do próprio fallback nos ramos acima (cold start, catálogo insuficiente) também cai aqui com a mesma mensagem. Se, nessa nova tentativa, `findById` não encontrar o produto, a resposta é uma lista vazia, sem fallback nem log `ml_error` | `ml_error` | `rules` / `popular` |
 
-O `source` de cada item é `ml` para itens do KNN, `popular` para itens com `fallback_reason = popular_product` e `rules` para os demais. O `meta.source` da resposta vem do primeiro item de fallback encontrado (`popular` ou `rules`) e, se não houver nenhum, é `ml`. Como uma resposta pode misturar origens, o `source` por item é o dado mais preciso. `RecommendationException` não é convertida em fallback; ela sobe até a borda HTTP.
+A linha "KNN devolve menos que `limit`" vale também para o CF, onde é bem mais comum: qualquer produto com poucas co-interações devolve menos itens, e aí o fallback de fato acrescenta itens.
+
+O `source` de cada item é `ml` para itens da estratégia (KNN ou CF), `popular` para itens com `fallback_reason = popular_product` e `rules` para os demais. O `meta.source` da resposta vem do primeiro item de fallback encontrado (`popular` ou `rules`) e, se não houver nenhum, é `ml`. Como uma resposta pode misturar origens, o `source` por item é o dado mais preciso. `RecommendationException` não é convertida em fallback; ela sobe até a borda HTTP.
 
 ## 5. Fallback baseado em regras
 
@@ -232,12 +264,13 @@ Os padrões ficam em `RecommendationSettings::fromArray()`, lidos de [`config/re
 
 | Chave | Padrão | Variável de ambiente |
 |---|---|---|
+| `algorithm` | `knn` | `RECOMMENDATION_ALGORITHM` (`knn` ou `collaborative`) |
 | `fallback.strategy` | `hybrid` | `RECOMMENDATION_FALLBACK_STRATEGY` |
 | `fallback.min_products_for_ml` | `5` | `RECOMMENDATION_MIN_PRODUCTS_FOR_ML` |
 | `fallback.scores.category_min` / `category_max` | `60.0` / `70.0` | — |
 | `fallback.scores.popularity_min` / `popularity_max` | `50.0` / `60.0` | — |
 
-Uma estratégia desconhecida cai no ramo `default` do `switch`, que é o `hybrid`.
+Uma estratégia de fallback desconhecida cai no ramo `default` do `switch`, que é o `hybrid`. Já o algoritmo é validado: `RECOMMENDATION_ALGORITHM` é normalizado (`trim` + minúsculas, vazio ou ausente vira `knn`) e qualquer valor fora de `knn`/`collaborative` lança `InvalidArgumentException` em `RecommendationSettings::fromArray()`, com a lista dos valores aceitos.
 
 ## 6. Personalização por histórico
 
@@ -321,6 +354,9 @@ Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **
 - **"Popularidade" não é popularidade.** `getByPopularity()` pega os primeiros N produtos de `findAll($limit, 0)` (ordem alfabética) e os embaralha com `shuffle()`. Ainda não usa contagem de visualizações, embora o texto exibido seja "Produtos mais visualizados".
 - **Só duas features** (categoria e preço). Por construção, recomendações de outra categoria só aparecem quando a categoria do produto não tem vizinhos suficientes, e sempre com score baixo.
 - **`BallTree::nearest()` é `@internal`** no Rubix e pode mudar sem aviso em versões menores. Esse risco foi aceito no [ADR-003](architecture.md#adr-003--rubix-ml-real-mantido-fora-do-domain) e fica contido em `RubixNeighborFinder`.
+- **O CF lê o event store inteiro a cada requisição.** Pelo mesmo motivo do KNN (sem cache de modelo), cada requisição com `collaborative` faz três `getByEvent()` que trazem **todos** os eventos de interação já gravados, e recalcula a co-ocorrência. O custo cresce com o volume de eventos, sem janela de tempo nem limite, e não foi medido.
+- **CF herda o limite de 1.000 produtos.** O CF é treinado com o mesmo `findAll(1000, 0)` do KNN: eventos de produtos fora desse recorte são ignorados, e um produto-alvo fora dele sempre cai no fallback.
+- **CF depende de histórico.** Sem interações registradas (base nova, Redis limpo) o CF não recomenda nada e toda resposta vem do fallback. Os eventos também não expiram por idade: interesse antigo pesa igual a recente.
 - **Sem métrica de qualidade de recomendação.** Os números acima são de desempenho (tempo), não de acerto. Não há precision@k nem cobertura de catálogo medidos.
 
 ## Roadmap (não implementado)

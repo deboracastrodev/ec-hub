@@ -16,9 +16,14 @@ use App\Domain\Recommendation\Model\RecommendationResult;
  * category + price, then turns the result into scored, explained
  * RecommendationResult entries. Scoring and explanation text are business
  * rules and stay here in the Domain.
+ *
+ * One of the RecommendationStrategy implementations (canonical name 'knn',
+ * the default of RECOMMENDATION_ALGORITHM).
  */
-class KNNService
+class KNNService implements RecommendationStrategy
 {
+    public const NAME = 'knn';
+
     private ProductRepositoryInterface $productRepository;
     private NeighborFinderInterface $neighborFinder;
     private int $k = 5;
@@ -30,6 +35,11 @@ class KNNService
     ) {
         $this->productRepository = $productRepository;
         $this->neighborFinder = $neighborFinder;
+    }
+
+    public function getName(): string
+    {
+        return self::NAME;
     }
 
     /**

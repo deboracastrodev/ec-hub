@@ -58,4 +58,28 @@ final class RecommendationSettingsTest extends TestCase
         $this->assertSame(60.0, $settings->getCategoryScoreMin());
         $this->assertSame(50.0, $settings->getPopularityScoreMin());
     }
+
+    public function testAlgorithmDefaultsToKnn(): void
+    {
+        $this->assertSame('knn', RecommendationSettings::fromArray([])->getAlgorithm());
+        $this->assertSame('knn', RecommendationSettings::fromArray(['algorithm' => ''])->getAlgorithm());
+        $this->assertSame('knn', RecommendationSettings::fromArray(['algorithm' => '   '])->getAlgorithm());
+    }
+
+    public function testAlgorithmIsNormalized(): void
+    {
+        $this->assertSame(
+            'collaborative',
+            RecommendationSettings::fromArray(['algorithm' => '  Collaborative '])->getAlgorithm()
+        );
+        $this->assertSame('knn', RecommendationSettings::fromArray(['algorithm' => 'KNN'])->getAlgorithm());
+    }
+
+    public function testUnknownAlgorithmFailsFastListingAcceptedValues(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('knn, collaborative');
+
+        RecommendationSettings::fromArray(['algorithm' => 'svd']);
+    }
 }
