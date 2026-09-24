@@ -39,7 +39,14 @@ Não há consumidor de eventos de longa duração para subir: `bin/consume-event
 
 Use o SHA do commit como tag. Assim cada imagem é imutável e o rollback vira "voltar para a tag anterior".
 
-Construa a partir do **commit**, não do diretório de trabalho. O `COPY . .` copia tudo o que está no contexto de build, e o `.dockerignore` não repete o `.gitignore`. Um `docker build .` no clone de desenvolvimento leva para a imagem arquivos ignorados pelo Git, como `.claude/`, `.bmad-loop/`, `_bmad/`, `.vscode/` e caches de ferramentas. Isso acontece mesmo com `git status` limpo e foi observado na imagem `ec-hub:0c0550b`. O `git archive` manda para o `docker build` só os arquivos versionados daquele commit:
+O `COPY . .` copia tudo o que está no contexto de build. O `.dockerignore` espelha o `.gitignore`: diretórios de ferramentas e agentes (`.claude/`, `.bmad-loop/`, `_bmad/`, `_bmad-output/`, `.codex/`, `.agents/` etc.), IDE (`.vscode/`, `.idea/`), caches de PHPUnit/PHPStan/php-cs-fixer e arquivos de runtime (`var/`, `runtime/`, `*.log`) ficam fora do contexto. Por isso `docker build .` no clone de desenvolvimento é seguro:
+
+```bash
+SHA=$(git rev-parse --short HEAD)
+docker build -t "ec-hub:$SHA" .
+```
+
+Esse build usa o diretório de trabalho, então alterações locais ainda não commitadas e arquivos novos que o Git não ignora (ainda sem `git add`) entram na imagem. Confira com `git status` antes. Para um build reprodutível do commit exato, use o `git archive` (opcional), que manda para o `docker build` só os arquivos versionados daquele commit:
 
 ```bash
 SHA=$(git rev-parse --short <commit-a-publicar>)
@@ -48,17 +55,17 @@ git archive --format=tar "$SHA" | docker build -t "ec-hub:$SHA" -
 
 O `docker build -` lê o contexto (um tar) da entrada padrão e continua respeitando o `.dockerignore` que vem dentro dele. Não é preciso fazer checkout nem ter a árvore limpa.
 
-⚠️ Uma imagem construída com `docker build .` no clone de desenvolvimento (como a `ec-hub:0c0550b` da verificação) pode conter arquivos locais privados, como configurações de ferramentas e histórico de sessões. **Não publique esse tipo de imagem em registry** e não a use como versão de produção: reconstrua a mesma tag via `git archive` e apague a antiga com `docker image rm`.
+⚠️ Uma imagem construída com `docker build .` no clone de desenvolvimento **antes desta correção do `.dockerignore`** (como a `ec-hub:0c0550b` da verificação) pode conter arquivos locais privados, como configurações de ferramentas e histórico de sessões. **Não publique esse tipo de imagem em registry** e não a use como versão de produção: apague a antiga com `docker image rm` e reconstrua a mesma tag a partir do commit dela (`git archive <sha> | docker build -t ec-hub:<sha> -`), para que a tag continue apontando para o código daquele commit.
 
 O que o `Dockerfile` faz:
 
 - base `php:8.4-cli` + extensões `pdo pdo_mysql mbstring zip` + `pcov` (driver de cobertura);
 - `composer install` **com dependências de dev** (PHPUnit, PHPStan, php-cs-fixer entram na imagem);
-- `COPY . .` do código. O `.dockerignore` exclui `vendor/`, `.git/` e todo `.env*` exceto `.env.example`. **Nenhum `.env` entra na imagem**: as variáveis vêm do runtime (`-e` / `--env-file`);
+- `COPY . .` do código. O `.dockerignore` exclui `vendor/`, `.git/`, todo `.env*` exceto `.env.example`, artefatos Node/Playwright e tudo o que o `.gitignore` ignora (ferramentas, IDE, caches, runtime). **Nenhum `.env` entra na imagem**: as variáveis vêm do runtime (`-e` / `--env-file`);
 - `chown www-data`, mas **sem instrução `USER`**: o processo roda como root;
 - `CMD php -S 0.0.0.0:9501 -t public public/index.php`.
 
-Resultado medido no build de verificação via `git archive`: imagem `ec-hub:57172ca` com **1,17 GB** (inclui dependências de dev e toolchain de build). O build anterior, feito com `docker build .` no clone de desenvolvimento, gerou 1,56 GB. A diferença vem principalmente dos arquivos ignorados que entraram junto: só `.bmad-loop/` tinha 118 MB naquela imagem.
+Resultado medido no build de verificação via `git archive`: imagem `ec-hub:57172ca` com **1,17 GB** (inclui dependências de dev e toolchain de build). O build anterior, feito com `docker build .` no clone de desenvolvimento, gerou 1,56 GB. A diferença vinha principalmente dos arquivos ignorados que entraram junto (só `.bmad-loop/` tinha 118 MB naquela imagem) e foi corrigida quando o `.dockerignore` passou a espelhar o `.gitignore`: um `docker build .` no clone de desenvolvimento também gera 1,17 GB (medido em 2026-09-24).
 
 Se o host de destino não for a máquina de build, publique a imagem no registry que você usa (`docker tag` + `docker push`). O projeto não define nenhum registry.
 
@@ -151,7 +158,7 @@ docker run -d --name ec-hub \
 Comandos executados nesta máquina (macOS, Docker Compose 5.5.1) contra o stack de desenvolvimento no ar, usando a rede do compose (`ec-hub_ec-hub-network`, o nome real prefixado pelo projeto) no lugar de um MySQL/Redis de produção. O `--env-file` ficou fora do repositório, com `APP_DEBUG=false` e um segredo gerado na hora.
 
 ```bash
-# registro histórico da 1ª rodada; NÃO copie este build, use o da seção 3
+# registro histórico da 1ª rodada, antes da correção do .dockerignore; NÃO copie este build, use o da seção 3
 docker build -t ec-hub:$(git rev-parse --short HEAD) .          # → ec-hub:0c0550b, build concluído
 docker run -d --name ec-hub-prod-check --network ec-hub_ec-hub-network -p 9601:9501 \
   --env-file <arquivo-fora-do-repo> ec-hub:0c0550b
@@ -358,7 +365,6 @@ Problemas do ambiente de desenvolvimento (Docker não sobe, Composer, conexão M
 - **Servidor `php -S`:** servidor embutido do PHP, um único processo, sem TLS e sem gerenciamento de workers. Para exposição pública, coloque um proxy reverso com TLS na frente.
 - **Cookie de sessão sem `Secure` atrás do proxy:** o `SessionContext` só marca o cookie como `Secure` quando `$_SERVER['HTTPS']` está definido. Com TLS terminado no proxy, o `php -S` não recebe esse valor e o cookie sai sem `Secure` (continua `HttpOnly` e `SameSite=Lax`).
 - **Imagem com dependências de dev:** `composer install` roda sem `--no-dev`, e a imagem inclui `pcov` e a toolchain de build (1,17 GB medidos no build via `git archive`).
-- **`.dockerignore` não repete o `.gitignore`:** um `docker build .` no clone de desenvolvimento copia diretórios locais ignorados pelo Git para a imagem. Use o build via `git archive` da [seção 3](#3-build-da-imagem).
 - **Roda como root:** o `Dockerfile` faz `chown www-data`, mas não tem `USER`.
 - **Sem `php.ini` ativo:** `display_errors=STDOUT` e `log_errors=Off` com o `CMD` padrão (mitigação na [seção 5](#5-execução)).
 - **`/health` sempre HTTP 200:** o estado está só no JSON. Orquestradores que olham apenas o código HTTP não detectam `unhealthy`.
@@ -386,7 +392,6 @@ Nada nesta seção existe no código hoje.
 - **PHP-FPM + Nginx** no lugar do `php -S`, com múltiplos workers e TLS no Nginx.
 - **Imagem de produção separada:** multi-stage, `composer install --no-dev --optimize-autoloader`, sem `pcov` nem ferramentas de build, com `php.ini-production` ativo.
 - **Usuário não-root** na imagem (`USER www-data`).
-- **`.dockerignore` completo:** repetir no `.dockerignore` as exclusões do `.gitignore`, para que `docker build .` seja seguro sem o `git archive`.
 - **`/health` devolvendo HTTP 503** quando `unhealthy`, para orquestradores e load balancers.
 - **Pipeline de deploy:** job no CI que publica a imagem com a tag do SHA e faz o deploy.
 - **Cookie `Secure` atrás de proxy:** respeitar `X-Forwarded-Proto` de um proxy confiável para marcar o cookie de sessão como `Secure`.

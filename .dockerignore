@@ -15,3 +15,46 @@ node_modules/
 test-results/
 playwright-report/
 blob-report/
+
+# Espelho do .gitignore (DW-7): nada ignorado pelo Git entra no contexto de
+# build (algumas regras são mais amplas, como o .bmad-loop/ inteiro).
+# Padrões do .dockerignore são ancorados na raiz; `**/` vale em qualquer
+# nível, como os padrões sem `/` inicial do .gitignore.
+
+# Ferramentas / agentes (inclui o .bmad-loop/ inteiro: a imagem não usa nada dele)
+**/.claude/
+**/.bmad-loop/
+**/_bmad/
+**/_bmad-output/
+**/.codex/
+**/.agents/
+**/.agent/
+**/.gemini/
+**/.docs/
+**/.github/agents/
+
+# IDE / SO
+**/.idea/
+**/.vscode/
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+**/Thumbs.db
+
+# Caches de ferramentas
+**/.phpunit.result.cache
+**/.phpunit.cache/
+**/.phpstan.cache/
+**/.php-cs-fixer.cache
+playwright/.cache/
+
+# Runtime (var/cache/twig e var/mail são recriados em runtime)
+runtime/
+var/
+**/*.log
+app/bootstrap/cache/
+app/storage/
+public/storage
+docker/mysql-data/
+docker/redis-data/
