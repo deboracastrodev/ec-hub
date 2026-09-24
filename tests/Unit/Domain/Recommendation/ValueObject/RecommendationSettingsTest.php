@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Recommendation\ValueObject;
 
 use App\Domain\Recommendation\ValueObject\RecommendationSettings;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class RecommendationSettingsTest extends TestCase
@@ -81,5 +82,53 @@ final class RecommendationSettingsTest extends TestCase
         $this->expectExceptionMessage('knn, collaborative');
 
         RecommendationSettings::fromArray(['algorithm' => 'svd']);
+    }
+
+    public function testAbTestIsOffWhenAbsentOrEmpty(): void
+    {
+        foreach ([[], ['ab_test' => ''], ['ab_test' => '   ']] as $config) {
+            $settings = RecommendationSettings::fromArray($config);
+
+            $this->assertFalse($settings->isAbTestEnabled());
+            $this->assertNull($settings->getAbTestVariants());
+        }
+    }
+
+    public function testAbTestVariantsFollowTheListedOrder(): void
+    {
+        $settings = RecommendationSettings::fromArray(['ab_test' => 'collaborative,knn']);
+
+        $this->assertTrue($settings->isAbTestEnabled());
+        $this->assertSame(['A' => 'collaborative', 'B' => 'knn'], $settings->getAbTestVariants());
+    }
+
+    public function testAbTestItemsAreTrimmedAndLowercased(): void
+    {
+        $settings = RecommendationSettings::fromArray(['ab_test' => ' KNN , Collaborative ']);
+
+        $this->assertSame(['A' => 'knn', 'B' => 'collaborative'], $settings->getAbTestVariants());
+    }
+
+    #[DataProvider('invalidAbTests')]
+    public function testInvalidAbTestFailsFastCitingTheVariable(string $abTest): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/RECOMMENDATION_AB_TEST.*knn, collaborative/');
+
+        RecommendationSettings::fromArray(['ab_test' => $abTest]);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidAbTests(): array
+    {
+        return [
+            'single algorithm' => ['knn'],
+            'duplicate algorithm' => ['knn,knn'],
+            'duplicate after normalization' => ['knn, KNN'],
+            'unknown algorithm' => ['knn,svd'],
+            'three items' => ['a,b,c'],
+            'three valid-looking items' => ['knn,collaborative,knn'],
+            'empty item' => ['knn,'],
+        ];
     }
 }

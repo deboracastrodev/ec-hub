@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Domain\Event\EventBusStatusInterface;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
+use Closure;
 use Throwable;
 use Twig\Environment;
 
@@ -26,6 +27,14 @@ final class MetricsController
         private readonly Environment $twig,
         private readonly ?SessionRepositoryInterface $sessions = null,
         private readonly ?EventBusStatusInterface $eventBusStatus = null,
+        /**
+         * Story 8.2: lazy A/B results (RecommendationExperiment::results()).
+         * Lazy so an invalid RECOMMENDATION_AB_TEST or Redis being down only
+         * degrades the comparison panel, never the /metrics route.
+         *
+         * @var (Closure(): array<string, mixed>)|null
+         */
+        private readonly ?Closure $abTestResults = null,
     ) {
     }
 
@@ -68,7 +77,73 @@ final class MetricsController
             'recommendation_comparison' => $this->recommendationComparison($recommendationPair),
             'pubsub' => $this->pubSubStatus(),
             'architecture_signals' => self::ARCHITECTURE_SIGNALS_NOT_YET_AVAILABLE,
+            'ab_test' => $this->abTestResults(),
         ]);
+    }
+
+    private const AB_TEST_ROW_KEYS = [
+        'algorithm',
+        'variant',
+        'requests',
+        'unique_subjects',
+        'total_items',
+        'ml_items',
+        'ml_item_rate',
+        'avg_response_time_ms',
+        'avg_score',
+    ];
+
+    /** @return array<string, mixed>|null null renders "Comparação indisponível" */
+    private function abTestResults(): ?array
+    {
+        if ($this->abTestResults === null) {
+            return null;
+        }
+
+        try {
+            $results = ($this->abTestResults)();
+        } catch (Throwable) {
+            return null;
+        }
+
+        // Twig runs with strict_variables: a malformed result must degrade to
+        // "indisponível" instead of breaking the whole /metrics page.
+        return $this->isValidAbTestResults($results) ? $results : null;
+    }
+
+    /** @param array<mixed> $results */
+    private function isValidAbTestResults(array $results): bool
+    {
+        if (! is_bool($results['enabled'] ?? null)) {
+            return false;
+        }
+
+        $variants = $results['variants'] ?? null;
+        if ($variants !== null
+            && (! is_array($variants) || ! is_string($variants['A'] ?? null) || ! is_string($variants['B'] ?? null))
+        ) {
+            return false;
+        }
+        if ($results['enabled'] !== ($variants !== null)) {
+            return false;
+        }
+
+        $algorithms = $results['algorithms'] ?? null;
+        if (! is_array($algorithms) || ! array_is_list($algorithms)) {
+            return false;
+        }
+        foreach ($algorithms as $row) {
+            if (! is_array($row)) {
+                return false;
+            }
+            foreach (self::AB_TEST_ROW_KEYS as $key) {
+                if (! array_key_exists($key, $row)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /** @return array{available: bool, connected: bool, published_count: int} */

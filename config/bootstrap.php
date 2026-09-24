@@ -15,7 +15,9 @@ use App\Application\Monitoring\MemoryMonitor;
 use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\Recommendation\GenerateRecommendations;
+use App\Application\Recommendation\RecommendationExperiment;
 use App\Application\SEO\Service\MetaTagsService;
+use App\Controller\AbTestResultsController;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\MetricsController;
@@ -28,6 +30,8 @@ use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventStoreInterface;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
+use App\Domain\Recommendation\Repository\AlgorithmMetricsRepositoryInterface;
+use App\Domain\Recommendation\Service\AbTestAssigner;
 use App\Domain\Recommendation\Service\CollaborativeFilteringService;
 use App\Domain\Recommendation\Service\ExplanationGenerator;
 use App\Domain\Recommendation\Service\KNNService;
@@ -41,6 +45,7 @@ use App\Infrastructure\Messaging\RedisEventBus;
 use App\Infrastructure\Messaging\RedisEventStore;
 use App\Infrastructure\ML\RubixNeighborFinder;
 use App\Infrastructure\Persistence\MySQL\ProductRepository;
+use App\Infrastructure\Redis\RedisAlgorithmMetricsRepository;
 use App\Infrastructure\Redis\RedisEventHistoryRepository;
 use App\Infrastructure\Redis\SessionRepository;
 use App\Shared\Container\Container;
@@ -67,6 +72,20 @@ $envRepository = \Dotenv\Repository\RepositoryBuilder::createWithDefaultAdapters
 \Dotenv\Dotenv::create($envRepository, dirname(__DIR__))->safeLoad();
 
 $sessionConfig = require __DIR__ . '/session.php';
+
+// Story 8.1/8.2: algorithm name -> RecommendationStrategy. Shared by the
+// RecommendationStrategy entry (the .env default) and the A/B experiment's
+// use-case factory (the assigned arm).
+$strategyFor = static fn (ContainerInterface $c, string $algorithm): RecommendationStrategy => match ($algorithm) {
+    KNNService::NAME => $c->get(KNNService::class),
+    CollaborativeFilteringService::NAME => $c->get(CollaborativeFilteringService::class),
+    // Reachable only if RecommendationSettings::ALGORITHMS grows without
+    // a matching arm here -- never silently fall back to KNN.
+    default => throw new \LogicException(sprintf(
+        'Algoritmo de recomendação sem estratégia registrada: "%s".',
+        $algorithm
+    )),
+};
 
 // A PSR-11 container (R5.7): every entry is a factory keyed by FQCN,
 // resolved lazily and memoized on first use. This is what keeps a request
@@ -177,7 +196,9 @@ return new Container([
         $c->get(EventHistoryRepositoryInterface::class),
         $c->get(Environment::class),
         $c->get(SessionRepositoryInterface::class),
-        $c->get(EventBusStatusInterface::class)
+        $c->get(EventBusStatusInterface::class),
+        // Story 8.2: lazy, so invalid A/B config or Redis down only degrades the panel.
+        fn (): array => $c->get(RecommendationExperiment::class)->results()
     ),
 
     MemoryMonitor::class => fn () => new MemoryMonitor(
@@ -211,18 +232,10 @@ return new Container([
 
     // Story 8.1: the active algorithm comes from RECOMMENDATION_ALGORITHM,
     // already validated by RecommendationSettings (unknown values fail fast).
-    RecommendationStrategy::class => fn (ContainerInterface $c) => match (
+    RecommendationStrategy::class => fn (ContainerInterface $c) => $strategyFor(
+        $c,
         $c->get(RecommendationSettings::class)->getAlgorithm()
-    ) {
-        KNNService::NAME => $c->get(KNNService::class),
-        CollaborativeFilteringService::NAME => $c->get(CollaborativeFilteringService::class),
-        // Reachable only if RecommendationSettings::ALGORITHMS grows without
-        // a matching arm here -- never silently fall back to KNN.
-        default => throw new \LogicException(sprintf(
-            'Algoritmo de recomendação sem estratégia registrada: "%s".',
-            $c->get(RecommendationSettings::class)->getAlgorithm()
-        )),
-    },
+    ),
 
     // Story 3.5: confidence scores and explanations for recommendations.
     ConfidenceCalculator::class => fn () => new ConfidenceCalculator(),
@@ -247,9 +260,46 @@ return new Container([
         $c->get(EventHistoryRepositoryInterface::class)
     ),
 
+    // Story 8.2: A/B testing between algorithms (RECOMMENDATION_AB_TEST).
+    AbTestAssigner::class => fn () => new AbTestAssigner(),
+
+    AlgorithmMetricsRepositoryInterface::class => fn (ContainerInterface $c) => new RedisAlgorithmMetricsRepository(
+        $c->get(Client::class)
+    ),
+
+    RecommendationExperiment::class => fn (ContainerInterface $c) => new RecommendationExperiment(
+        $c->get(RecommendationSettings::class),
+        // Lazy: only the assigned arm's use case is built. The .env default
+        // reuses the GenerateRecommendations entry; the other arm gets the
+        // same collaborators with only the strategy swapped.
+        static function (string $algorithm) use ($c, $strategyFor): GenerateRecommendations {
+            if ($algorithm === $c->get(RecommendationSettings::class)->getAlgorithm()) {
+                return $c->get(GenerateRecommendations::class);
+            }
+
+            return new GenerateRecommendations(
+                $c->get(ProductRepositoryInterface::class),
+                $strategyFor($c, $algorithm),
+                $c->get(RuleBasedFallback::class),
+                $c->get(LoggerInterface::class),
+                $c->get(RecommendationSettings::class),
+                $c->get(ExplanationGenerator::class),
+                $c->get(EventHistoryRepositoryInterface::class)
+            );
+        },
+        $c->get(AbTestAssigner::class),
+        $c->get(AlgorithmMetricsRepositoryInterface::class),
+        $c->get(LoggerInterface::class)
+    ),
+
+    AbTestResultsController::class => fn (ContainerInterface $c) => new AbTestResultsController(
+        $c->get(RecommendationExperiment::class)
+    ),
+
     RecommendationController::class => fn (ContainerInterface $c) => new RecommendationController(
         $c->get(GenerateRecommendations::class),
         $c->get(LoggerInterface::class),
-        $c->get(SessionRepositoryInterface::class)
+        $c->get(SessionRepositoryInterface::class),
+        $c->get(RecommendationExperiment::class)
     ),
 ]);

@@ -41,6 +41,55 @@
                 </dl>
             </section>
 
+            <section class="dashboard__panel dashboard__panel--ab-test" aria-labelledby="ab-test-panel-title">
+                <header class="dashboard__panel-header">
+                    <h2 class="dashboard__panel-title" id="ab-test-panel-title">Comparação de algoritmos (A/B)</h2>
+                    <p class="dashboard__panel-description">Agregado de todas as respostas de recomendação, por algoritmo.</p>
+                </header>
+
+                {% if ab_test is null %}
+                    <p class="dashboard__empty" role="status">Comparação indisponível.</p>
+                {% else %}
+                    <p class="dashboard__ab-status" role="status">
+                        {% if ab_test.enabled %}
+                            Teste A/B: ativo · A = {{ ab_test.variants.A }} · B = {{ ab_test.variants.B }}
+                        {% else %}
+                            Teste A/B: desligado (um algoritmo por processo)
+                        {% endif %}
+                    </p>
+                    <div class="dashboard__ab-table-wrapper">
+                        <table class="dashboard__ab-table">
+                            <caption class="dashboard__ab-caption">Métricas por algoritmo</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Algoritmo</th>
+                                    <th scope="col">Variante</th>
+                                    <th scope="col">Requisições</th>
+                                    <th scope="col">Sujeitos únicos</th>
+                                    <th scope="col">% itens ML</th>
+                                    <th scope="col">Latência média</th>
+                                    <th scope="col">Score médio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in ab_test.algorithms %}
+                                    <tr>
+                                        <th scope="row">{{ row.algorithm }}</th>
+                                        <td>{{ row.variant is null ? '—' : row.variant }}</td>
+                                        <td>{{ row.requests }}</td>
+                                        <td>{{ row.unique_subjects }}</td>
+                                        <td>{% if row.ml_item_rate is null %}—{% else %}{{ row.ml_item_rate|number_format(2, ',', '.') }}%{% endif %}</td>
+                                        <td>{% if row.avg_response_time_ms is null %}—{% else %}{{ row.avg_response_time_ms|number_format(2, ',', '.') }} ms{% endif %}</td>
+                                        <td>{% if row.avg_score is null %}—{% else %}{{ row.avg_score|number_format(2, ',', '.') }}{% endif %}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="dashboard__ab-export"><a href="/api/ab-tests/results">Exportar resultados (JSON)</a></p>
+                {% endif %}
+            </section>
+
             <details class="dashboard__disclosure">
                 <summary class="dashboard__disclosure-control">Ver detalhes da sessão atual</summary>
                 <section class="dashboard__panel dashboard__panel--session" aria-labelledby="current-session-title">

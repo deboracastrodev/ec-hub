@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Application\Recommendation\AlgorithmAssignment;
 use App\Application\Recommendation\GenerateRecommendations;
+use App\Application\Recommendation\RecommendationExperiment;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Domain\Recommendation\Exception\RecommendationException;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
@@ -41,6 +43,9 @@ class RecommendationController
         GenerateRecommendations $generateRecommendations,
         LoggerInterface $logger,
         private readonly ?SessionRepositoryInterface $sessions = null,
+        // Story 8.2: when present, routes each request to its A/B arm and
+        // records per-algorithm metrics; absent, behaves as before.
+        private readonly ?RecommendationExperiment $experiment = null,
     ) {
         $this->generateRecommendations = $generateRecommendations;
         $this->logger = $logger;
@@ -79,9 +84,16 @@ class RecommendationController
             }
             $userId = trim($queryParams['user_id']);
         }
+        $assignment = null;
+        $useCase = $this->generateRecommendations;
+        if ($this->experiment !== null) {
+            $assignment = $this->experiment->assign($sessionId, $userId);
+            $useCase = $this->experiment->useCaseFor($assignment->algorithm);
+        }
+
         $recommendations = ($sessionId === null && $userId === null)
-            ? $this->generateRecommendations->execute($productId, $limit)
-            : $this->generateRecommendations->execute($productId, $limit, false, null, $sessionId, $userId);
+            ? $useCase->execute($productId, $limit)
+            : $useCase->execute($productId, $limit, false, null, $sessionId, $userId);
 
         $responseTime = (microtime(true) - $startTime) * 1000;
 
@@ -94,10 +106,15 @@ class RecommendationController
         }
 
         // Format response (AC1, AC8)
-        $response = $this->formatResponse($recommendations, $responseTime);
+        $response = $this->formatResponse($recommendations, $responseTime, $useCase, $assignment);
 
         if ($sessionId !== null) {
             $this->persistRecommendationSnapshot($sessionId, $response);
+        }
+
+        if ($this->experiment !== null && $assignment !== null) {
+            // Never throws: a metrics failure is logged as a warning.
+            $this->experiment->record($assignment, $response);
         }
 
         return $response;
@@ -186,10 +203,16 @@ class RecommendationController
      *
      * @param array<array<string, mixed>> $recommendations
      * @param float $responseTime Response time in milliseconds
+     * @param GenerateRecommendations $useCase The use case that actually served the request
+     * @param AlgorithmAssignment|null $assignment A/B assignment (Story 8.2), null without experiment
      * @return array<string, mixed> Formatted response
      */
-    private function formatResponse(array $recommendations, float $responseTime): array
-    {
+    private function formatResponse(
+        array $recommendations,
+        float $responseTime,
+        GenerateRecommendations $useCase,
+        ?AlgorithmAssignment $assignment,
+    ): array {
         $source = $this->detectSource($recommendations);
         $data = array_map(function (array $rec) use ($source): array {
             $productId = $rec['product_id'] ?? $rec['id'] ?? null;
@@ -217,7 +240,9 @@ class RecommendationController
             'meta' => [
                 'source' => $source,
                 // Story 8.1: active RecommendationStrategy (additive field).
-                'algorithm' => $this->generateRecommendations->getAlgorithmName(),
+                'algorithm' => $useCase->getAlgorithmName(),
+                // Story 8.2: A/B arm ("A"/"B"), null when A/B is off or there is no subject (additive field).
+                'ab_variant' => $assignment?->variant,
                 'count' => count($data),
                 'response_time_ms' => round($responseTime, 2),
                 'generated_at' => date('c'),

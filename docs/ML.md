@@ -52,23 +52,33 @@ Infrastructure  RubixNeighborFinder             único arquivo que importa Rubix
 | Confiança | [`ConfidenceCalculator`](../app/Domain/Recommendation/Utility/ConfidenceCalculator.php) | score → `high`/`medium`/`low` e rótulo em português |
 | Explicação | [`ExplanationGenerator`](../app/Domain/Recommendation/Service/ExplanationGenerator.php) | textos de `explanation` e `reasons` |
 | Configuração | [`RecommendationSettings`](../app/Domain/Recommendation/ValueObject/RecommendationSettings.php) + [`config/recommendation.php`](../config/recommendation.php) | algoritmo ativo, estratégia de fallback, mínimo de produtos, faixas de score |
-| HTTP | [`RecommendationController`](../app/Controller/RecommendationController.php) | `meta.algorithm` com o nome do algoritmo ativo, `DEFAULT_LIMIT = 10`, `MAX_LIMIT = 50` (acima disso o valor é truncado para 50, sem erro; `limit` que não seja inteiro positivo, `product_id` ausente ou inválido e `user_id` presente mas vazio ou não-string respondem 400), log `Slow recommendation` acima de 200 ms |
+| A/B testing | [`RecommendationExperiment`](../app/Application/Recommendation/RecommendationExperiment.php) + [`AbTestAssigner`](../app/Domain/Recommendation/Service/AbTestAssigner.php) | atribui a variante por hash, escolhe o caso de uso do braço, grava a amostra por algoritmo e expõe `results()` (Story 8.2) |
+| HTTP | [`RecommendationController`](../app/Controller/RecommendationController.php) | `meta.algorithm` com o algoritmo que atendeu (o do braço atribuído com A/B; senão o de `RECOMMENDATION_ALGORITHM`), `meta.ab_variant` (`"A"`, `"B"` ou `null`, Story 8.2), `DEFAULT_LIMIT = 10`, `MAX_LIMIT = 50` (acima disso o valor é truncado para 50, sem erro; `limit` que não seja inteiro positivo, `product_id` ausente ou inválido e `user_id` presente mas vazio ou não-string respondem 400), log `Slow recommendation` acima de 200 ms |
 
-A troca de implementação acontece em um único ponto, o container em [`config/bootstrap.php`](../config/bootstrap.php):
+O mapeamento nome → estratégia fica num único lugar, a closure `$strategyFor` em [`config/bootstrap.php`](../config/bootstrap.php) (excerto):
 
 ```php
-NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
-
-RecommendationStrategy::class => fn (ContainerInterface $c) => match (
-    $c->get(RecommendationSettings::class)->getAlgorithm()
-) {
+$strategyFor = static fn (ContainerInterface $c, string $algorithm): RecommendationStrategy => match ($algorithm) {
     KNNService::NAME => $c->get(KNNService::class),
     CollaborativeFilteringService::NAME => $c->get(CollaborativeFilteringService::class),
-    default => throw new \LogicException('Unsupported recommendation algorithm'),
-},
+    default => throw new \LogicException(sprintf(
+        'Algoritmo de recomendação sem estratégia registrada: "%s".',
+        $algorithm
+    )),
+};
+
+// ...
+NeighborFinderInterface::class => fn () => new RubixNeighborFinder(),
+
+RecommendationStrategy::class => fn (ContainerInterface $c) => $strategyFor(
+    $c,
+    $c->get(RecommendationSettings::class)->getAlgorithm()
+),
 ```
 
-O algoritmo vem de `RECOMMENDATION_ALGORITHM` (ver [Configuração](#configuração)). O caso de uso loga `info` `Recommendation algorithm used` com `algorithm`, `target_product_id` e `count` (itens devolvidos pela estratégia) sempre que a estratégia responde, e a API devolve o nome em `meta.algorithm`. Não há A/B testing nem divisão de usuários: um processo usa um algoritmo só.
+Ela é usada em dois pontos de seleção: a entrada `RecommendationStrategy::class` (o algoritmo padrão de `RECOMMENDATION_ALGORITHM`) e a factory lazy passada ao `RecommendationExperiment` (Story 8.2), que monta o caso de uso do braço atribuído pelo A/B. Para o algoritmo padrão, a factory reaproveita a entrada `GenerateRecommendations::class`; para o outro, cria um `GenerateRecommendations` com os mesmos colaboradores e `$strategyFor($c, $algorithm)`.
+
+O algoritmo vem de `RECOMMENDATION_ALGORITHM` (ver [Configuração](#configuração)). O caso de uso loga `info` `Recommendation algorithm used` com `algorithm`, `target_product_id` e `count` (itens devolvidos pela estratégia) sempre que a estratégia responde, e a API devolve o nome em `meta.algorithm`. Sem A/B, um processo usa um algoritmo só. Com `RECOMMENDATION_AB_TEST`, cada sujeito é dividido entre dois algoritmos (ver [A/B testing entre algoritmos](#ab-testing-entre-algoritmos)).
 
 ### Filtragem colaborativa item-a-item (`collaborative`)
 
@@ -85,6 +95,24 @@ Exemplo: sessões s1 {1,2,3}, s2 {1,2}, s3 {1,3}, s4 {2}. Para o produto 1: sim(
 - Se o event store falhar no `train()`, a exceção cai no fallback `ml_error` (seção 4).
 - A explicação (`Quem se interessou por %s também se interessou por este produto (%d%% de afinidade)`) e os `reasons` (`co_interaction` e, se a categoria for a mesma, `category`) vêm do `ExplanationGenerator`. O caso de uso preserva explicação e `reasons` que a estratégia já preencheu; só gera o texto do KNN quando `reasons` chega vazio.
 - Os itens continuam com `source: "ml"`. O score do CF (afinidade entre sessões) e o do KNN (distância de features) não são comparáveis entre si, e as faixas de `confidence_level` da seção 3 foram pensadas para o KNN.
+
+### A/B testing entre algoritmos
+
+Com `RECOMMENDATION_AB_TEST=knn,collaborative` (1º = variante A, 2º = variante B), cada requisição a `GET /api/recommendations` é atendida pelo algoritmo do braço do seu sujeito:
+
+- **Sujeito:** o `user_id` da query (sem espaços nas pontas), se vier; senão o `session_id` do cookie. Sem nenhum dos dois, vale `RECOMMENDATION_ALGORITHM` e a variante é `null`.
+- **Atribuição:** [`AbTestAssigner`](../app/Domain/Recommendation/Service/AbTestAssigner.php) é determinístico e sem estado: `hexdec(substr(hash('sha256', $sujeito), 0, 8)) % 2 === 0` → A, senão B. O mesmo sujeito cai sempre no mesmo braço, então nada é gravado na sessão nem em cookie. Com 1.000 ids distintos cada variante fica entre 45% e 55% (coberto por `AbTestAssignerTest`).
+- **Roteamento:** [`RecommendationExperiment`](../app/Application/Recommendation/RecommendationExperiment.php) recebe uma factory lazy (`Closure(string): GenerateRecommendations`, memoizada por algoritmo) montada em `config/bootstrap.php`. Só o caso de uso do braço sorteado é construído e treinado na requisição. O algoritmo padrão reaproveita a entrada `GenerateRecommendations` do container; o outro recebe os mesmos colaboradores, trocando só a estratégia.
+- **Resposta:** `meta.algorithm` é o algoritmo que de fato atendeu, e `meta.ab_variant` (campo aditivo) é `"A"`, `"B"` ou `null` (A/B desligado ou sem sujeito). O resto do contrato não muda.
+
+**Métricas por algoritmo.** Toda resposta, com ou sem A/B, grava uma amostra na chave do algoritmo que atendeu, derivada da resposta já formatada: número de itens, itens com `source: "ml"`, soma e contagem dos `score` numéricos, `meta.response_time_ms` e o sujeito (se houver). [`RedisAlgorithmMetricsRepository`](../app/Infrastructure/Redis/RedisAlgorithmMetricsRepository.php) soma isso no hash `ec-hub:ab-metrics:{algoritmo}` (`HINCRBY`/`HINCRBYFLOAT`) e conta sujeitos únicos no HyperLogLog `ec-hub:ab-metrics:{algoritmo}:subjects` (`PFADD`/`PFCOUNT`, contagem aproximada), tudo num único `MULTI/EXEC` e sem TTL. Falha ao gravar vira log `warning` `Não foi possível registrar métricas do algoritmo.` e nunca quebra a resposta.
+
+**Onde ver.** `RecommendationExperiment::results()` é o único ponto de leitura e alimenta as duas saídas, que mostram os mesmos números:
+
+- `GET /api/ab-tests/results` (JSON): `{"data": {"enabled", "variants", "algorithms": [...]}, "meta": {"generated_at"}}`. Cada item de `algorithms` tem `algorithm`, `variant`, `requests`, `unique_subjects`, `total_items`, `ml_items`, `ml_item_rate` (% de itens `ml`), `avg_response_time_ms` e `avg_score`. Os derivados são arredondados para 2 casas e ficam `null` sem dados. A lista traz sempre `knn` e `collaborative`, nessa ordem, mesmo zerados. Se o Redis falhar, a rota responde 500 pelo `ErrorHandler`.
+- `/metrics`: painel "Comparação de algoritmos (A/B)", com o status do teste em texto, uma tabela com uma linha por algoritmo e o link "Exportar resultados (JSON)". Se a configuração for inválida, o Redis estiver fora ou o resultado vier malformado, o painel mostra "Comparação indisponível", sem o link de export (o endpoint também falharia), e o resto da página continua funcionando.
+
+**Zerar o experimento:** apague as chaves no Redis, por exemplo `redis-cli --scan --pattern 'ec-hub:ab-metrics:*' | xargs redis-cli DEL`. Não há janela de tempo: os contadores acumulam desde a última limpeza.
 
 As convenções gerais (Domain sem biblioteca externa, configuração injetada, dinheiro) estão em [CODING-STANDARDS.md](CODING-STANDARDS.md).
 
@@ -265,12 +293,13 @@ Os padrões ficam em `RecommendationSettings::fromArray()`, lidos de [`config/re
 | Chave | Padrão | Variável de ambiente |
 |---|---|---|
 | `algorithm` | `knn` | `RECOMMENDATION_ALGORITHM` (`knn` ou `collaborative`) |
+| `ab_test` | vazio (A/B desligado) | `RECOMMENDATION_AB_TEST` (ex.: `knn,collaborative`) |
 | `fallback.strategy` | `hybrid` | `RECOMMENDATION_FALLBACK_STRATEGY` |
 | `fallback.min_products_for_ml` | `5` | `RECOMMENDATION_MIN_PRODUCTS_FOR_ML` |
 | `fallback.scores.category_min` / `category_max` | `60.0` / `70.0` | — |
 | `fallback.scores.popularity_min` / `popularity_max` | `50.0` / `60.0` | — |
 
-Uma estratégia de fallback desconhecida cai no ramo `default` do `switch`, que é o `hybrid`. Já o algoritmo é validado: `RECOMMENDATION_ALGORITHM` é normalizado (`trim` + minúsculas, vazio ou ausente vira `knn`) e qualquer valor fora de `knn`/`collaborative` lança `InvalidArgumentException` em `RecommendationSettings::fromArray()`, com a lista dos valores aceitos.
+Uma estratégia de fallback desconhecida cai no ramo `default` do `switch`, que é o `hybrid`. Já o algoritmo é validado: `RECOMMENDATION_ALGORITHM` é normalizado (`trim` + minúsculas, vazio ou ausente vira `knn`) e qualquer valor fora de `knn`/`collaborative` lança `InvalidArgumentException` em `RecommendationSettings::fromArray()`, com a lista dos valores aceitos. `RECOMMENDATION_AB_TEST` segue a mesma linha: cada item passa por `trim` + minúsculas, vazio desliga o A/B e, ligado, o valor precisa ter exatamente 2 algoritmos distintos; fora disso, `InvalidArgumentException` citando `RECOMMENDATION_AB_TEST` e os valores aceitos.
 
 ## 6. Personalização por histórico
 
@@ -357,6 +386,9 @@ Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **
 - **O CF lê o event store inteiro a cada requisição.** Pelo mesmo motivo do KNN (sem cache de modelo), cada requisição com `collaborative` faz três `getByEvent()` que trazem **todos** os eventos de interação já gravados, e recalcula a co-ocorrência. O custo cresce com o volume de eventos, sem janela de tempo nem limite, e não foi medido.
 - **CF herda o limite de 1.000 produtos.** O CF é treinado com o mesmo `findAll(1000, 0)` do KNN: eventos de produtos fora desse recorte são ignorados, e um produto-alvo fora dele sempre cai no fallback.
 - **CF depende de histórico.** Sem interações registradas (base nova, Redis limpo) o CF não recomenda nada e toda resposta vem do fallback. Os eventos também não expiram por idade: interesse antigo pesa igual a recente.
+- **O A/B compara operação, não resultado.** As métricas por algoritmo são volume, % de itens `ml`, latência e score médio. Não há CTR nem conversão (os eventos de clique e carrinho não são ligados à recomendação que os originou) e não há teste de significância estatística: a diferença entre os braços é só descritiva. O score médio mistura escalas diferentes (KNN × CF, ver seção 1), então não serve para dizer qual algoritmo acerta mais.
+- **O sujeito do A/B não é autenticado.** O `user_id` é um parâmetro de query sem autenticação: um cliente que o envia escolhe o próprio braço (basta testar valores até cair na variante desejada) e pode inflar `unique_subjects` mandando um `user_id` diferente a cada requisição. Um mesmo visitante que às vezes manda `user_id` e às vezes não é atribuído ora pelo `user_id`, ora pelo `session_id`, e pode cair nos dois braços. Trate os números do A/B como indicativos, não como prova.
+- **Métricas do A/B sem janela de tempo.** Os contadores no Redis não expiram e acumulam desde a última limpeza manual (`DEL` das chaves `ec-hub:ab-metrics:*`). Trocar as variantes sem zerar mistura os períodos. Sujeitos únicos vêm de um HyperLogLog, uma contagem aproximada.
 - **Sem métrica de qualidade de recomendação.** Os números acima são de desempenho (tempo), não de acerto. Não há precision@k nem cobertura de catálogo medidos.
 
 ## Roadmap (não implementado)
@@ -364,6 +396,7 @@ Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **
 Nada nesta seção existe no código hoje. Não há números para estes itens porque eles ainda não foram medidos.
 
 - **Cache do modelo serializado (Story 10.1):** persistir o índice treinado para não retreinar a cada requisição.
+- **Export Prometheus das métricas por algoritmo (Story 8.4):** pode reaproveitar `RecommendationExperiment::results()`.
 - **Métricas de qualidade (Epic 10):** precision@k e cobertura de catálogo das recomendações.
 
 ---

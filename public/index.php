@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Controller\AbTestResultsController;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
@@ -79,6 +80,7 @@ $router = new Router(
         'GET /debug/memory' => ['controller' => MemoryMonitoringController::class, 'action' => 'index', 'api' => true],
         'GET /health' => ['controller' => HealthCheckController::class, 'action' => 'index', 'api' => true],
         'GET /api/recommendations' => ['controller' => RecommendationController::class, 'action' => 'getRecommendations', 'api' => true],
+        'GET /api/ab-tests/results' => ['controller' => AbTestResultsController::class, 'action' => 'results', 'api' => true],
         'POST /api/events' => ['controller' => ProductInteractionController::class, 'action' => 'event', 'api' => true],
         'POST /api/cart/items' => ['controller' => ProductInteractionController::class, 'action' => 'addCartItem', 'api' => true],
     ],

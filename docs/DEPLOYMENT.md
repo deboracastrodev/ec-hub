@@ -82,6 +82,7 @@ A maioria dos valores é lida com `getenv('X') ?: default` e usa o default tamb�
 | `REDIS_PORT` | Não | `6379` | `6379` | `config/redis.php` |
 | `AUTH_REQUIRED` | Não | desligado | ver nota abaixo | `app/Controller/RecommendationController.php` |
 | `RECOMMENDATION_ALGORITHM` | Não | `knn` | `knn` | `config/recommendation.php` |
+| `RECOMMENDATION_AB_TEST` | Não | vazia (A/B desligado) | vazia, ou `knn,collaborative` para comparar | `config/recommendation.php` |
 | `RECOMMENDATION_FALLBACK_STRATEGY` | Não | `hybrid` | `hybrid` | `config/recommendation.php` |
 | `RECOMMENDATION_MIN_PRODUCTS_FOR_ML` | Não | `5` | `5` | `config/recommendation.php` |
 | `APP_ENV` | Não (convenção) | não é lida pelo código | `production` | só `tests/docker/*.sh`; mantida no `.env.example` por convenção |
@@ -95,6 +96,7 @@ Regras de validação que derrubam a aplicação:
 - **`AUTH_REQUIRED=true`** (sem diferenciar maiúsculas) só exige a **presença** de um header `Authorization` não vazio em `GET /api/recommendations`. Nenhum token é validado. Não trate isso como autenticação.
 - **`DB_PORT`** e **`RECOMMENDATION_MIN_PRODUCTS_FOR_ML`** são convertidas com `(int)` **sem validação**: um valor não numérico vira `0` sem erro (porta 0 derruba a conexão; limiar 0 faz o ML ser tentado com qualquer catálogo). Use inteiros positivos.
 - **`RECOMMENDATION_ALGORITHM`** aceita `knn` e `collaborative` (sem diferenciar maiúsculas, espaços nas pontas são ignorados; ausente ou vazia usa `knn`). Qualquer outro valor lança `InvalidArgumentException` com a lista de valores aceitos, em vez de cair no default em silêncio. A configuração é carregada sob demanda, então a falha aparece em **toda** requisição a `GET /api/recommendations`; as demais rotas não são afetadas.
+- **`RECOMMENDATION_AB_TEST`** liga o teste A/B entre dois algoritmos (Story 8.2). O valor é separado por vírgula e cada item passa por `trim` + minúsculas; o 1º é a variante A e o 2º a B (ex.: `knn,collaborative`). Vazia ou ausente desliga o A/B. Ligada, precisa ter **exatamente 2 nomes distintos** entre `knn` e `collaborative`; `knn`, `knn,knn`, `knn,svd` ou três itens lançam `InvalidArgumentException` citando `RECOMMENDATION_AB_TEST`. Como a do algoritmo, a falha aparece em toda requisição a `GET /api/recommendations` e `GET /api/ab-tests/results`; o `/metrics` continua no ar e mostra "Comparação indisponível". As métricas por algoritmo ficam no Redis, sem TTL (ver [ML.md](ML.md#ab-testing-entre-algoritmos)). O sujeito do A/B é o `user_id` da query, senão o `session_id`. O `user_id` não é autenticado: quem o envia escolhe o próprio braço e pode inflar `unique_subjects` variando o valor. Um visitante que ora manda `user_id`, ora não, pode cair nos dois braços. Não use o resultado do A/B como decisão sem considerar isso.
 - **`RECOMMENDATION_FALLBACK_STRATEGY`** aceita `hybrid`, `category_only` e `popularity_only`. Um valor desconhecido cai em `hybrid` sem erro.
 
 A lista canônica de variáveis é o [`.env.example`](../.env.example). O script `php bin/ci/check-env-vars.php` (roda no CI) garante que ela bate com os `getenv()` do código nos dois sentidos.
@@ -115,6 +117,7 @@ SESSION_TTL=1800
 SESSION_COOKIE_SECRET=<saida de: openssl rand -hex 32>
 AUTH_REQUIRED=false
 RECOMMENDATION_ALGORITHM=knn
+RECOMMENDATION_AB_TEST=
 RECOMMENDATION_FALLBACK_STRATEGY=hybrid
 RECOMMENDATION_MIN_PRODUCTS_FOR_ML=5
 ```
@@ -178,7 +181,7 @@ Segunda rodada, em 2026-09-23 23:29 (-03), depois da revisão. Nela foram execut
 
 ## 6. Migrations e dados
 
-A única tabela no MySQL é `products`. Sessões e eventos ficam no Redis.
+A única tabela no MySQL é `products`. Sessões, eventos e as métricas do A/B (`ec-hub:ab-metrics:*`) ficam no Redis.
 
 Rode a migration com a mesma imagem. O arquivo de ambiente é uma **cópia do da aplicação com `DB_USERNAME`/`DB_PASSWORD` de um usuário com privilégios de schema** (ver privilégios abaixo). O usuário da aplicação só tem `SELECT` e não consegue migrar:
 
@@ -207,7 +210,7 @@ docker run --rm --env-file /caminho/seguro/ec-hub-migrate.env ec-hub:<sha> php b
 - [ ] MySQL e Redis alcançáveis a partir do host do container.
 - [ ] **Backup do MySQL feito** antes de rodar a migration (ver [seção 9](#9-rollback)).
 - [ ] `php bin/migrate.php` executado via imagem, **sem** `seed` e **sem** `migrate-fresh`.
-- [ ] Proxy reverso com TLS na frente do `php -S`, bloqueando `/debug/memory` e `/metrics` se não devem ser públicos.
+- [ ] Proxy reverso com TLS na frente do `php -S`, bloqueando `/debug/memory`, `/metrics` e `/api/ab-tests/results` se não devem ser públicos.
 - [ ] Container rodando com `-d display_errors=0 -d log_errors=1` (ver [seção 5](#5-execução)).
 - [ ] Catálogo de produtos carregado na base (uma base nova fica vazia, ver [seção 6](#6-migrations-e-dados)).
 - [ ] Imagem da versão atual (a do rollback) ainda disponível no host ou no registry.
@@ -320,7 +323,7 @@ Problemas do ambiente de desenvolvimento (Docker não sobe, Composer, conexão M
 - **Roda como root:** o `Dockerfile` faz `chown www-data`, mas não tem `USER`.
 - **Sem `php.ini` ativo:** `display_errors=STDOUT` e `log_errors=Off` com o `CMD` padrão (mitigação na [seção 5](#5-execução)).
 - **`/health` sempre HTTP 200:** o estado está só no JSON. Orquestradores que olham apenas o código HTTP não detectam `unhealthy`.
-- **`/debug/memory` e `/metrics` são públicos**, sem autenticação. Bloqueie no proxy se não devem ficar expostos.
+- **`/debug/memory`, `/metrics` e `/api/ab-tests/results` são públicos**, sem autenticação. Bloqueie no proxy se não devem ficar expostos.
 - **`AUTH_REQUIRED=true` só exige a presença do header** `Authorization`. Não há validação de token.
 - **Migrations aditivas, sem down-migration.** `bin/seed.php` apaga `products`, e `bin/migrate-fresh.php` faz `DROP TABLE`.
 - **O KNN treina a cada requisição** que chega ao ML (não há cache do modelo). Detalhes em [docs/ML.md — Limitações conhecidas](ML.md#9-limitações-conhecidas).

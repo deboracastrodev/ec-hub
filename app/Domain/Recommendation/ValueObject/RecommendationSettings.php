@@ -24,8 +24,12 @@ final class RecommendationSettings
 
     private readonly string $algorithm;
 
+    /** @var array{A: string, B: string}|null Story 8.2: A/B variants (A = first, B = second), null when off */
+    private readonly ?array $abTestVariants;
+
     /**
-     * @throws \InvalidArgumentException When $algorithm is not one of ALGORITHMS
+     * @throws \InvalidArgumentException When $algorithm is not one of ALGORITHMS,
+     *         or $abTest is not empty and not exactly two distinct ALGORITHMS
      */
     public function __construct(
         private readonly string $fallbackStrategy,
@@ -34,7 +38,8 @@ final class RecommendationSettings
         private readonly float $categoryScoreMax,
         private readonly float $popularityScoreMin,
         private readonly float $popularityScoreMax,
-        string $algorithm = self::DEFAULT_ALGORITHM
+        string $algorithm = self::DEFAULT_ALGORITHM,
+        string $abTest = ''
     ) {
         $normalized = strtolower(trim($algorithm));
         if ($normalized === '') {
@@ -48,6 +53,42 @@ final class RecommendationSettings
             ));
         }
         $this->algorithm = $normalized;
+        $this->abTestVariants = self::parseAbTest($abTest);
+    }
+
+    /**
+     * Story 8.2: RECOMMENDATION_AB_TEST is "a,b" -- each item trimmed and
+     * lowercased. Empty turns A/B off; anything other than exactly two
+     * distinct ALGORITHMS fails fast.
+     *
+     * @return array{A: string, B: string}|null
+     * @throws \InvalidArgumentException
+     */
+    private static function parseAbTest(string $abTest): ?array
+    {
+        if (trim($abTest) === '') {
+            return null;
+        }
+
+        $names = array_map(
+            static fn (string $name): string => strtolower(trim($name)),
+            explode(',', $abTest)
+        );
+
+        $valid = count($names) === 2
+            && $names[0] !== $names[1]
+            && in_array($names[0], self::ALGORITHMS, true)
+            && in_array($names[1], self::ALGORITHMS, true);
+
+        if (! $valid) {
+            throw new \InvalidArgumentException(sprintf(
+                'RECOMMENDATION_AB_TEST inválido: "%s". Informe exatamente 2 algoritmos distintos separados por vírgula, dentre: %s.',
+                $abTest,
+                implode(', ', self::ALGORITHMS)
+            ));
+        }
+
+        return ['A' => $names[0], 'B' => $names[1]];
     }
 
     /**
@@ -74,7 +115,8 @@ final class RecommendationSettings
             isset($scores['category_max']) ? (float) $scores['category_max'] : 70.0,
             isset($scores['popularity_min']) ? (float) $scores['popularity_min'] : 50.0,
             isset($scores['popularity_max']) ? (float) $scores['popularity_max'] : 60.0,
-            isset($config['algorithm']) ? (string) $config['algorithm'] : self::DEFAULT_ALGORITHM
+            isset($config['algorithm']) ? (string) $config['algorithm'] : self::DEFAULT_ALGORITHM,
+            isset($config['ab_test']) ? (string) $config['ab_test'] : ''
         );
     }
 
@@ -82,6 +124,22 @@ final class RecommendationSettings
     public function getAlgorithm(): string
     {
         return $this->algorithm;
+    }
+
+    /** Story 8.2: whether RECOMMENDATION_AB_TEST splits subjects between two algorithms. */
+    public function isAbTestEnabled(): bool
+    {
+        return $this->abTestVariants !== null;
+    }
+
+    /**
+     * Story 8.2: variant => algorithm (A = first listed, B = second), or null when off.
+     *
+     * @return array{A: string, B: string}|null
+     */
+    public function getAbTestVariants(): ?array
+    {
+        return $this->abTestVariants;
     }
 
     public function getFallbackStrategy(): string
