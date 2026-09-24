@@ -1,0 +1,11 @@
+{
+  "name": "ec-hub-e2e",
+  "private": true,
+  "description": "Suíte E2E (Playwright) do ec-hub",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

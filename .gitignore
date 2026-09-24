@@ -56,3 +56,10 @@ _bmad/render/
 .php-cs-fixer.cache
 .bmad-loop/profiles/
 .bmad-loop/litellm-config.yaml
+
+# Node / Playwright (E2E)
+/node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset test-e2e e2e-install
 
 # Variáveis
 COMPOSE := docker compose
@@ -22,6 +22,8 @@ help: ## Show this help message
 	@echo "  make build     - Rebuild Docker images"
 	@echo "  make clean     - Limpa arquivos gerados"
 	@echo "  make install   - Instala dependências Composer"
+	@echo "  make e2e-install - Instala Playwright + Chromium (npm)"
+	@echo "  make test-e2e  - Roda a suíte E2E (Playwright) contra o app no ar"
 
 # Docker commands
 up: ## Start Docker containers
@@ -98,6 +100,14 @@ test-integration: ## Run integration tests only
 
 test-feature: ## Run feature tests only
 	vendor/bin/phpunit --testsuite=Feature
+
+# E2E (Playwright) -- exige o app no ar (make up + make setup).
+# E2E_BASE_URL sobrescreve o padrão http://localhost:9501.
+e2e-install: ## Install Playwright and Chromium
+	npm ci && npx playwright install chromium
+
+test-e2e: ## Run E2E tests (Playwright, headless Chromium)
+	npx playwright test
 
 # Maintenance
 clean: ## Clean generated files

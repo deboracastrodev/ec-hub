@@ -102,6 +102,18 @@ vendor/bin/phpunit --exclude-group db --exclude-group redis  # sem MySQL/Redis
 vendor/bin/phpunit --testsuite=Unit    # só unit
 ```
 
+### E2E (Playwright)
+
+Fluxos completos no navegador (Chromium headless) contra a aplicação no ar: navegação de produtos com a recomendação mudando, histórico em `/metrics` e `/health`. Exige Node.js e o stack rodando com banco migrado e semeado:
+
+```bash
+make up && make setup   # app em http://localhost:9501
+make e2e-install        # npm ci + Chromium do Playwright (uma vez)
+make test-e2e           # roda tests/e2e/ em modo headless
+```
+
+`E2E_BASE_URL` aponta a suíte para outra URL. Em falha, o screenshot da página fica em `test-results/`. O CI roda a mesma suíte no job `e2e`.
+
 Cobertura medida (não aspiracional — ver [docs/remediation-spec.md](docs/remediation-spec.md) para como foi apurada): **linhas ~81%, métodos ~69%**. O CI falha se a cobertura cair abaixo de 70%.
 
 ## Roadmap

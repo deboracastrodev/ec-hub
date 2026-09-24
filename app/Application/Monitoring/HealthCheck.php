@@ -41,7 +41,7 @@ final readonly class HealthCheck
     private function redisStatus(): string
     {
         try {
-            return ($this->redis)()->ping() === 'PONG' ? 'up' : 'down';
+            return (string) ($this->redis)()->ping() === 'PONG' ? 'up' : 'down';
         } catch (Throwable) {
             return 'down';
         }

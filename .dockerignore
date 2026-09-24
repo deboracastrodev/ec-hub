@@ -9,3 +9,9 @@ vendor/
 coverage.xml
 coverage.txt
 coverage/
+
+# Node / Playwright (E2E) -- tooling de host, fora da imagem
+node_modules/
+test-results/
+playwright-report/
+blob-report/

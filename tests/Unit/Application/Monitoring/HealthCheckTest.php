@@ -8,6 +8,7 @@ use App\Application\Monitoring\HealthCheck;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use Predis\Client;
+use Predis\Response\Status;
 use RuntimeException;
 
 final class HealthCheckTest extends TestCase
@@ -101,6 +102,20 @@ final class HealthCheckTest extends TestCase
         self::assertSame('down', $payload['services']['redis']['status']);
         self::assertSame(1, $redis->pings);
     }
+
+    public function testItReportsRedisUpWhenPredisReturnsAStatusResponse(): void
+    {
+        // Predis v3 responde PING com Predis\Response\Status (payload "PONG"), não string.
+        $pdo = $this->createMock(PDO::class);
+        $pdo->method('query')->willReturn($this->createMock(\PDOStatement::class));
+        $redis = new HealthCheckRedisClient(response: new Status('PONG'));
+
+        $payload = (new HealthCheck(fn (): PDO => $pdo, fn (): Client => $redis))->check()->toArray();
+
+        self::assertSame('healthy', $payload['status']);
+        self::assertSame('up', $payload['services']['redis']['status']);
+        self::assertSame(1, $redis->pings);
+    }
 }
 
 final class HealthCheckRedisClient extends Client
@@ -109,11 +124,11 @@ final class HealthCheckRedisClient extends Client
 
     public function __construct(
         private readonly ?\Throwable $failure = null,
-        private readonly string $response = 'PONG',
+        private readonly string|Status $response = 'PONG',
     ) {
     }
 
-    public function ping(): string
+    public function ping(): string|Status
     {
         ++$this->pings;
 
