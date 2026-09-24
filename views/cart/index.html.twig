@@ -1,0 +1,58 @@
+{% extends 'layout/base.html.twig' %}
+
+{% block title %}Carrinho - ec-hub{% endblock %}
+
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+<section class="cart" aria-labelledby="cart-title">
+    <h1 class="cart__title" id="cart-title">Seu carrinho</h1>
+
+    {% if status_message %}
+        <p class="cart__alert cart__alert--success" role="status">{{ status_message }}</p>
+    {% endif %}
+    {% if error_message %}
+        <p class="cart__alert cart__alert--error" role="alert">{{ error_message }}</p>
+    {% endif %}
+
+    {% if lines is empty %}
+        {% if not load_failed %}<p class="cart__empty">Seu carrinho está vazio.</p>{% endif %}
+        <a class="cart-button cart-button--primary" href="/products">Ver produtos</a>
+    {% else %}
+        <ul class="cart__lines" aria-label="Itens do carrinho">
+            {% for line in lines %}
+                <li class="cart-line">
+                    {% if line.image_url %}
+                        <img class="cart-line__image" src="{{ line.image_url }}" alt="" width="64" height="64" loading="lazy">
+                    {% endif %}
+                    <div class="cart-line__info">
+                        <a class="cart-line__name" href="/products/{{ line.slug|url_encode }}">{{ line.name }}</a>
+                        <p class="cart-line__price">Preço unitário: {{ line.unit_price|BRL }}</p>
+                    </div>
+
+                    <form class="cart-line__quantity" method="post" action="/cart/items/{{ line.product_id }}">
+                        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                        <label class="cart-line__label" for="cart-qty-{{ line.product_id }}">Quantidade de {{ line.name }}</label>
+                        <input class="cart-line__input" type="number" id="cart-qty-{{ line.product_id }}" name="quantity"
+                               value="{{ line.quantity }}" min="0" max="99" step="1" inputmode="numeric" required>
+                        <button class="cart-button cart-button--secondary" type="submit">Atualizar</button>
+                    </form>
+
+                    <p class="cart-line__subtotal">Subtotal: <strong>{{ line.subtotal|BRL }}</strong></p>
+
+                    <form class="cart-line__remove" method="post" action="/cart/items/{{ line.product_id }}/delete">
+                        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                        <button class="cart-button cart-button--danger" type="submit" aria-label="Remover {{ line.name }} do carrinho">Remover</button>
+                    </form>
+                </li>
+            {% endfor %}
+        </ul>
+
+        <div class="cart__summary">
+            <p class="cart__count">{{ item_count }} {{ item_count == 1 ? 'item' : 'itens' }}</p>
+            <p class="cart__total">Total: <strong>{{ total|BRL }}</strong></p>
+            <a class="cart-button cart-button--secondary" href="/products">Continuar comprando</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -65,8 +65,16 @@
 
                 <div class="product-detail__actions" aria-label="Ações do produto"{% if user_id %} data-user-id="{{ user_id }}"{% endif %}>
                     <button type="button" data-track-product="{{ product.id }}">Registrar interesse</button>
-                    <button type="button" data-add-cart="{{ product.id }}">Adicionar ao carrinho</button>
+                    {# Story 8.6: works without JS (POST /cart/items); with JS the submit goes to the API. #}
+                    <form class="product-detail__cart-form" method="post" action="/cart/items" data-add-cart-form>
+                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                        <input type="hidden" name="quantity" value="1">
+                        <input type="hidden" name="_csrf" value="{{ cart_csrf|default('') }}">
+                        {% if user_id %}<input type="hidden" name="user_id" value="{{ user_id }}">{% endif %}
+                        <button type="submit" data-add-cart="{{ product.id }}">Adicionar ao carrinho</button>
+                    </form>
                 </div>
+                <p class="product-detail__cart-status" role="status" data-cart-status></p>
 
                 <footer class="product-detail__meta">
                     <time class="product-detail__date" datetime="{{ product.created_at|date('c') }}">
@@ -79,22 +87,69 @@
 </main>
 <script>
 document.addEventListener('click', async (event) => {
-    const click = event.target.closest('[data-track-product]');
-    const cart = event.target.closest('[data-add-cart]');
-    if (!click && !cart) return;
-    const button = click || cart;
-    const productId = button.dataset.trackProduct || button.dataset.addCart;
-    const payload = cart ? {product_id: productId, quantity: 1} : {product_id: productId, interaction: 'click'};
+    const button = event.target.closest('[data-track-product]');
+    if (!button) return;
+    const payload = {product_id: button.dataset.trackProduct, interaction: 'click'};
     const userId = button.closest('.product-detail__actions').dataset.userId;
     if (userId) payload.user_id = userId;
     try {
-        await fetch(cart ? '/api/cart/items' : '/api/events', {
+        await fetch('/api/events', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload),
             credentials: 'same-origin'
         });
     } catch (_) {}
+});
+
+// Story 8.6: progressive enhancement of the "Adicionar ao carrinho" form. The
+// API publishes the same cart.item_added event; on any failure the native
+// form submit (POST /cart/items) takes over.
+document.addEventListener('submit', async (event) => {
+    const form = event.target.closest('[data-add-cart-form]');
+    if (!form) return;
+    event.preventDefault();
+    if (form.dataset.busy === 'true') return;
+    const button = form.querySelector('[type="submit"]');
+    const quantity = parseInt(form.elements.quantity.value, 10);
+    const payload = {product_id: form.elements.product_id.value, quantity: Number.isInteger(quantity) ? quantity : 1};
+    if (form.elements.user_id) payload.user_id = form.elements.user_id.value;
+    form.dataset.busy = 'true';
+    if (button) button.disabled = true;
+    let response = null;
+    let count = null;
+    try {
+        try {
+            response = await fetch('/api/cart/items', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+                credentials: 'same-origin'
+            });
+        } catch (_) {}
+        if (response && response.ok) {
+            try {
+                const body = await response.json();
+                count = body && body.data ? body.data.cart_item_count : null;
+            } catch (_) {}
+        }
+    } finally {
+        form.dataset.busy = 'false';
+        if (button) button.disabled = false;
+    }
+    if (!response || !response.ok) {
+        form.submit();
+        return;
+    }
+    const status = document.querySelector('[data-cart-status]');
+    if (!Number.isInteger(count)) {
+        // The event was recorded but the cart could not be saved (e.g. Redis down).
+        if (status) status.textContent = 'Não foi possível atualizar o carrinho agora. Tente de novo em instantes.';
+        return;
+    }
+    const link = document.querySelector('[data-cart-link]');
+    if (link) link.textContent = 'Carrinho: ' + count + (count === 1 ? ' item' : ' itens');
+    if (status) status.textContent = 'Produto adicionado ao carrinho.';
 });
 </script>
 {% endblock %}

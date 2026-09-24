@@ -9,8 +9,8 @@
     <div class="error-page__content">
         <h1 class="error-page__code">403</h1>
         <p class="error-page__message">{{ message ?? 'Acesso negado' }}</p>
-        <a href="/admin/products" class="error-page__link">
-            &larr; Voltar ao painel
+        <a href="{{ back_url ?? '/admin/products' }}" class="error-page__link">
+            &larr; {{ back_label ?? 'Voltar ao painel' }}
         </a>
     </div>
 </div>

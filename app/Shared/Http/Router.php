@@ -13,7 +13,9 @@ namespace App\Shared\Http;
  *   separately -- captures become $params, in order
  *
  * Either shape may carry `'admin' => true` (Story 8.3): public/index.php then
- * dispatches it with a Request and expects a Response back.
+ * dispatches it with a Request and expects a Response back. `'request' => true`
+ * (Story 8.6) asks for the same Request/Response dispatch without the admin
+ * headers.
  *
  * Every match carries a route label for the HTTP metrics (Story 8.4): the
  * exact route's path, or the pattern with its groups replaced by {param}.
@@ -21,8 +23,8 @@ namespace App\Shared\Http;
 final class Router
 {
     /**
-     * @param array<string, array{controller: class-string, action: string, api?: bool, admin?: bool}> $exactRoutes
-     * @param array<string, array{method: string, controller: class-string, action: string, admin?: bool}> $patternRoutes
+     * @param array<string, array{controller: class-string, action: string, api?: bool, admin?: bool, request?: bool}> $exactRoutes
+     * @param array<string, array{method: string, controller: class-string, action: string, admin?: bool, request?: bool}> $patternRoutes
      */
     public function __construct(
         private readonly array $exactRoutes,
@@ -40,7 +42,8 @@ final class Router
                 [],
                 $route['api'] ?? false,
                 $route['admin'] ?? false,
-                $uri
+                $uri,
+                $route['request'] ?? false
             );
         }
 
@@ -56,7 +59,8 @@ final class Router
                     array_slice($matches, 1),
                     false,
                     $route['admin'] ?? false,
-                    self::patternLabel($pattern)
+                    self::patternLabel($pattern),
+                    $route['request'] ?? false
                 );
             }
         }

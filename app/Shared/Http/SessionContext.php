@@ -57,6 +57,23 @@ final class SessionContext
         return $this->sessionId = $sessionId;
     }
 
+    /**
+     * The current session id -- memoized, or from a valid signed cookie pair --
+     * without ever creating a session or emitting a cookie (Story 8.6: GET
+     * /cart and the header counter must not open sessions).
+     */
+    public function currentId(): ?string
+    {
+        if ($this->sessionId !== null) {
+            return $this->sessionId;
+        }
+
+        $candidate = $_COOKIE[self::COOKIE_NAME] ?? null;
+        $signature = $_COOKIE[self::SIGNATURE_COOKIE_NAME] ?? null;
+
+        return $this->isValidSessionPair($candidate, $signature) ? $this->sessionId = $candidate : null;
+    }
+
     private function isValidSessionPair(mixed $candidate, mixed $signature): bool
     {
         if (! is_string($candidate) || preg_match(self::HEX64_PATTERN, $candidate) !== 1) {

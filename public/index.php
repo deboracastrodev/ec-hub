@@ -6,6 +6,7 @@ use App\Application\Monitoring\HttpRequestRecorder;
 use App\Controller\AbTestResultsController;
 use App\Controller\Admin\AdminAuthController;
 use App\Controller\Admin\AdminProductController;
+use App\Controller\CartController;
 use App\Controller\Exceptions\InvalidRequestException;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
@@ -122,12 +123,17 @@ $router = new Router(
         'GET /admin/products' => ['controller' => AdminProductController::class, 'action' => 'index', 'admin' => true],
         'GET /admin/products/new' => ['controller' => AdminProductController::class, 'action' => 'newForm', 'admin' => true],
         'POST /admin/products' => ['controller' => AdminProductController::class, 'action' => 'create', 'admin' => true],
+        // Story 8.6: cart page (Request in, Response out, without the admin headers).
+        'GET /cart' => ['controller' => CartController::class, 'action' => 'index', 'request' => true],
+        'POST /cart/items' => ['controller' => CartController::class, 'action' => 'add', 'request' => true],
     ],
     [
         '/products/([A-Za-z0-9-]+)' => ['method' => 'GET', 'controller' => ProductController::class, 'action' => 'show'],
         '/admin/products/(\d+)/edit' => ['method' => 'GET', 'controller' => AdminProductController::class, 'action' => 'edit', 'admin' => true],
         '/admin/products/(\d+)' => ['method' => 'POST', 'controller' => AdminProductController::class, 'action' => 'update', 'admin' => true],
         '/admin/products/(\d+)/delete' => ['method' => 'POST', 'controller' => AdminProductController::class, 'action' => 'delete', 'admin' => true],
+        '/cart/items/(\d+)' => ['method' => 'POST', 'controller' => CartController::class, 'action' => 'update', 'request' => true],
+        '/cart/items/(\d+)/delete' => ['method' => 'POST', 'controller' => CartController::class, 'action' => 'remove', 'request' => true],
     ]
 );
 
@@ -159,10 +165,10 @@ try {
     // ErrorHandler and is still counted in the HTTP metrics.
     $controller = $container->get($matchedRoute->controller);
 
-    if ($matchedRoute->isAdmin) {
+    if ($matchedRoute->isAdmin || $matchedRoute->usesRequest) {
         $response = $controller->$action(new Request($method, $matchedRoute->params, $_GET, $_POST));
         if (! $response instanceof Response) {
-            throw new \LogicException(sprintf('Admin action %s::%s must return a Response.', $matchedRoute->controller, $action));
+            throw new \LogicException(sprintf('Action %s::%s must return a Response.', $matchedRoute->controller, $action));
         }
     } elseif ($matchedRoute->params !== []) {
         $output = $controller->$action((string) $matchedRoute->params[0], $_GET);

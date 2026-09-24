@@ -47,6 +47,16 @@
         <div class="header__container">
             <a href="/" class="header__logo">ec-hub</a>
 
+            {# Story 8.6: cart counter; plain "Carrinho" when the count is unknown (no Redis). #}
+            {% set cart_count = cart_summary is defined ? cart_summary.itemCount : null %}
+            <a href="/cart" class="header__cart" data-cart-link>
+                {%- if cart_count is null -%}
+                    Carrinho
+                {%- else -%}
+                    Carrinho: {{ cart_count }} {{ cart_count == 1 ? 'item' : 'itens' }}
+                {%- endif -%}
+            </a>
+
             {# Mobile Menu Button #}
             <button class="header__menu-btn"
                     aria-label="Abrir menu"

@@ -60,6 +60,35 @@ final class RouterTest extends TestCase
         self::assertFalse($show->isAdmin);
     }
 
+    public function testRequestFlagOnExactAndPatternRoutes(): void
+    {
+        $router = new Router(
+            [
+                'GET /cart' => ['controller' => \stdClass::class, 'action' => 'index', 'request' => true],
+                'GET /products' => ['controller' => \stdClass::class, 'action' => 'index'],
+            ],
+            [
+                '/cart/items/(\d+)/delete' => ['method' => 'POST', 'controller' => \stdClass::class, 'action' => 'remove', 'request' => true],
+            ]
+        );
+
+        $cart = $router->match('GET', '/cart');
+        self::assertNotNull($cart);
+        self::assertTrue($cart->usesRequest);
+        self::assertFalse($cart->isAdmin);
+        self::assertFalse($cart->isApi);
+
+        $remove = $router->match('POST', '/cart/items/7/delete');
+        self::assertNotNull($remove);
+        self::assertTrue($remove->usesRequest);
+        self::assertFalse($remove->isAdmin);
+        self::assertSame(['7'], $remove->params);
+        self::assertSame('/cart/items/{param}/delete', $remove->route);
+
+        self::assertFalse($router->match('GET', '/products')?->usesRequest);
+        self::assertFalse($this->router()->match('GET', '/admin/products')?->usesRequest);
+    }
+
     public function testMethodAndPatternMustMatch(): void
     {
         self::assertNull($this->router()->match('GET', '/admin/products/42'));

@@ -202,6 +202,9 @@ final class AdminProductControllerTest extends AdminControllerTestCase
             $forbidden = $controller->create(new Request('POST', [], [], $form));
             self::assertSame(403, $forbidden->status);
             self::assertAdminSecurityHeaders($forbidden);
+            // Story 8.6: the 403 page keeps its default back link for the admin.
+            self::assertStringContainsString('href="/admin/products"', $forbidden->body);
+            self::assertStringContainsString('Voltar ao painel', $forbidden->body);
             self::assertSame(403, $controller->update(new Request('POST', ['1'], [], $form))->status);
             self::assertSame(403, $controller->delete(new Request('POST', ['1'], [], $form))->status);
         }

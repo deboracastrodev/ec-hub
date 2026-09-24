@@ -60,6 +60,10 @@ final class ProductInteractionController
         if (isset($event['user_id'])) {
             $public['user_id'] = $event['user_id'];
         }
+        // Story 8.6: additive field, only when the cart was actually written.
+        if (isset($event['cart_item_count'])) {
+            $public['cart_item_count'] = $event['cart_item_count'];
+        }
 
         return $public;
     }

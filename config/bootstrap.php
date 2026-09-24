@@ -9,6 +9,8 @@ declare(strict_types=1);
  * public/index.php should only call this and delegate to the router.
  */
 
+use App\Application\Cart\CartSummary;
+use App\Application\Cart\ManageCart;
 use App\Application\Event\TrackProductInteraction;
 use App\Application\Monitoring\ExportMetrics;
 use App\Application\Monitoring\HealthCheck;
@@ -25,6 +27,7 @@ use App\Application\SEO\Service\MetaTagsService;
 use App\Controller\AbTestResultsController;
 use App\Controller\Admin\AdminAuthController;
 use App\Controller\Admin\AdminProductController;
+use App\Controller\CartController;
 use App\Controller\HealthCheckController;
 use App\Controller\MemoryMonitoringController;
 use App\Controller\MetricsController;
@@ -61,6 +64,7 @@ use App\Shared\Container\Container;
 use App\Shared\Http\AdminAuth;
 use App\Shared\Http\AdminCredentials;
 use App\Shared\Http\SessionContext;
+use App\Shared\Http\SessionCsrf;
 use Predis\Client;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
@@ -124,7 +128,28 @@ return new Container([
         );
     },
 
-    Environment::class => fn () => require __DIR__ . '/twig.php',
+    // Story 8.6: every page's header shows the cart item count. It reads the
+    // session only when a valid session cookie already exists (currentId()
+    // never opens one), through its own client with short timeouts, and
+    // degrades to a plain "Carrinho" link on any failure (CartSummary).
+    Environment::class => function (ContainerInterface $c) use ($sessionConfig): Environment {
+        /** @var Environment $twig */
+        $twig = require __DIR__ . '/twig.php';
+        $twig->addGlobal('cart_summary', new CartSummary(
+            fn (): ?string => $c->get(SessionContext::class)->currentId(),
+            fn (): SessionRepositoryInterface => new SessionRepository(
+                new Client([
+                    'scheme' => 'tcp',
+                    ...require __DIR__ . '/redis.php',
+                    'timeout' => 0.25,
+                    'read_write_timeout' => 0.25,
+                ]),
+                $sessionConfig['ttl']
+            )
+        ));
+
+        return $twig;
+    },
 
     // The single place config/recommendation.php is read from disk (R3.5).
     RecommendationSettings::class => fn () => RecommendationSettings::fromArray(
@@ -161,6 +186,9 @@ return new Container([
 
     SessionContext::class => fn () => new SessionContext($sessionConfig['cookie_secret']),
 
+    // Story 8.6: CSRF token of the visitor forms (cart), bound to the session id.
+    SessionCsrf::class => fn () => new SessionCsrf($sessionConfig['cookie_secret']),
+
     // Story 8.3: single-admin panel. Invalid/missing credentials only disable
     // /admin (fail-closed); config/admin.php never throws.
     AdminCredentials::class => fn () => AdminCredentials::fromArray(require __DIR__ . '/admin.php'),
@@ -195,6 +223,20 @@ return new Container([
         $c->get(LoggerInterface::class)
     ),
 
+    // Story 8.6: cart page. Adding still goes through TrackProductInteraction.
+    ManageCart::class => fn (ContainerInterface $c) => new ManageCart(
+        $c->get(SessionRepositoryInterface::class),
+        $c->get(ProductRepositoryInterface::class)
+    ),
+
+    CartController::class => fn (ContainerInterface $c) => new CartController(
+        $c->get(ManageCart::class),
+        $c->get(TrackProductInteraction::class),
+        $c->get(SessionContext::class),
+        $c->get(SessionCsrf::class),
+        $c->get(Environment::class)
+    ),
+
     ProductRepositoryInterface::class => fn (ContainerInterface $c) => new ProductRepository(
         $c->get(PDO::class)
     ),
@@ -220,7 +262,8 @@ return new Container([
         $c->get(Environment::class),
         $c->get(MetaTagsService::class),
         $c->get(TrackProductInteraction::class),
-        $c->get(SessionContext::class)
+        $c->get(SessionContext::class),
+        $c->get(SessionCsrf::class)
     ),
 
     ProductInteractionController::class => fn (ContainerInterface $c) => new ProductInteractionController(

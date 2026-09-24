@@ -39,8 +39,43 @@ final class ProductInteractionControllerTest extends TestCase
 
         self::assertSame('product.clicked', $click['data']['event']);
         self::assertSame(2, $cart['data']['quantity']);
+        self::assertSame(2, $cart['data']['cart_item_count']);
+        self::assertArrayNotHasKey('cart_item_count', $click['data']);
+        self::assertSame(
+            ['event', 'product_id', 'timestamp', 'quantity', 'user_id', 'cart_item_count'],
+            array_keys($cart['data'])
+        );
+        self::assertSame(99, $controller->addCartItem(['product_id' => 7, 'quantity' => 500])['data']['cart_item_count']);
         self::assertArrayNotHasKey('session_id', $click['data']);
         self::assertArrayNotHasKey('session_id', $cart['data']);
+    }
+
+    public function testOmitsCartItemCountWhenTheCartCouldNotBeWritten(): void
+    {
+        $_COOKIE[SessionContext::COOKIE_NAME] = str_repeat('a', 64);
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac(
+            'sha256',
+            $_COOKIE[SessionContext::COOKIE_NAME],
+            'phpunit-only-session-cookie-secret-32'
+        );
+        $products = $this->createStub(ProductRepositoryInterface::class);
+        $products->method('findById')->willReturn($this->createStub(Product::class));
+        $sessions = $this->createStub(SessionRepositoryInterface::class);
+        $sessions->method('get')->willThrowException(new \RuntimeException('Redis fora'));
+        $tracker = new TrackProductInteraction(
+            $products,
+            $sessions,
+            $this->createStub(EventHistoryRepositoryInterface::class),
+            $this->createStub(EventStoreInterface::class),
+            $this->createStub(EventPublisherInterface::class),
+            new NullLogger()
+        );
+        $controller = new ProductInteractionController($tracker, new SessionContext('phpunit-only-session-cookie-secret-32'));
+
+        $cart = $controller->addCartItem(['product_id' => 7, 'quantity' => 1]);
+
+        self::assertSame('cart.item_added', $cart['data']['event']);
+        self::assertArrayNotHasKey('cart_item_count', $cart['data']);
     }
 
     public function testRejectsInvalidPayloadWithoutPublishing(): void

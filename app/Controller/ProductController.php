@@ -9,6 +9,7 @@ use App\Application\Product\GetProductDetail;
 use App\Application\Product\GetProductList;
 use App\Application\SEO\Service\MetaTagsService;
 use App\Shared\Http\SessionContext;
+use App\Shared\Http\SessionCsrf;
 
 /**
  * Product Controller
@@ -30,6 +31,7 @@ class ProductController
         ?MetaTagsService $metaTagsService = null,
         private readonly ?TrackProductInteraction $tracker = null,
         private readonly ?SessionContext $session = null,
+        private readonly ?SessionCsrf $csrf = null,
     ) {
         $this->getProductList = $getProductList;
         $this->getProductDetail = $getProductDetail;
@@ -87,9 +89,17 @@ class ProductController
         $userId = isset($queryParams['user_id']) && is_string($queryParams['user_id']) && trim($queryParams['user_id']) !== ''
             ? trim($queryParams['user_id'])
             : null;
-        if ($this->tracker !== null && $this->session !== null) {
+        $sessionId = null;
+        if ($this->session !== null) {
             try {
-                $this->tracker->track('view', $this->session->id(), (int) $product['id'], $userId);
+                $sessionId = $this->session->id();
+            } catch (\Throwable $exception) {
+                error_log('[ProductController] Falha ao abrir a sessão: ' . $exception->getMessage());
+            }
+        }
+        if ($this->tracker !== null && $sessionId !== null) {
+            try {
+                $this->tracker->track('view', $sessionId, (int) $product['id'], $userId);
             } catch (\Throwable $exception) {
                 error_log('[ProductController] Falha ao registrar visualização: ' . $exception->getMessage());
             }
@@ -109,6 +119,8 @@ class ProductController
             'product' => $product,
             'meta' => $meta,
             'user_id' => $userId,
+            // Story 8.6: token for the no-JS "Adicionar ao carrinho" form.
+            'cart_csrf' => $this->csrf !== null && $sessionId !== null ? $this->csrf->token($sessionId) : '',
         ]);
     }
 }

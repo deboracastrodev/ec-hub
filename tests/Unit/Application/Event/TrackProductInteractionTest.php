@@ -34,6 +34,61 @@ final class TrackProductInteractionTest extends TestCase
         self::assertSame(['7' => 2], $session->get('session', 'cart.items'));
     }
 
+    public function testCartReturnsItemCountClampsAndKeepsItOutOfThePublishedEvent(): void
+    {
+        $products = $this->createStub(ProductRepositoryInterface::class);
+        $products->method('findById')->willReturn($this->createStub(Product::class));
+        $published = [];
+        $publisher = $this->createMock(EventPublisherInterface::class);
+        $publisher->expects(self::exactly(2))->method('publish')
+            ->willReturnCallback(static function (string $name, array $event) use (&$published): void {
+                $published[] = $event;
+            });
+        $stored = [];
+        $eventStore = $this->createStub(EventStoreInterface::class);
+        $eventStore->method('append')->willReturnCallback(static function (array $envelope) use (&$stored): void {
+            $stored[] = $envelope;
+        });
+        $history = new InMemoryEventHistoryRepository();
+        $session = new InMemorySessionRepository();
+        $session->save('session', 'cart.items', ['3' => 1, '7' => 98, 'x' => 'y']);
+        $tracker = new TrackProductInteraction($products, $session, $history, $eventStore, $publisher, new NullLogger());
+
+        $first = $tracker->track('cart', 'session', 7, null, 5);
+        $second = $tracker->track('cart', 'session', 4, null, 2);
+
+        self::assertSame(100, $first['cart_item_count']);
+        self::assertSame(102, $second['cart_item_count']);
+        self::assertSame(['3' => 1, '7' => 99, '4' => 2], $session->get('session', 'cart.items'));
+        foreach ($published as $event) {
+            self::assertArrayNotHasKey('cart_item_count', $event);
+        }
+        foreach ($stored as $envelope) {
+            self::assertArrayNotHasKey('cart_item_count', $envelope['data']);
+        }
+        foreach ($history->getBySession('session') as $event) {
+            self::assertArrayNotHasKey('cart_item_count', $event);
+        }
+        self::assertSame(5, $published[0]['quantity']);
+    }
+
+    public function testViewAndClickDoNotCarryCartItemCount(): void
+    {
+        $products = $this->createStub(ProductRepositoryInterface::class);
+        $products->method('findById')->willReturn($this->createStub(Product::class));
+        $tracker = new TrackProductInteraction(
+            $products,
+            new InMemorySessionRepository(),
+            new InMemoryEventHistoryRepository(),
+            $this->createStub(EventStoreInterface::class),
+            $this->createStub(EventPublisherInterface::class),
+            new NullLogger()
+        );
+
+        self::assertArrayNotHasKey('cart_item_count', $tracker->track('view', 'session', 7));
+        self::assertArrayNotHasKey('cart_item_count', $tracker->track('click', 'session', 7));
+    }
+
     public function testTracksViewAndClickWithRequiredEnvelopeData(): void
     {
         $products = $this->createMock(ProductRepositoryInterface::class);
@@ -84,6 +139,7 @@ final class TrackProductInteractionTest extends TestCase
         $eventStore->expects(self::once())->method('append')
             ->willReturnCallback(static function () use (&$calls): void {
                 $calls[] = 'store';
+
                 throw new \RuntimeException('Event store indisponível');
             });
         $publisher = $this->createMock(EventPublisherInterface::class);
@@ -127,6 +183,8 @@ final class TrackProductInteractionTest extends TestCase
 
         self::assertSame('cart.item_added', $event['event']);
         self::assertSame(2, $event['quantity']);
+        self::assertArrayHasKey('cart_item_count', $event);
+        self::assertNull($event['cart_item_count']);
     }
 
     public function testRejectsUnknownProductBeforePublishing(): void

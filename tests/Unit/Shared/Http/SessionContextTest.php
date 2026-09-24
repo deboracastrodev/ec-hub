@@ -92,6 +92,50 @@ final class SessionContextTest extends TestCase
         self::assertSame(2, $emissions);
     }
 
+    public function testCurrentIdNeverCreatesASessionOrEmitsCookies(): void
+    {
+        $emissions = 0;
+        $context = new SessionContext(self::COOKIE_SECRET, static function () use (&$emissions): bool {
+            ++$emissions;
+
+            return true;
+        });
+
+        self::assertNull($context->currentId());
+
+        $_COOKIE[SessionContext::COOKIE_NAME] = str_repeat('d', 64);
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = str_repeat('a', 64);
+        self::assertNull($context->currentId());
+
+        $_COOKIE[SessionContext::COOKIE_NAME] = 'not-a-session-id';
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = 'not-a-signature';
+        self::assertNull($context->currentId());
+        self::assertSame(0, $emissions);
+    }
+
+    public function testCurrentIdReturnsAValidCookieOrTheIdCreatedInThisRequest(): void
+    {
+        $id = str_repeat('c', 64);
+        $_COOKIE[SessionContext::COOKIE_NAME] = $id;
+        $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME] = hash_hmac('sha256', $id, self::COOKIE_SECRET);
+        $emissions = 0;
+        $emitter = static function () use (&$emissions): bool {
+            ++$emissions;
+
+            return true;
+        };
+
+        $context = new SessionContext(self::COOKIE_SECRET, $emitter);
+        self::assertSame($id, $context->currentId());
+        self::assertSame($id, $context->id());
+
+        unset($_COOKIE[SessionContext::COOKIE_NAME], $_COOKIE[SessionContext::SIGNATURE_COOKIE_NAME]);
+        $fresh = new SessionContext(self::COOKIE_SECRET, $emitter);
+        $created = $fresh->id();
+        self::assertSame($created, $fresh->currentId());
+        self::assertSame(2, $emissions);
+    }
+
     public function testRejectsAnInvalidSecretBeforeEmittingCookies(): void
     {
         $this->expectException(\InvalidArgumentException::class);

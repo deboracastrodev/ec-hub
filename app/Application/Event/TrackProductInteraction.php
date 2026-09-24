@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Application\Event;
 
 use App\Controller\Exceptions\InvalidRequestException;
+use App\Domain\Cart\Model\Cart;
 use App\Domain\Event\EventHistoryRepositoryInterface;
 use App\Domain\Event\EventPublisherInterface;
 use App\Domain\Event\EventStoreInterface;
@@ -28,7 +29,14 @@ final class TrackProductInteraction
     ) {
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Returns the event as recorded. For 'cart' the array also carries
+     * cart_item_count (the cart's item count after the write, or null when the
+     * cart could not be persisted); that key is never part of the stored or
+     * published event.
+     *
+     * @return array<string, mixed>
+     */
     public function track(
         string $interaction,
         string $sessionId,
@@ -56,34 +64,45 @@ final class TrackProductInteraction
         if ($normalizedUserId !== '') {
             $event['user_id'] = $normalizedUserId;
         }
+        $cartItemCount = null;
         if ($interaction === 'cart') {
             $event['quantity'] = $quantity;
-            $this->persistCart($sessionId, $productId, (int) $quantity);
+            $cartItemCount = $this->persistCart($sessionId, $productId, (int) $quantity);
         }
 
         $this->persistTracking($sessionId, $event);
         $this->persistEvent($event);
         $this->publish($event);
 
+        if ($interaction === 'cart') {
+            return $event + ['cart_item_count' => $cartItemCount];
+        }
+
         return $event;
     }
 
-    private function persistCart(string $sessionId, int $productId, int $quantity): void
+    /** @return int|null the cart's item count after the write; null when it failed */
+    private function persistCart(string $sessionId, int $productId, int $quantity): ?int
     {
         // O carrinho vive no Redis de sessão: se ele estiver fora, o carrinho não tem
         // onde persistir. Decisão explícita (retro do Epic 4): a interação continua
         // válida — o erro é registrado e o evento segue para histórico e publicação,
         // com a resposta de sucesso degradada (sem carrinho atualizado).
         try {
-            $items = $this->sessions->get($sessionId, 'cart.items');
-            $items = is_array($items) ? $items : [];
-            $items[(string) $productId] = ((int) ($items[(string) $productId] ?? 0)) + $quantity;
-            $this->sessions->save($sessionId, 'cart.items', $items);
+            // Story 8.6: the Cart model sanitizes the stored map and clamps the
+            // quantity at Cart::MAX_QUANTITY; the session format is unchanged.
+            $cart = Cart::fromSession($this->sessions->get($sessionId, Cart::SESSION_FIELD))
+                ->add($productId, $quantity);
+            $this->sessions->save($sessionId, Cart::SESSION_FIELD, $cart->toSession());
+
+            return $cart->itemCount();
         } catch (\Throwable $exception) {
             $this->logger->error('Não foi possível persistir o carrinho da sessão.', [
                 'event' => self::EVENTS['cart'],
                 'error' => $exception->getMessage(),
             ]);
+
+            return null;
         }
     }
 
