@@ -190,3 +190,142 @@ Nota de contexto: o Redis removido em R5.5 voltou em [`51b202d`](https://github.
 | Branch protection em `main` (exigir CI verde para merge) | aberto | API responde `404 Branch not protected` |
 | R4.4: modelo KNN treinado a cada requisição | não feito, `superseded-by-10-1`: coberto pela story 10-1 (cache do modelo treinado), ainda em backlog | `sprint-status.yaml` |
 | DoD "CI verde em `main`, barrando estilo, teste e documentação" | cumprido só em parte: o CI roda em push e PR e acusa a falha, mas sem branch protection não impede merge nem push direto | seção "O estado do CI" acima |
+
+---
+
+## Desafio 2: Usar o Rubix ML de Verdade
+
+**Resumo.** O projeto se vendia como "KNN usando Rubix ML", mas o `KNNService` fazia one-hot, min-max e busca de vizinhos à mão e só chamava o Rubix para `Euclidean::compute()`. Esse único uso ainda ficava dentro do Domain, e um bug limitava o ML a 4 recomendações por resposta, qualquer que fosse o `limit`. A reescrita de [`4a3f37d`](https://github.com/deboracastrodev/ec-hub/commit/4a3f37d39dcd03f23abe56a9c275d01d4a24f76d) (R4.1 + R4.2 + R4.3) passou o pipeline para a API real do Rubix (`Labeled` → `OneHotEncoder` → `MinMaxNormalizer` → `BallTree::nearest()`), atrás de uma porta do Domain, e corrigiu o teto de 4. O plano previa guardar as saídas antigas como fixtures antes da reescrita. **Isso não foi feito**: a comparação before/after abaixo foi reconstruída depois, em 2026-09-23, com um script reproduzível. No mesmo catálogo determinístico, o conjunto de recomendações ficou igual em 118 de 120 alvos, e as 2 diferenças (e as 25 de ordem) são empates de distância (diferença menor que 1e-9). O que continua em aberto: o modelo ainda é treinado a cada requisição (R4.4) e a busca depende de um método marcado `@internal` no Rubix.
+
+### Problema
+
+Estado imediatamente antes da reescrita, no pai de `4a3f37d` ([`4bd2ca0`](https://github.com/deboracastrodev/ec-hub/commit/4bd2ca0b26726899692c41dec9b3bb5b1a49d4c5)). Para ler o arquivo: `git show 4a3f37d^:app/Domain/Recommendation/Service/KNNService.php`.
+
+| Problema | Evidência |
+|---|---|
+| **R4.2: o ML era escrito à mão.** One-hot em `extractSingleProductFeatures()`, min-max em `normalizeFeatures()`/`normalizeSingleFeature()`, busca por força bruta em `calculateDistances()` + `asort()` + `array_slice()`. O Rubix aparecia uma vez: `Euclidean::compute()`, em `:141`. O docblock da classe dizia "Uses manual KNN implementation for PHP 7.4 compatibility" (histórico: alvo PHP 7.4, abandonado no ADR-002). | arquivo acima; mensagem de [`4a3f37d`](https://github.com/deboracastrodev/ec-hub/commit/4a3f37d39dcd03f23abe56a9c275d01d4a24f76d) |
+| **O peso da dependência não se pagava.** Para uma chamada de distância euclidiana, o `rubix/ml` 2.5.5 traz **17 pacotes distintos** na árvore de dependências (7 do `amphp`, `rubix/tensor`, `wamania/php-stemmer` e o `joomla/string` que ele puxa, `andrewdalpino/okbloomer`, `psr/log`, `symfony/deprecation-contracts` e 4 polyfills da Symfony). Desses, 13 não têm outro consumidor no projeto (contagem feita lendo a saída do `composer why` de cada pacote, segundo comando abaixo); os outros 4 (`psr/log`, `symfony/deprecation-contracts`, `symfony/polyfill-mbstring`, `symfony/polyfill-php80`) também são exigidos pelo próprio app, pelo Twig, pelo phpdotenv ou por ferramentas de dev. | comandos abaixo da tabela |
+| **R4.3: o Domain importava o Rubix.** `use Rubix\ML\Kernels\Distance\Euclidean;` em `:10`, e o construtor tipava `?Euclidean`. Isso violava a regra "Domain não depende de framework" que o projeto apresenta como diferencial. | `git grep -ln "use Rubix" 4a3f37d^ -- app` → só o `KNNService` do Domain |
+| **R4.1: o ML nunca devolvia mais de 4 itens.** `recommend()` cortava os vizinhos em `$this->k` (fixo em 5) **antes** de aplicar o `limit` e depois tirava o próprio produto-alvo, que é vizinho de si mesmo com distância 0. Sobravam no máximo 4. O resto de uma resposta com `limit` alto vinha do fallback. | `:102` do arquivo acima; mensagem de [`4a3f37d`](https://github.com/deboracastrodev/ec-hub/commit/4a3f37d39dcd03f23abe56a9c275d01d4a24f76d) |
+
+Contagem de dependências (executada em 2026-09-23, Composer 2.9.5):
+
+```bash
+composer show --tree rubix/ml | tail -n +2 \
+  | grep -oE '[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+' | sort -u | wc -l          # 17
+for p in $(composer show --tree rubix/ml | tail -n +2 \
+  | grep -oE '[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+' | sort -u); do
+  echo "$p: $(composer why "$p" | awk '{print $1}' | sort -u | tr '\n' ' ')"
+done                                                                        # quem exige cada um
+```
+
+O ADR-003 fala em "~10 dependências transitivas: amphp, tensor, stemmer". Os três nomes estão na árvore. O número medido é 17 (13 exclusivos da cadeia do Rubix). O ADR não foi editado; a divergência fica registrada aqui.
+
+### Solução
+
+Uma reescrita só, em [`4a3f37d`](https://github.com/deboracastrodev/ec-hub/commit/4a3f37d39dcd03f23abe56a9c275d01d4a24f76d), para os três achados, com o pipeline do ADR-003 ([docs/architecture.md](docs/architecture.md)):
+
+| Etapa | Antes (à mão, no Domain) | Depois (Rubix, na Infrastructure) |
+|---|---|---|
+| Dataset | arrays paralelos `$trainingSamples` / `$productsIndex` | `Labeled`: features = categoria + preço, labels = `product_id` |
+| Categoria | `extractSingleProductFeatures()` | `OneHotEncoder` |
+| Escala | `normalizeFeatures()` / `normalizeSingleFeature()` | `MinMaxNormalizer` |
+| Busca | `calculateDistances()` + `asort()` + `array_slice()` | `BallTree(30, new Euclidean())` com `grow()` e `nearest()` |
+
+O núcleo de [`RubixNeighborFinder::train()`](app/Infrastructure/ML/RubixNeighborFinder.php):
+
+```php
+$this->categoryEncoder = new OneHotEncoder();
+$this->normalizer = new MinMaxNormalizer();
+
+$dataset = new Labeled($samples, $labels);
+$dataset->apply($this->categoryEncoder)
+    ->apply($this->normalizer);
+
+$this->tree->grow($dataset);
+```
+
+Os transformers são recriados a cada `train()`. Reaproveitar um encoder já ajustado escalaria um catálogo novo com o mínimo, o máximo e as categorias do antigo. Na consulta, o produto-alvo passa pelos mesmos transformers já ajustados, e `nearest()` devolve os labels (ids) e as distâncias.
+
+O R4.1 foi corrigido na raiz: o [`KNNService`](app/Domain/Recommendation/Service/KNNService.php) pede `limit + 1` vizinhos, e não um `k` fixo. O `+1` abre espaço para descartar o próprio alvo e ainda entregar `limit` itens. O score `100 / (1 + d)` e o texto da explicação continuam no Domain: são regra de negócio e não têm equivalente no Rubix.
+
+### Domain livre do Rubix
+
+O Domain conversa com uma porta, [`NeighborFinderInterface`](app/Domain/Recommendation/Service/NeighborFinderInterface.php), com três métodos: `train(array $products)`, `isTrained()` e `nearest(Product $target, int $k)`, que devolve `list<array{product, distance}>`. Nenhum tipo do Rubix aparece na assinatura. A única implementação é `App\Infrastructure\ML\RubixNeighborFinder`, injetada em `config/bootstrap.php`.
+
+Para conferir:
+
+```bash
+grep -rln "use Rubix" app     # app/Infrastructure/ML/RubixNeighborFinder.php (só ele)
+grep -rn Rubix app/Domain     # 3 linhas, todas em docblock explicando a porta
+```
+
+A porta também permite testar o `KNNService` com um finder falso, sem Rubix (`FakeNeighborFinder`, em `tests/Unit/Domain/Recommendation/KNNServiceDeterministicTest.php`).
+
+### Risco aceito: `@internal`
+
+A busca usa `BallTree::nearest()`. No `rubix/ml` 2.5.5 instalado, `nearest()`, `grow()` e a interface `Spatial` que a `BallTree` implementa estão anotados `@internal` (`vendor/rubix/ml/src/Graph/Trees/Spatial.php`). Uma versão menor pode mudá-los sem aviso de SemVer. Não há alternativa pública: os estimadores do Rubix (`KNearestNeighbors`, `KDNeighbors`) classificam ou regridem, mas não devolvem os vizinhos com distância.
+
+O risco foi aceito no ADR-003 e contido pela porta: se o método quebrar, o conserto fica em um arquivo, `RubixNeighborFinder.php`, sem tocar no Domain. O `composer.lock` versionado (R1.3) impede que uma atualização entre sem alguém rodar `composer update`. Mas a restrição no `composer.json` é `"rubix/ml": "^2.5"`: um `composer update` rotineiro pode trazer uma 2.6 que mude esses métodos. Quem atualizar precisa rodar a suíte antes de commitar o lock.
+
+### Fallback: quando o ML não responde
+
+O ML não responde sozinho. O caso de uso `GenerateRecommendations` decide antes quem responde, e a tabela completa está em [docs/ML.md §4](docs/ML.md#4-ml-ou-fallback-quem-responde). Em resumo:
+
+| Quando | Quem responde |
+|---|---|
+| `product_id` não existe no catálogo (cold start) | populares (`source=popular`) |
+| catálogo com menos de `min_products_for_ml` produtos (padrão 5) | fallback com a estratégia configurada (`hybrid` por padrão) |
+| KNN devolve menos que `limit` | tenta completar com o fallback, sem duplicatas |
+| exceção no ML | fallback, com log `ml_error` |
+| caminho normal | `KNNService` (`source=ml`) |
+
+Depois do R4.1, o caso "KNN devolve menos que `limit`" só acontece quando o índice tem `limit` produtos ou menos, ou seja, quando o catálogo inteiro cabe na resposta (o índice é treinado com até 1.000 produtos). Antes, ele acontecia em toda resposta com `limit` maior que 4: nas palavras da mensagem de `4a3f37d`, "a maior parte de uma resposta com limit alto era rule-based, anunciada como ML".
+
+### Before / After
+
+**As fixtures planejadas não existem.** A spec de remediação ([docs/remediation-spec.md](docs/remediation-spec.md), seção 6, risco "Reescrita do Rubix muda os resultados") mandava capturar as saídas do código manual como fixtures **antes** da reescrita e comparar depois. A régua era: diferença de ordem em empate é aceitável, diferença no conjunto não é. Essas fixtures não foram capturadas nem versionadas. O commit `4a3f37d` só ajusta poucas linhas de 3 testes, e não há arquivo de fixture no histórico.
+
+A comparação abaixo substitui as fixtures. Ela foi reconstruída em 2026-09-23. O código medido (`KNNService` e `RubixNeighborFinder`) é o de `d909fc9`, que esta story não altera; o script entrou no mesmo commit desta seção. A execução foi com PHP 8.5.2 local, e deu saída idêntica no PHP 8.4.25 da imagem do container (`docker run` com o repositório montado, já que o container não enxerga o `.git`). O script [`bin/compare-knn-rewrite.php`](bin/compare-knn-rewrite.php) lê o `KNNService` manual de `4a3f37d^` via `git show`, renomeia a classe e roda as duas versões sobre o mesmo catálogo determinístico (`KnnBenchmark::syntheticCatalog()`, o mesmo do benchmark de performance), com cada produto como alvo:
+
+```bash
+php bin/compare-knn-rewrite.php   # precisa do histórico completo (senão: git fetch --unshallow) e do vendor/ com dev deps
+```
+
+| Produtos | Alvos | Mesmo conjunto (limit=4) | Mesma ordem (limit=4) | Maior diferença de score | Máx. itens ML com limit=10 (antes → depois) |
+|---|---|---|---|---|---|
+| 20 | 20 | 20/20 | 19/20 | 0 | 4 → 10 |
+| 100 | 100 | 98/100 | 74/100 | 2.84e-14 | 4 → 10 |
+
+Como ler:
+
+- **Conjunto, ordem e score** são comparados com `limit=4`, o máximo que a versão manual conseguia entregar. Com um `limit` maior, a comparação mediria o bug R4.1, e não a troca de implementação.
+- **Maior diferença de score** entre itens presentes nas duas respostas do mesmo alvo: 2.84e-14 é ruído de ponto flutuante. Os scores são os mesmos.
+- **Máx. itens ML com limit=10:** a versão manual nunca passou de 4 (R4.1). A atual chega a 10 (a coluna mostra o máximo por catálogo, não o mínimo). A mensagem de `4a3f37d` registra o mesmo efeito no app rodando: `?limit=20` → 20 itens `source=ml`, antes ~4.
+
+**As divergências.** O script lista cada alvo com resultado diferente e as distâncias em torno do corte. As 27 divergências (1 em 20 produtos, 26 em 100) são empates: as duas respostas têm, posição a posição, a mesma distância ao alvo (tolerância de 1e-9), cada uma medida pela própria implementação (a distância sai do score, `100 / (1 + d)`). **Não há nenhuma divergência que não seja empate.** Se houvesse, o script sairia com código 2. A regra de empate está em `tests/Support/KnnTieCheck.php`, com teste próprio (`tests/Unit/Tooling/KnnTieCheckTest.php`) para os casos que devem falhar. O teste `tests/Integration/Tooling/CompareKnnRewriteScriptTest.php` fixa os números desta tabela e confere que o journal publica as mesmas linhas que o script imprime.
+
+O empate vem do próprio catálogo sintético. O preço é `10 + ((id × 7919) mod 499000) / 100`: até o id 63 isso é `10 + 79,19 × id`, e do 64 ao 100 é a mesma reta deslocada por uma volta do módulo. A categoria roda de 8 em 8 (`id % 8`). Então, para um alvo, os produtos da mesma categoria com id `alvo − 8` e `alvo + 8` (ou ±16), quando estão no mesmo trecho da reta, ficam à mesma diferença de preço na aritmética exata. Em ponto flutuante, depois da normalização, as duas distâncias podem diferir no último dígito (daí a tolerância de 1e-9). Cada versão desempata de um jeito: a manual pela ordem que o `asort()` dá a esses valores quase iguais, a atual pela ordem de visita da `BallTree`.
+
+- **25 divergências de ordem:** mesmos 4 produtos, com dois vizinhos equidistantes trocados de posição. Exemplo (20 produtos, alvo 12): antes `[4, 20, 11, 13]`, depois `[20, 4, 11, 13]`. Os ids 4 e 20 estão ambos a 0,421052632. A régua aceita esse caso.
+- **2 divergências de conjunto** (100 produtos, alvos 45 e 46). Alvo 45: antes `[53, 37, 93, 61]`, depois `[53, 37, 93, 29]`. Os ids 29 e 61 (alvo ∓ 16) estão ambos a 0,258010389. O 4º e o 5º vizinhos estão empatados, então "os 4 mais próximos" não é um conjunto único, e cada versão escolheu um lado. O alvo 46 repete o padrão com 30 e 62. Pela letra da régua, divergência de conjunto não é aceitável. Pela causa, é um empate exatamente no corte, e não uma mudança de resultado: não existe resposta certa entre dois produtos à mesma distância.
+
+A comparação usa um catálogo sintético, não o catálogo do seed. Ela prova que as duas implementações calculam a mesma coisa, e não que as recomendações do app rodando ficaram iguais às de antes.
+
+### O que aprendi
+
+- **Mitigação planejada não é mitigação executada.** O risco "a reescrita muda os resultados" tinha plano (fixtures antes de mexer), mas o gate da Fase 5 conferia `grep Rubix app/Domain` vazio e `limit` respeitado, não o resultado. A captura das fixtures não estava em nenhum aceite, então não aconteceu. Se um passo de mitigação importa, ele precisa estar no aceite ou no gate.
+- **Dá para reconstruir uma evidência que faltou, se o histórico estiver no git.** A versão antiga estava inteira em `4a3f37d^`. Um script que roda as duas implementações lado a lado prova mais do que um arquivo de fixture congelado: qualquer pessoa reproduz, e outro tamanho de catálogo é só mudar a lista `[20, 100]` no script.
+- **Empate de distância é o caso normal, não o raro.** 27 de 120 alvos divergiram, todos por empate. Com features discretas (categoria) e preços regulares, vizinhos equidistantes aparecem o tempo todo. Uma régua de comparação para k-NN precisa dizer o que fazer com empate no corte, não só com empate na ordem.
+- **Usar a biblioteca de verdade apareceu como correção de bug.** O teto de 4 existia porque o código manual tinha seu próprio `k` interno, desacoplado do `limit`. Ao delegar a busca ao `BallTree` e pedir `limit + 1`, o bug sumiu junto com o código manual.
+- **A porta é o que torna aceitável depender de API `@internal`.** Sem ela, a escolha seria entre um método instável espalhado pelo Domain ou continuar com o KNN à mão. Com ela, o risco tem tamanho conhecido: um arquivo.
+
+### O que ainda não está resolvido
+
+| Pendência | Estado | Evidência |
+|---|---|---|
+| R4.4: modelo treinado a cada requisição | não feito; já registrado na tabela de pendências do Desafio 1 (`superseded-by-10-1`, story 10-1 em backlog) | `sprint-status.yaml` |
+| `BallTree::nearest()` / `grow()` continuam `@internal` no `rubix/ml` 2.5.5 | risco aceito (ADR-003), não há teste unitário dedicado ao `RubixNeighborFinder`; uma quebra apareceria nos testes que usam o finder real, como o `KNNServiceTest` (roda no job sem banco do CI) e o `KnnBenchmarkTest` (job Performance) | `vendor/rubix/ml/src/Graph/Trees/Spatial.php` |
+| Deprecations do PHP 8.5 dentro da `BallTree` | aberto, fora do nosso código: as 4 deprecations da suíte local vêm de `SplObjectStorage::attach()`/`contains()` em `vendor/rubix/ml/src/Graph/Trees/BallTree.php` (linhas 194, 205, 209, 232). No PHP 8.4 pinado do container e do CI elas não aparecem. Viram problema real se a plataforma subir para PHP 8.5+ sem uma versão nova do Rubix | `vendor/bin/phpunit --exclude-group db --exclude-group redis --display-deprecations` |
+| Comparação before/after só em catálogo sintético | a equivalência no catálogo do seed não foi medida | este journal, seção Before / After |
+| O CI não reexecuta a comparação | aberto: o checkout do CI é raso (`actions/checkout@v4` sem `fetch-depth`), então `4a3f37d^` não existe lá e os 3 testes do script que dependem do histórico são pulados; só o caso de clone raso roda. A verificação é local | `.github/workflows/ci.yml` |
