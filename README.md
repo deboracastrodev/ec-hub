@@ -116,6 +116,23 @@ make test-e2e           # roda tests/e2e/ em modo headless
 
 Cobertura medida (não aspiracional — ver [docs/remediation-spec.md](docs/remediation-spec.md) para como foi apurada): **linhas ~81%, métodos ~69%**. O CI falha se a cobertura cair abaixo de 70%.
 
+### Performance
+
+Suíte PHPUnit própria em `tests/Performance/` (config `tests/Performance/phpunit.xml`, fora da `phpunit.xml` raiz — `make test` e os jobs de teste comuns não a executam). Roda dentro do container `app` contra o stack no ar:
+
+- **Tempo de resposta** — p95 de 50 requisições (após 5 de aquecimento), medido no cliente: `GET /api/recommendations` < 200 ms e `GET /metrics` < 500 ms
+- **10 sessões simultâneas** — cookies de sessão distintos, recomendações concorrentes com p95 < 200 ms e `/metrics` de cada sessão sem dados das outras
+- **Memória** — 1.000 requisições pelo `public/index.php` com o container reaproveitado crescem a memória menos de 10% (usa `ec_hub_test` e Redis db 15)
+- **Benchmark do KNN** — 1.000 produtos sintéticos, índice treinado uma vez, p95 de `recommend()` < 200 ms
+
+```bash
+make up && make setup   # pré-requisito: stack no ar, banco migrado e semeado
+make test-performance   # roda a suíte de performance
+make benchmark-knn      # tabela: treino e p50/p95/máx de recommend() para 100, 1.000 e 5.000 produtos
+```
+
+`PERF_BASE_URL` (padrão `http://127.0.0.1:9501`, visto de dentro do container) aponta os testes HTTP para outra URL; servidor inacessível faz os testes falharem, não serem pulados. O CI roda a suíte e o benchmark no job `performance`.
+
 ## Roadmap
 
 Não implementado — fora do escopo atual, não abandonado no meio:

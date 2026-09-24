@@ -126,6 +126,39 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  performance:
+    name: Performance
+    runs-on: ubuntu-latest
+    env:
+      SESSION_COOKIE_SECRET: ci-docker-compose-session-cookie-secret-32
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack
+        run: docker compose up -d --build --wait
+
+      - name: Migrate and seed database
+        run: |
+          docker compose exec -T app php bin/migrate.php
+          docker compose exec -T app php bin/seed.php
+
+      - name: Wait for app HTTP
+        run: curl -fsS -o /dev/null --retry 15 --retry-all-errors --retry-delay 2 http://localhost:9501/health
+
+      - name: Performance tests
+        run: make test-performance
+
+      - name: KNN benchmark
+        run: make benchmark-knn
+
+      - name: Dump stack logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
   test-full:
     name: Tests (with MySQL) + coverage
     runs-on: ubuntu-latest

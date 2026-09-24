@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset test-e2e e2e-install
+.PHONY: help up down restart logs test cs-fix cs-check shell setup db-shell ps build clean install test-coverage test-unit test-integration test-feature migrate migrate-fresh seed db-reset test-e2e e2e-install test-performance benchmark-knn
 
 # Variáveis
 COMPOSE := docker compose
@@ -24,6 +24,8 @@ help: ## Show this help message
 	@echo "  make install   - Instala dependências Composer"
 	@echo "  make e2e-install - Instala Playwright + Chromium (npm)"
 	@echo "  make test-e2e  - Roda a suíte E2E (Playwright) contra o app no ar"
+	@echo "  make test-performance - Roda a suíte de performance (container app, stack no ar)"
+	@echo "  make benchmark-knn - Imprime o benchmark do KNN (100/1.000/5.000 produtos)"
 
 # Docker commands
 up: ## Start Docker containers
@@ -108,6 +110,15 @@ e2e-install: ## Install Playwright and Chromium
 
 test-e2e: ## Run E2E tests (Playwright, headless Chromium)
 	npx playwright test
+
+# Performance -- rodam dentro do container app (PHP, vendor/, MySQL, Redis e o
+# servidor em 127.0.0.1:9501). Exigem o stack no ar (make up + make setup).
+# PERF_BASE_URL sobrescreve o padrão http://127.0.0.1:9501.
+test-performance: ## Run performance tests (tests/Performance, own phpunit config)
+	$(COMPOSE) exec -T -e PERF_BASE_URL app vendor/bin/phpunit -c tests/Performance/phpunit.xml
+
+benchmark-knn: ## Print KNN benchmark table
+	$(COMPOSE) exec -T app php bin/benchmark-knn.php
 
 # Maintenance
 clean: ## Clean generated files

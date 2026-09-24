@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Suíte de performance isolada: fica fora da phpunit.xml raiz para que make test,
+  test-no-db e test-full nunca a executem. Roda de propósito contra o stack no ar:
+  make test-performance (dentro do container app).
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd" bootstrap="../../vendor/autoload.php" beStrictAboutOutputDuringTests="true" failOnSkipped="true" failOnWarning="true" failOnRisky="true" cacheDirectory="../../.phpunit.cache/performance">
+  <testsuites>
+    <testsuite name="Performance">
+      <directory>.</directory>
+    </testsuite>
+  </testsuites>
+  <php>
+    <env name="SESSION_COOKIE_SECRET" value="phpunit-only-session-cookie-secret-32" force="true"/>
+  </php>
+</phpunit>
