@@ -4,25 +4,34 @@ declare(strict_types=1);
 
 namespace App\Application\Product;
 
+use App\Domain\Product\Model\SearchQuery;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Product\Service\CategoryService;
+use App\Domain\Product\Service\ProductSearchRanker;
 
 /**
  * GetProductList Use Case
  *
  * Encapsula a lógica de paginação, filtros e métricas exibidas na listagem.
+ *
+ * Modo busca (Story 8.5, FR109): com `q` string não vazia, os candidatos vêm
+ * de searchCandidates() (termos em OU, até 500), são ranqueados pelo
+ * ProductSearchRanker e paginados aqui, em PHP.
  */
 class GetProductList
 {
     private ProductRepositoryInterface $productRepository;
     private CategoryService $categoryService;
+    private ProductSearchRanker $searchRanker;
 
     public function __construct(
         ProductRepositoryInterface $productRepository,
-        CategoryService $categoryService
+        CategoryService $categoryService,
+        ?ProductSearchRanker $searchRanker = null
     ) {
         $this->productRepository = $productRepository;
         $this->categoryService = $categoryService;
+        $this->searchRanker = $searchRanker ?? new ProductSearchRanker();
     }
 
     /**
@@ -43,7 +52,20 @@ class GetProductList
 
         $totalAllProducts = $this->productRepository->count();
 
-        if ($categoryInput !== null && $categoryInput !== '') {
+        $rawQuery = $queryParams['q'] ?? null;
+        $searchQuery = is_string($rawQuery) && trim($rawQuery) !== '' ? SearchQuery::fromRaw($rawQuery) : null;
+
+        if ($searchQuery !== null) {
+            $candidates = $searchQuery->hasTerms()
+                ? $this->productRepository->searchCandidates(
+                    $searchQuery->terms(),
+                    $categoryInput !== null && $categoryInput !== '' ? ($resolvedCategory ?? $categoryInput) : null
+                )
+                : [];
+            $ranked = $this->searchRanker->rank($candidates, $searchQuery);
+            $totalProducts = count($ranked);
+            $products = array_slice($ranked, $offset, $limit);
+        } elseif ($categoryInput !== null && $categoryInput !== '') {
             $categoryToQuery = $resolvedCategory ?? $categoryInput;
             $products = $this->productRepository->findByCategoryPaginated($categoryToQuery, $limit, $offset);
             $totalProducts = $this->productRepository->countByCategory($categoryToQuery);
@@ -69,6 +91,9 @@ class GetProductList
         } else {
             unset($baseParams['category']);
         }
+        if ($searchQuery !== null) {
+            $baseParams['q'] = $searchQuery->raw();
+        }
         $paginationBaseQuery = http_build_query($baseParams);
 
         return [
@@ -87,6 +112,8 @@ class GetProductList
             'requestedCategory' => $categoryInput,
             'hasNoProducts' => $totalProducts === 0,
             'paginationBaseQuery' => $paginationBaseQuery,
+            'isSearch' => $searchQuery !== null,
+            'searchQuery' => $searchQuery?->raw(),
         ];
     }
 }

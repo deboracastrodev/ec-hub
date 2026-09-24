@@ -131,6 +131,51 @@ class ProductRepository implements ProductRepositoryInterface
         return $results;
     }
 
+    /**
+     * Only filters: relevance is ProductSearchRanker's job. The column
+     * collation (utf8mb4_unicode_ci) already makes LIKE case- and
+     * accent-insensitive, matching SearchQuery::normalize(). Each term is a
+     * bound parameter with %, _ and the escape char escaped -- never
+     * concatenated. The escape char is '!', not '\\', so the clause is valid
+     * with or without the NO_BACKSLASH_ESCAPES sql_mode.
+     */
+    public function searchCandidates(array $terms, ?string $category = null, int $limit = 500): array
+    {
+        if ($terms === []) {
+            return [];
+        }
+
+        $conditions = [];
+        $params = [];
+        foreach ($terms as $index => $term) {
+            $conditions[] = "name LIKE :name{$index} ESCAPE '!' OR description LIKE :description{$index} ESCAPE '!'";
+            $pattern = '%' . strtr($term, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+            $params["name{$index}"] = $pattern;
+            $params["description{$index}"] = $pattern;
+        }
+
+        $categoryFilter = '';
+        if ($category !== null) {
+            $categoryFilter = ' AND category = :category';
+            $params['category'] = $category;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM products WHERE deleted_at IS NULL' . $categoryFilter
+            . ' AND (' . implode(' OR ', $conditions) . ') ORDER BY id LIMIT :limit'
+        );
+        foreach ($params as $name => $value) {
+            $stmt->bindValue(':' . $name, $value, PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':limit', max(0, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map(
+            static fn (array $row): Product => Product::fromArray($row),
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
+        );
+    }
+
     public function countByCategory(string $category): int
     {
         if (isset($this->categoryCountCache[$category])) {

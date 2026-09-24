@@ -59,6 +59,18 @@ interface ProductRepositoryInterface
     public function countByCategory(string $category): int;
 
     /**
+     * Search candidates (Story 8.5, FR109): active products whose name or
+     * description contains ANY of the terms (case- and accent-insensitive),
+     * optionally only within a category. No relevance order here -- that is
+     * ProductSearchRanker's job; implementations return them by id. An empty
+     * term list returns an empty list.
+     *
+     * @param list<string> $terms Already normalized (SearchQuery::terms())
+     * @return list<Product>
+     */
+    public function searchCandidates(array $terms, ?string $category = null, int $limit = 500): array;
+
+    /**
      * Find all unique categories
      *
      * @return array List of category names

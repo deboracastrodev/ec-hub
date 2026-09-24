@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Support;
 
 use App\Domain\Product\Model\Product;
+use App\Domain\Product\Model\SearchQuery;
 use App\Domain\Product\Repository\ProductRepositoryInterface;
 
 /**
@@ -114,6 +115,39 @@ class InMemoryProductRepository implements ProductRepositoryInterface
             $this->activeProducts(),
             static fn (array $p) => $p['category'] === $category
         ));
+    }
+
+    /** Same semantics as ProductRepository::searchCandidates(), via SearchQuery::normalize(). */
+    public function searchCandidates(array $terms, ?string $category = null, int $limit = 500): array
+    {
+        if ($terms === []) {
+            return [];
+        }
+
+        $matches = array_filter(
+            $this->activeProducts(),
+            static function (array $p) use ($terms, $category): bool {
+                if ($category !== null && $p['category'] !== $category) {
+                    return false;
+                }
+                $name = SearchQuery::normalize((string) $p['name']);
+                $description = SearchQuery::normalize((string) ($p['description'] ?? ''));
+                foreach ($terms as $term) {
+                    $term = SearchQuery::normalize($term);
+                    if ($term !== '' && (str_contains($name, $term) || str_contains($description, $term))) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        );
+        usort($matches, static fn (array $a, array $b): int => (int) $a['id'] <=> (int) $b['id']);
+
+        return array_map(
+            static fn (array $p): Product => Product::fromArray($p),
+            array_slice($matches, 0, max(0, $limit))
+        );
     }
 
     public function findCategories(): array

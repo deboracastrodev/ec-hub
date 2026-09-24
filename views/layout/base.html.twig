@@ -71,6 +71,12 @@
                 </ul>
             </nav>
         </div>
+
+        <form class="search-form" role="search" action="/products" method="get">
+            <label for="search-q" class="visually-hidden">Buscar produtos</label>
+            <input type="search" id="search-q" name="q" class="search-form__input" maxlength="100" value="{{ searchQuery|default('') }}" placeholder="Buscar produtos">
+            <button type="submit" class="search-form__button">Buscar</button>
+        </form>
     </header>
 
     <main class="main" id="main-content" role="main">

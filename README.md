@@ -8,7 +8,7 @@
 
 ## O que existe hoje
 
-- **Catálogo de produtos** — listagem paginada, filtro por categoria, página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
+- **Catálogo de produtos** — listagem paginada, filtro por categoria, busca por palavra-chave (`/products?q=`, formulário no header: termos em OU, sem diferenciar maiúsculas nem acentos, relevância nome > descrição; casa por trecho da palavra — `fone` acha "microfone"; termos com menos de 2 caracteres são ignorados, no máximo 8 termos e 100 caracteres; filtro via `LIKE`, sem índice full-text, com no máximo 500 candidatos ranqueados por busca — adequado ao catálogo pequeno do POC), página de detalhe (por slug ou id), SEO (Open Graph, Twitter Card, JSON-LD real por página)
 - **API de recomendações** — `GET /api/recommendations?product_id=X` devolve produtos similares via KNN (Rubix ML: `OneHotEncoder` + `MinMaxNormalizer` + `BallTree`), com fallback automático baseado em regras (categoria/popularidade) quando o catálogo é pequeno demais ou o ML falha
 - **Export de métricas** — `GET /api/metrics?format=json|prometheus` com requisições, erros e tempos de resposta HTTP (contados no Redis a cada requisição, com o rótulo da rota ou `unmatched`), memória, métricas por algoritmo de recomendação e estado do event bus; o formato `prometheus` serve direto como alvo de scrape (ver [DEPLOYMENT.md — Métricas](docs/DEPLOYMENT.md#métricas-get-apimetrics))
 - **Painel admin** — `/admin/products` com listagem, criação, edição e exclusão (soft delete) de produtos, para um único admin configurado no `.env` (ver [Painel admin](#painel-admin))
