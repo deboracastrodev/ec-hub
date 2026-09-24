@@ -398,7 +398,7 @@ make benchmark-knn        # = docker compose exec -T app php bin/benchmark-knn.p
 
 Os números **variam com a máquina** e com a carga do momento. O que deve se repetir é a ordem de grandeza: o treino cresce com o tamanho do catálogo, e cada consulta fica abaixo de 1 ms. O [`KnnBenchmarkTest`](../tests/Performance/KnnBenchmarkTest.php) (grupo `performance`, `make test-performance`) garante um teto, não a ordem de grandeza medida: com 1.000 produtos, um único treino e p95 de `recommend()` < 200 ms.
 
-Leitura dos números: em uma requisição HTTP, o custo dominante do KNN é o **treino**, porque ele acontece a cada requisição (ver abaixo), e não a consulta. O catálogo do seed tem hoje 56 produtos em 6 categorias, bem abaixo da menor linha da tabela.
+Leitura dos números: a coluna de treino é o custo de um **miss** do cache do modelo (Story 10.1, ver [Limitações](#10-limitações-conhecidas)): primeira requisição, catálogo alterado, chave expirada ou invalidada, ou Redis fora do ar. Nesses casos o treino domina a requisição, e não a consulta. Num **hit**, o custo passa a ser ler o catálogo, calcular o fingerprint e desserializar o índice, e esse caminho não foi medido. O catálogo do seed tem hoje 56 produtos em 6 categorias, bem abaixo da menor linha da tabela.
 
 ## 9. Avaliação offline
 
@@ -434,12 +434,12 @@ Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluatio
 
 ## 10. Limitações conhecidas
 
-- **O índice é treinado a cada requisição HTTP.** O servidor é o `php -S`, que não mantém estado entre requisições, e não há cache do modelo. Toda chamada a `/api/recommendations` que chega ao KNN refaz `findAll(1000, 0)` + `train()`. O "treina uma vez" vale dentro de um mesmo processo (testes, benchmark).
+- **O índice KNN vem de um cache no Redis, mas o catálogo ainda é lido a cada requisição.** O servidor é o `php -S`, que não mantém estado entre requisições, então o `CachedNeighborFinder` (Story 10.1) guarda o índice treinado, serializado, numa única chave (`ec-hub:model:knn`) junto com um fingerprint do catálogo (sha256 dos produtos ordenados por id). Toda chamada a `/api/recommendations` que chega ao KNN ainda faz `findAll(1000, 0)` para calcular esse fingerprint: se ele bate com o do cache (e com o mesmo schema e a mesma versão do `rubix/ml`), o índice é desserializado; senão, é treinado de novo e grava por cima. Por ser uma chave só, qualquer mudança no catálogo (admin, seed, SQL manual) invalida o cache inteiro. O create/update/delete do admin também apaga a chave (higiene, não correção), e a chave expira em 24 h. Leitura/gravação com falha ou payload inválido geram um `warning` e o KNN treina em memória, sem cache. O ganho do cache não foi medido ([seção 8](#8-benchmarks-medidos) mede só o treino).
 - **Catálogo limitado a 1.000 produtos** no treino (`findAll(1000, 0)`, ordenado por nome). Produtos além disso não entram no índice. Se o produto consultado ficar fora do índice, o preço dele pode normalizar fora de `[0, 1]` e, se a categoria dele não existir no índice, o `OneHotEncoder` gera um vetor só de zeros; nesses casos as faixas de distância e score da [seção 3](#3-features-similaridade-e-score) deixam de valer.
 - **"Popularidade" não é popularidade.** `getByPopularity()` pega os primeiros N produtos de `findAll($limit, 0)` (ordem alfabética) e os embaralha com `shuffle()`. Ainda não usa contagem de visualizações, embora o texto exibido seja "Produtos mais visualizados".
 - **Só duas features** (categoria e preço). Por construção, recomendações de outra categoria só aparecem quando a categoria do produto não tem vizinhos suficientes, e sempre com score baixo.
 - **`BallTree::nearest()` é `@internal`** no Rubix e pode mudar sem aviso em versões menores. Esse risco foi aceito no [ADR-003](architecture.md#adr-003--rubix-ml-real-mantido-fora-do-domain) e fica contido em `RubixNeighborFinder`.
-- **O CF lê o event store inteiro a cada requisição.** Pelo mesmo motivo do KNN (sem cache de modelo), cada requisição com `collaborative` faz três `getByEvent()` que trazem **todos** os eventos de interação já gravados, e recalcula a co-ocorrência. O custo cresce com o volume de eventos, sem janela de tempo nem limite, e não foi medido.
+- **O CF lê o event store inteiro a cada requisição.** O CF não tem cache de modelo (o da Story 10.1 cobre só o KNN), então cada requisição com `collaborative` faz três `getByEvent()` que trazem **todos** os eventos de interação já gravados, e recalcula a co-ocorrência. O custo cresce com o volume de eventos, sem janela de tempo nem limite, e não foi medido.
 - **CF herda o limite de 1.000 produtos.** O CF é treinado com o mesmo `findAll(1000, 0)` do KNN: eventos de produtos fora desse recorte são ignorados, e um produto-alvo fora dele sempre cai no fallback.
 - **CF depende de histórico.** Sem interações registradas (base nova, Redis limpo) o CF não recomenda nada e toda resposta vem do fallback. Os eventos também não expiram por idade: interesse antigo pesa igual a recente.
 - **O A/B compara operação, não resultado.** As métricas por algoritmo são volume, % de itens `ml`, latência e score médio. Não há CTR nem conversão (os eventos de clique e carrinho não são ligados à recomendação que os originou) e não há teste de significância estatística: a diferença entre os braços é só descritiva. O score médio mistura escalas diferentes (KNN × CF, ver seção 1), então não serve para dizer qual algoritmo acerta mais.
@@ -451,7 +451,6 @@ Os números medidos ficam em [`docs/evaluation/offline-evaluation.md`](evaluatio
 
 Nada nesta seção existe no código hoje. Não há números para estes itens porque eles ainda não foram medidos.
 
-- **Cache do modelo serializado (Story 10.1):** persistir o índice treinado para não retreinar a cada requisição.
 - **Export Prometheus das métricas por algoritmo (Story 8.4):** pode reaproveitar `RecommendationExperiment::results()`.
 
 ---

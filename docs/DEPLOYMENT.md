@@ -381,7 +381,7 @@ Problemas do ambiente de desenvolvimento (Docker não sobe, Composer, conexão M
 - **Exclusão de produto sem restauração:** o painel só faz soft delete (`deleted_at`) e não tem "desfazer"; a restauração é manual no banco ([seção 6](#6-migrations-e-dados)).
 - **Slug de produto excluído continua reservado:** o índice único de `slug` vale para linhas excluídas também. Um produto novo com o mesmo nome de um excluído recebe o sufixo `-1` (por exemplo, `notebook-pro-1`), e a URL pública antiga continua respondendo 404.
 - **Migrations aditivas, sem down-migration.** `bin/seed.php` apaga `products`, e `bin/migrate-fresh.php` faz `DROP TABLE`.
-- **O KNN treina a cada requisição** que chega ao ML (não há cache do modelo). Detalhes em [docs/ML.md — Limitações conhecidas](ML.md#10-limitações-conhecidas).
+- **Cache do modelo KNN no Redis:** o índice treinado fica numa única chave (`ec-hub:model:knn`, TTL de 24 h), validada contra um fingerprint do catálogo, que ainda é lido do MySQL a cada requisição que chega ao ML. Qualquer mudança no catálogo força um novo treino, e o create/update/delete do admin apaga a chave. O cache usa um cliente Predis próprio com timeouts de 0,25 s na conexão e na leitura/escrita (em vez dos 5 s padrão do Predis). Com o Redis fora do ar ou lento, toda recomendação que chega ao KNN é um miss: a leitura estoura o timeout, o KNN treina em memória e a gravação estoura de novo, o que soma até ~0,5 s por requisição e dois `warning`s. No admin, a falha ao invalidar pode somar até ~0,25 s, só registra um `warning` e o create/update/delete conclui normalmente (o fingerprint mantém o cache correto). Detalhes em [docs/ML.md — Limitações conhecidas](ML.md#10-limitações-conhecidas).
 - **Redis sem senha e conexões sem TLS:** `config/redis.php` só lê host e porta (não há `REDIS_PASSWORD`), e a conexão PDO não tem opção de TLS. Mantenha os dois numa rede privada.
 - **Sem pipeline de deploy nem registry:** build, publicação e troca de container são manuais.
 
@@ -395,7 +395,6 @@ Nada nesta seção existe no código hoje.
 - **`/health` devolvendo HTTP 503** quando `unhealthy`, para orquestradores e load balancers.
 - **Pipeline de deploy:** job no CI que publica a imagem com a tag do SHA e faz o deploy.
 - **Cookie `Secure` atrás de proxy:** respeitar `X-Forwarded-Proto` de um proxy confiável para marcar o cookie de sessão como `Secure`.
-- **Cache do modelo serializado (Story 10.1):** persistir o índice KNN treinado para não retreinar a cada requisição.
 
 ---
 
