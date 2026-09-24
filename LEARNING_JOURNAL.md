@@ -329,3 +329,379 @@ A comparação usa um catálogo sintético, não o catálogo do seed. Ela prova 
 | Deprecations do PHP 8.5 dentro da `BallTree` | aberto, fora do nosso código: as 4 deprecations da suíte local vêm de `SplObjectStorage::attach()`/`contains()` em `vendor/rubix/ml/src/Graph/Trees/BallTree.php` (linhas 194, 205, 209, 232). No PHP 8.4 pinado do container e do CI elas não aparecem. Viram problema real se a plataforma subir para PHP 8.5+ sem uma versão nova do Rubix | `vendor/bin/phpunit --exclude-group db --exclude-group redis --display-deprecations` |
 | Comparação before/after só em catálogo sintético | a equivalência no catálogo do seed não foi medida | este journal, seção Before / After |
 | O CI não reexecuta a comparação | aberto: o checkout do CI é raso (`actions/checkout@v4` sem `fetch-depth`), então `4a3f37d^` não existe lá e os 3 testes do script que dependem do histórico são pulados; só o caso de clone raso roda. A verificação é local | `.github/workflows/ci.yml` |
+
+---
+
+## Desafio 3: Matar o Framework e Migrar a Plataforma
+
+**Resumo.** Duas migrações, com seis meses de distância. Em 2026-02-03 o projeto largou o Hyperf (histórico: framework assíncrono sobre Swoole) e passou a PHP puro + PDO + Twig (ADR-001). Em 2026-08-18 saiu do alvo PHP 7.4 (histórico) para PHP 8.4, com a resolução do Composer pinada em `config.platform.php = 8.4.0` (ADR-002, R1.1–R1.6). A evidência conta uma história diferente da dos ADRs e do plano. **Nenhum dos dois erros do ADR-001 era conflito entre Hyperf e Rubix**: um era um nome de pacote que não existe (`hyperf/router`), o outro uma restrição sem versão estável (`rubix/ml ^3.0`). Corrigidos os dois em [`814332a`](https://github.com/deboracastrodev/ec-hub/commit/814332a41ecb18664d4713b266d591d185ff9d64), o manifesto **com** Hyperf resolve (reproduzido hoje, com a plataforma em PHP 7.4.33), e o Hyperf saiu 50 minutos depois. Nenhum registro da época diz por quê: pela sequência dos commits, foi escolha de peso e simplicidade, não impossibilidade. Do lado do PHPUnit, a migração 8 → 12 era o "maior risco" da spec de remediação, e custou 6 `assertRegExp` e o schema do `phpunit.xml`: não havia nenhum data provider para tornar `static`, e havia uma única anotação para virar atributo (um `@runInSeparateProcess`), que a migração deixou passar. O log original do erro do Hyperf não foi guardado. O que está aqui foi reproduzido hoje.
+
+**Como ler esta seção.** Hyperf, Swoole e PHP 7.4 aparecem só como histórico, sempre rotulados. A stack atual é PHP 8.4 sem framework (ver [README](README.md) e [docs/architecture.md](docs/architecture.md)). Os comandos desta seção foram executados em **2026-09-24**, a partir de `e8224f1`, com **PHP 8.5.2** local e **Composer 2.9.5**. As saídas do Composer dependem do Packagist do dia: onde o texto de hoje difere do transcrito em fevereiro, isso está dito.
+
+### Problema
+
+#### A. O Hyperf não resolvia (histórico, 2026-02-03)
+
+O ADR-001 ([docs/architecture.md](docs/architecture.md)) transcreve o erro assim:
+
+```
+Problem 1: Root composer.json requires hyperf/router, it could not be found
+Problem 2: Root composer.json requires rubix/ml ^3.0, found rubix/ml[3.0.x-dev]
+           but it does not match your minimum-stability
+```
+
+Esse é o único registro. **O log completo não foi guardado**: não há arquivo, issue nem mensagem de commit com a saída do Composer de fevereiro. Não dá para saber se havia mais problemas além desses dois.
+
+Reproduzido hoje com o `composer.json` de [`0ad7f85`](https://github.com/deboracastrodev/ec-hub/commit/0ad7f8528d1a37ba3314b560643d6e93266a0afa), o primeiro manifesto com Hyperf (histórico):
+
+```bash
+D=$(mktemp -d); git show 0ad7f85:composer.json > "$D/composer.json"
+composer update -d "$D" --dry-run --no-interaction --no-plugins --no-scripts --ignore-platform-reqs
+# exit 2
+```
+
+```
+  Problem 1
+    - Root composer.json requires hyperf/router, it could not be found in any version, there may be a typo in the package name.
+  Problem 2
+    - Root composer.json requires rubix/ml ^3.0, found rubix/ml[3.0.0-rc1, 3.0.0-rc2, 3.0.0-rc3, 3.1.x-dev] but it does not match your minimum-stability.
+```
+
+Exatamente os mesmos dois problemas. O texto do segundo mudou: em fevereiro o Composer listou `3.0.x-dev`, hoje lista `3.0.0-rc1, 3.0.0-rc2, 3.0.0-rc3, 3.1.x-dev`, porque o Packagist ganhou versões novas do Rubix desde então.
+
+| Problema | O que é de fato | Evidência |
+|---|---|---|
+| `hyperf/router` não encontrado | **Nome de pacote errado.** `hyperf/router` não existe no Packagist hoje, e o Composer de fevereiro também não o achou. O roteador do Hyperf vem dentro de `hyperf/http-server`, que já estava no mesmo manifesto | `curl -s -o /dev/null -w '%{http_code}' https://repo.packagist.org/p2/hyperf/router.json` → `404`; o mesmo para `hyperf/http-server` → `200` (2026-09-24) |
+| `rubix/ml ^3.0` fora da `minimum-stability` | **Restrição sem versão estável.** A série 3.x do Rubix só tinha versões de desenvolvimento (em fevereiro) e só tem release candidates (hoje). O manifesto pedia `"minimum-stability": "stable"` | `composer show rubix/ml --all`: a maior versão estável é `2.6.0`; a 3.x para em `3.0.0-rc3` (2026-09-24) |
+
+Nenhum dos dois é conflito entre o Hyperf e o Rubix: cada um falharia sozinho, num manifesto sem o outro. O ADR-001 fala em "conflitos reais de dependência" e em "conflito direto de versão contra o rubix/ml". A evidência não sustenta nenhuma das duas frases. **O ADR não foi editado**: a divergência fica registrada aqui, como nos Desafios 1 e 2.
+
+Sem `--ignore-platform-reqs`, o mesmo comando mostra 5 problemas (exit 2): os dois acima, mais `php ^7.4` contra o PHP 8.5.2 local, `hyperf/redis` exigindo `ext-redis` e `laminas/laminas-mime` (dependência do `hyperf/http-server`) sem versão que aceite PHP 8.5. Esses três são da minha máquina de hoje, e não do container da época (histórico: `php:7.4-fpm` com `pecl install redis-5.3.7`, em [`2b14dd7`](https://github.com/deboracastrodev/ec-hub/commit/2b14dd78f8e9bb69b78152455add29364b16e5b5)).
+
+#### B. Quatro lugares, três versões (histórico, até 2026-08-18)
+
+Em [`c7fc6e4`](https://github.com/deboracastrodev/ec-hub/commit/c7fc6e4f9a99ac5100441a76b856bcdd65159610), o baseline da remediação, a versão de PHP era declarada em quatro lugares e nenhum concordava com o outro:
+
+| Lugar | Versão de PHP | Fonte |
+|---|---|---|
+| `composer.json:6` | `^7.4` (histórico) | `git show c7fc6e4:composer.json` |
+| `Dockerfile:1` | `php:7.4-cli` (histórico) | `git show c7fc6e4:Dockerfile` |
+| `vendor/` instalado | `>=8.1` (`twig/twig 3.23`) e `>=8.0` (`psr/log 3.0.2`) | remediation-spec, R1.1 |
+| máquina local | 8.5.2 | remediation-spec, R1.1 |
+
+A remediation-spec (R1.1) diz "quatro versões diferentes", o ADR-002 diz "três versões", e a tabela de baseline do Desafio 1 repete "quatro versões em jogo". A leitura correta é **quatro lugares, três versões**: 7.4, ≥ 8.1 e 8.5.2. O `>=8.0` do `psr/log` não conta como versão à parte, porque o Twig já obrigava `>=8.1`, que o contém. Nenhum dos três textos foi editado.
+
+**Por que o drift não apareceu.** O `.gitignore` de `c7fc6e4` ignorava `/vendor/` e `composer.lock` (linhas 27 e 28). Sem lock versionado, ninguém via no diff qual versão do Twig tinha sido instalada, e sem CI (R7.3) ninguém instalava do zero numa máquina limpa. A remediation-spec (R1.3) aponta o lock ignorado como "exatamente o motivo de o drift de R1.1 ter passado despercebido".
+
+**O baseline não se reconstrói.** Com o `composer.json` de `c7fc6e4`, o Composer de hoje recusa a resolução no PHP 8.5.2 (exit 2):
+
+```
+  Problem 1
+    - Root composer.json requires php ^7.4 but your php version (8.5.2) does not satisfy that requirement.
+```
+
+Como o `vendor/` com `twig/twig 3.23` foi parar ali não tem registro: o lock e o `vendor/` estavam no `.gitignore`. Inferência, não fato medido: com `"php": "^7.4"` na raiz, o Composer só instala um Twig que exige `>=8.1` se o requisito de plataforma for ignorado (por exemplo, `--ignore-platform-reqs`) ou se o `composer.json` era outro no momento do install.
+
+### Solução 1: sair do framework
+
+Linha do tempo (histórico). Todos os commits são de 2026-02-03, exceto o último:
+
+| Hora | Commit | O que mudou |
+|---|---|---|
+| 11:48 | [`2b14dd7`](https://github.com/deboracastrodev/ec-hub/commit/2b14dd78f8e9bb69b78152455add29364b16e5b5) | `Dockerfile` com `php:7.4-fpm`, `pecl install redis-5.3.7` e `pecl install swoole-4.8.12` (histórico) |
+| 12:51 | [`0ad7f85`](https://github.com/deboracastrodev/ec-hub/commit/0ad7f8528d1a37ba3314b560643d6e93266a0afa) | `composer.json` com 7 pacotes `hyperf/*` 2.2, incluindo `hyperf/router`, mais `rubix/ml ^3.0`, `php ^7.4` e `phpunit ^8.0`. `public/index.php` sobe um `Swoole\Http\Server` (histórico) |
+| 14:39 | [`63c4404`](https://github.com/deboracastrodev/ec-hub/commit/63c440497e293da3e25f9caf0fadf7dfb090878d) | entram `psr/http-message` e `vlucas/phpdotenv`. Os dois erros continuam no manifesto |
+| 18:03 | [`814332a`](https://github.com/deboracastrodev/ec-hub/commit/814332a41ecb18664d4713b266d591d185ff9d64) | sai `hyperf/router`, `rubix/ml ^3.0` vira `^2.2`. **O Hyperf fica.** Com isso, o manifesto resolve hoje, com a plataforma em 7.4.33 e os requisitos de extensão ignorados (ver a contagem abaixo) |
+| 18:53 | [`6c1cddd`](https://github.com/deboracastrodev/ec-hub/commit/6c1cddd15e35025a972125be23e4273119539002) | saem os 6 `hyperf/*` restantes, `monolog/monolog` e `psr/http-message`. Entram PDO, `bin/migrate.php` e `bin/seed.php`. Mas o mesmo commit cria `app/Infrastructure/Persistence/Migration/2025_02_03_000001_create_products_table.php`, que estende `Hyperf\Database\Migration\Migration` (histórico) |
+| 23:49 | [`5b4fa4f`](https://github.com/deboracastrodev/ec-hub/commit/5b4fa4f0b4e586daec4ca42b8de75524f366ca24) | ADR-001 escrito (na versão antiga de `docs/architecture.md`). Twig standalone. `Dockerfile` passa a `php:7.4-cli` com `php -S`, sem Swoole nem Redis (histórico). `public/index.php` vira um router de arrays |
+| 2026-08-20 | [`99e1f1d`](https://github.com/deboracastrodev/ec-hub/commit/99e1f1d4619e9a6cf4a73c5c44c94fe9b4982f4b) | a migration órfã sai, seis meses depois, quando o PHPStan (R7.6) acusa 11 dos seus 18 erros nela |
+
+**A constatação honesta.** Entre o commit que faz o manifesto com Hyperf (histórico) resolver (`814332a`, 18:03) e o que remove o Hyperf (`6c1cddd`, 18:53) passaram 50 minutos. Nesse intervalo, os dois problemas que o ADR-001 transcreve já estavam corrigidos (a resolução com o Packagist de fevereiro não tem como ser refeita, e a de hoje resolve). Nenhum commit, issue ou documento da época registra o motivo da troca. Inferência, não fato medido: a queda do framework foi uma decisão de peso e simplicidade (menos pacotes, sem extensão Swoole, um projeto pequeno), e é defensável nesses termos. O que a evidência mostra é que não foi uma saída forçada por conflito.
+
+#### O que se ganhou em pacotes
+
+Contagem de pacotes de produção que o Composer instalaria, com a plataforma fixada no PHP da época (histórico: `7.4.33`) e os requisitos de extensão ignorados. As extensões que os 68 pacotes de `814332a` **exigem** são `ext-iconv`, `ext-json`, `ext-pcre`, `ext-redis` e `ext-tokenizer` (lidas do `require` de cada pacote no lock gerado com `--no-install`). Só `ext-redis` falta na minha máquina, e o container da época a instalava via PECL. Sem o `--ignore-platform-req='ext-*'`, o único requisito de extensão que o Composer acusa é esse. O `ext-swoole` não entra na conta: `hyperf/engine` v1.2.2 e `hyperf/utils` v2.2.34 o listam em `suggest`, não em `require`, então o Composer não o exige (o app da época precisava dele em runtime, para o `Swoole\Http\Server`, mas isso não aparece na resolução):
+
+```bash
+D=$(mktemp -d); git show 814332a:composer.json > "$D/composer.json"   # ou 6c1cddd, 5b4fa4f
+composer config -d "$D" platform.php 7.4.33
+composer config -d "$D" audit.block-insecure false  # só para 5b4fa4f (ver a tabela)
+composer update -d "$D" --dry-run --no-interaction --no-plugins --no-scripts \
+  --no-dev --ignore-platform-req='ext-*' 2>&1 | grep -c '^  - Installing'
+```
+
+| Revisão | Pacotes de produção | Observação |
+|---|---|---|
+| `814332a` (com Hyperf, histórico) | **68** | 17 deles são `hyperf/*`, 15 `symfony/*`, 7 `amphp/*` |
+| `6c1cddd` (sem Hyperf, sem Twig) | **23** | os 23 já estavam entre os 68: nenhum pacote novo, 45 a menos |
+| `5b4fa4f` (+ Twig) | **25** | só com `composer config audit.block-insecure false`. Com o padrão do Composer 2.9.5, a resolução falha (exit 2): as versões do Twig 3 que aceitam PHP 7.4 são bloqueadas por advisory de segurança, e as que sobram (`v3.27.0` a `v3.29.0`) exigem `php >=8.1.0` |
+| `e8224f1`, hoje (PHP 8.4) | **26** | `composer show --locked --no-dev \| wc -l`. Medido de outro jeito: é o lock versionado, resolvido para o PHP 8.4, e não o dry-run acima com a plataforma em 7.4.33 |
+
+O ADR-001 fala em "~53 pacotes extras", e a versão original do ADR (histórico, `git show 5b4fa4f:docs/architecture.md`, linha 265) em "73 pacotes instalados vs ~20 pacotes necessários". O medido hoje é **68 → 23, ou seja, 45 a menos**. A diferença pode vir do Packagist de fevereiro, de pacotes de dev contados junto ou de um `composer.json` intermediário. Não há como saber: o lock da época não foi versionado.
+
+#### O que se ganhou e o que se perdeu
+
+O "framework próprio" de hoje (em `e8224f1`), para comparar com o que o Hyperf daria:
+
+| Aspecto | Com Hyperf (histórico, `0ad7f85`) | Hoje, sem framework | Ganho ou perda |
+|---|---|---|---|
+| Dependências de produção | 68 pacotes (`814332a`) | 26 pacotes | **ganho**: 42 a menos (base: `814332a` → hoje, 68 → 26). A economia do dia da troca foi 45 (base: `814332a` → `6c1cddd`, 68 → 23); desde então entraram `twig/twig` e `predis/predis`, e `psr/log` virou dependência direta |
+| Extensões e runtime | Swoole 4.8.12 + Redis via PECL, servidor `Swoole\Http\Server` | `php:8.4-cli` com `php -S`, extensões `pdo`, `pdo_mysql`, `mbstring`, `zip` | **ganho**: nenhuma extensão via PECL para subir o app (o único `pecl install` do `Dockerfile` atual é o `pcov`, para cobertura) |
+| Roteamento | `hyperf/http-server` (rotas, middleware) | [`app/Shared/Http/Router.php`](app/Shared/Http/Router.php), 46 linhas: rota exata e regex. Sem middleware, sem parâmetros nomeados, sem geração de URL | **perda** |
+| Injeção de dependência | `hyperf/di` | [`app/Shared/Container/Container.php`](app/Shared/Container/Container.php), 56 linhas, PSR-11, e o registro manual de cada classe em `config/bootstrap.php` (233 linhas) | **perda**: todo serviço novo é uma entrada escrita à mão |
+| Banco e migrations | `hyperf/database` (query builder, migrations versionadas) | PDO direto nos repositórios. `bin/migrate.php` (139 linhas) com `CREATE TABLE IF NOT EXISTS` e `ALTER` condicional: sem tabela de versões, sem rollback | **perda** |
+| Tratamento de erro | do framework | [`app/Shared/Http/ErrorHandler.php`](app/Shared/Http/ErrorHandler.php), 90 linhas | neutro: pequeno e testado |
+| Entry point | do framework | `public/index.php`, 144 linhas. Chegou a 210 linhas sem teste antes de o router ser extraído em [`59f0fcf`](https://github.com/deboracastrodev/ec-hub/commit/59f0fcfc6bb7f9834ecbf2b3bbe55f92e9f0e5db) (R5.6). As 210 vêm de `git show 59f0fcf^:public/index.php \| wc -l`; a mensagem do commit arredonda para ~190 | **perda real**: o custo de não ter framework apareceu como código sem teste, e foi pago seis meses depois |
+| Workers long-running, corrotinas | Swoole (histórico) | não existe | perda só no papel: o código nunca usou |
+
+Fontes das linhas: `wc -l` nos arquivos citados, em `e8224f1`.
+
+### Solução 2: PHP 8.4 com a plataforma pinada
+
+| Data (`git log`) | Commit | O que mudou |
+|---|---|---|
+| 2026-08-18 23:10 | [`7ceea87`](https://github.com/deboracastrodev/ec-hub/commit/7ceea87d66b0132ccadcb18dc8898b49bba93aa9) (R1.1) | `Dockerfile`: `FROM php:8.4-cli`. `composer.json`: `"php": "^8.4"` e `config.platform.php = "8.4.0"` |
+| 2026-08-18 23:49 | [`d0e3b75`](https://github.com/deboracastrodev/ec-hub/commit/d0e3b75bf61971541860dae88e1b092f324a46f9) (R1.3) | `composer.lock` sai do `.gitignore` e passa a ser versionado |
+| 2026-08-19 15:19 | [`3a40a2e`](https://github.com/deboracastrodev/ec-hub/commit/3a40a2ee95d655b8864c1534e4eb941becd93ec4) (R1.5) | PHPUnit 8 → 12 (Solução 3). Vem depois do R1.1 porque o PHPUnit 12 exige PHP `>=8.3` |
+| 2026-08-20 10:08 | [`be30048`](https://github.com/deboracastrodev/ec-hub/commit/be3004865ca32ff61f2d538be731e4a0bd0b516c) (R7.3) | CI, `.github/workflows/ci.yml`: `php-version: '8.4'` (`:18`), `composer install` (`:25`) e, **depois** da instalação, `composer check-platform-reqs` (`:28`), que confere o `vendor/` instalado contra o PHP e as extensões do runner |
+
+Os demais itens de WS1 (R1.2, R1.4 e R1.6) estão na tabela Soluções do Desafio 1.
+
+O pin faz a máquina local **resolver** as dependências como se fosse o container. Ele alinha a resolução, não a execução: o PHP que roda a suíte localmente continua sendo o 8.5.2 (ver "O que ainda não está resolvido"). Sem o pin, quem manda no lock é o PHP de quem roda `composer update`. Para ver o efeito, a partir do `composer.json` e do `composer.lock` de `e8224f1`:
+
+```bash
+D=$(mktemp -d)
+git show e8224f1:composer.json > "$D/composer.json"; git show e8224f1:composer.lock > "$D/composer.lock"
+composer update -d "$D" --dry-run --no-interaction --no-plugins --no-scripts 2>&1 \
+  | grep -E 'Lock file operations|Upgrading (rubix/ml|symfony/console)'
+composer config -d "$D" --unset platform
+composer update -d "$D" --dry-run --no-interaction --no-plugins --no-scripts 2>&1 \
+  | grep -E 'Lock file operations|Upgrading (rubix/ml|symfony/console)'
+```
+
+Com o pin (saída real, 2026-09-24):
+
+```
+Lock file operations: 0 installs, 16 updates, 0 removals
+  - Upgrading rubix/ml (2.5.5 => 2.6.0)
+```
+
+Sem o pin:
+
+```
+Lock file operations: 1 install, 24 updates, 0 removals
+  - Upgrading rubix/ml (2.5.5 => 2.6.0)
+  - Upgrading symfony/console (v8.0.15 => v8.1.7)
+```
+
+| | Resultado no PHP 8.5.2 local |
+|---|---|
+| Com o pin `8.4.0` | `Lock file operations: 0 installs, 16 updates, 0 removals` |
+| Sem o pin | `Lock file operations: 1 install, 24 updates, 0 removals` |
+
+**Como ler.** Os 16 updates **com** o pin não têm nada a ver com o pin: mostram só que o lock versionado está atrás do Packagist de hoje (entre eles, `rubix/ml` 2.5.5 → 2.6.0, `phpunit/phpunit` 12.5.33 → 12.5.35, `twig/twig` v3.28.0 → v3.29.0). O que isola o efeito do pin é a diferença entre as duas execuções. Os 8 updates a mais são todos `symfony/{console,event-dispatcher,filesystem,finder,options-resolver,process,stopwatch,string}`, de 8.0.x para 8.1.x, e o install a mais é `symfony/polyfill-php85`. Os 8 declaram `php >=8.4.1` na série 8.1 (por exemplo, `composer show symfony/console v8.1.7 --all`; os outros 7 conferidos em `https://repo.packagist.org/p2/symfony/<pacote>.json`, 2026-09-24), e o pin em `8.4.0` bloqueia isso.
+
+Hoje, esses pacotes nem quebrariam o container, que roda PHP 8.4.25 (medido no Desafio 2, na imagem `php:8.4-cli`). E todos são dependências de dev (vêm pelo `friendsofphp/php-cs-fixer`; nenhum aparece em `composer show --locked --no-dev`), não de produção. Mas o ponto é outro: sem o pin, o lock passaria a ser decidido pela versão de PHP da máquina de quem roda `composer update`, que é exatamente o tipo de drift que produziu o problema B.
+
+### Solução 3: PHPUnit 8 → 12
+
+**O risco previsto.** A remediation-spec (R1.5 e seção 6) chamou a migração de "maior risco desta spec", com probabilidade e impacto altos: data providers passariam a ser obrigatoriamente `static`, anotações `@test`/`@dataProvider`/`@group` migrariam para atributos, `assertRegExp` e afins tinham sido removidos, e o schema do `phpunit.xml` mudou. O plano B era parar no PHPUnit 10. E havia uma pré-condição: o PHPUnit 12 exige `"php": ">=8.3"` (`vendor/phpunit/phpunit/composer.json:31`), então só podia vir depois do R1.1.
+
+**O inventário medido** (`git grep` em `tests/`, contando linhas). A coluna de hoje **exclui** dois arquivos desta seção: o fixture `tests/Fixtures/Phpunit12/LegacyMetadataExample.php` e o teste `tests/Integration/Tooling/Phpunit12LegacyMetadataTest.php`. Eles contêm de propósito um `@dataProvider` e um `@group` em docblock, um `#[DataProvider]` com provider não-static e `assertRegExp` (no código do fixture e nas mensagens que o teste fixa). Contá-los mediria o exemplo do que não fazer, e não a suíte:
+
+| O que a spec temia | Em `c7fc6e4` (antes) | Hoje (`e8224f1`) |
+|---|---|---|
+| Data providers para tornar `static` | **0** (nenhum `@dataProvider`) | 3 `#[DataProvider(...)]`, os 3 providers `public static` (em 2 arquivos; os atributos entraram em [`54b2de2`](https://github.com/deboracastrodev/ec-hub/commit/54b2de2a228bc037a1f552174be2f675aba64054) e [`83e54ef`](https://github.com/deboracastrodev/ec-hub/commit/83e54ef21e2d82f98118351f16ea80d01df11f03), depois da migração) |
+| Anotações `@test` / `@group` / `@covers` para virar atributo | **0** | 0 anotações (o único casamento do padrão é um comentário em `tests/docker/MakefileTest.php:120`, "a suíte sem @group db"). 41 linhas de atributo `#[...]`: 23 `#[RunInSeparateProcess]`, 15 `#[Group(...)]`, 3 `#[DataProvider(...)]` |
+| Outras anotações de metadado (`@runInSeparateProcess`, `@depends`, `@requires`, `@testWith`, `@before`, `@doesNotPerformAssertions` e afins) | **1**: `@runInSeparateProcess` em `tests/Integration/Controller/RecommendationHttpEndpointTest.php:13` | 0 |
+| Asserções removidas (`assertRegExp`) | **6** | 0 |
+| Schema do `phpunit.xml` | 8.0 | 12.5 |
+
+```bash
+X=(':!tests/Fixtures' ':!tests/Integration/Tooling/Phpunit12LegacyMetadataTest.php')
+T='@(test|group|covers)([^[:alnum:]_]|$)'
+M='@(runInSeparateProcess|runTestsInSeparateProcesses|depends|requires|testWith|before|after|beforeClass|afterClass|doesNotPerformAssertions|coversNothing|backupGlobals|preserveGlobalState|testdox|ticket|small|medium|large|uses)([^[:alnum:]_]|$)'
+git grep -h '@dataProvider' c7fc6e4 -- tests | wc -l                    # 0
+git grep -hE "$T" c7fc6e4 -- tests | wc -l                              # 0
+git grep -n 'assertRegExp' c7fc6e4 -- tests                             # 6 linhas, em 4 arquivos
+git grep -nE "$M" c7fc6e4 -- tests                                      # 1 linha: o @runInSeparateProcess
+git grep -hE "$M" e8224f1 -- tests "${X[@]}" | wc -l                   # 0
+git grep -h '@dataProvider' e8224f1 -- tests "${X[@]}" | wc -l             # 0
+git grep -nE "$T" e8224f1 -- tests "${X[@]}"                               # 1 linha: o comentário do MakefileTest
+git grep -h 'assertRegExp' e8224f1 -- tests "${X[@]}" | wc -l              # 0
+git grep -h '#\[DataProvider' e8224f1 -- tests "${X[@]}" | wc -l           # 3
+git grep -hE '^[[:space:]]*#\[' e8224f1 -- tests "${X[@]}" | wc -l         # 41
+```
+
+Os padrões usam classes POSIX (`[[:space:]]`, `[^[:alnum:]_]`) porque o `git grep -E` não entende `\s` nem `\b`: com `^\s*#\[`, só as 14 linhas sem indentação (atributos de classe) casariam, e os atributos de método ficariam de fora. Os números de hoje foram medidos em `e8224f1` e conferidos também na árvore de trabalho com os dois arquivos novos (`git grep --untracked`, mesma exclusão): iguais. Sem a exclusão, a árvore com os dois arquivos dá 4 `#[DataProvider]`, 4 linhas com `assertRegExp`, 1 `@dataProvider` e 42 linhas de atributo.
+
+**O que de fato mudou em [`3a40a2e`](https://github.com/deboracastrodev/ec-hub/commit/3a40a2ee95d655b8864c1534e4eb941becd93ec4)** (R1.5 + R2.3):
+
+- `composer.json`: `phpunit/phpunit` `^8.0` → `^12.5`, `friendsofphp/php-cs-fixer` `^3.0` → `^3.95`, `mockery/mockery` `^1.4` → `^1.6`, `fakerphp/faker` `^1.20` → `^1.24`.
+- `phpunit.xml`: schema `8.0` → `12.5`; saem `verbose` e `beStrictAboutTodoAnnotatedTests`, que não existem mais; entra `cacheDirectory=".phpunit.cache"`.
+- 6 × `assertRegExp` → `assertMatchesRegularExpression`: `ProductControllerTest` (2), `RecommendationApiLiveHttpTest` (1), `ResponsiveDesignTest` (1), `MakefileTest` (2).
+- As mudanças em `GenerateRecommendationsIntegrationTest` e `SetupScriptTest` no mesmo commit são alinhamento de comportamento (R2.3), não PHPUnit.
+- **O que ficou de fora:** o `@runInSeparateProcess` de `RecommendationHttpEndpointTest` não foi convertido (`git show 3a40a2e:tests/Integration/Controller/RecommendationHttpEndpointTest.php`, linha 13). O PHPUnit 12 não lê docblock (`vendor/phpunit/phpunit/src/Metadata/Parser/` só tem o `AttributeParser`), então, entre `3a40a2e` e a conversão, esse teste rodou no mesmo processo dos outros, sem aviso.
+
+Os primeiros atributos do projeto entraram no dia seguinte, em [`6a849f9`](https://github.com/deboracastrodev/ec-hub/commit/6a849f9a42ace8a8d0e31b395e69150ac7c202ca) (2026-08-20 10:03, R2.5): `#[Group('db')]`, para separar os testes que exigem MySQL, e o `#[RunInSeparateProcess]` que substituiu aquele docblock. A mensagem do commit chama a anotação de "deprecado no PHPUnit 12"; na verdade, o PHPUnit 12 já não a lê. Os outros 22 `#[RunInSeparateProcess]` de hoje vieram com testes dos épicos seguintes.
+
+O "maior risco" custou 6 linhas, um schema e uma anotação que ficou para trás. A spec descrevia o custo típico dessa migração, mas ninguém tinha contado quantos providers e anotações a suíte deste projeto tinha. Eram zero providers e uma anotação, e justamente a anotação escapou: a migração procurou o que quebra alto (`assertRegExp` dá erro), não o que o PHPUnit 12 ignora em silêncio.
+
+**As regras que valem para código novo** (e que o fixture da próxima seção demonstra quebrando):
+
+- metadados de teste só como atributo: `#[DataProvider('nome')]`, `#[Group('db')]`, `#[Test]`. O PHPUnit 12 ignora metadados em docblock, e o efeito depende da anotação: um `@dataProvider` quebra alto (o teste é chamado sem argumentos, `ArgumentCountError`), mas um `@group` falha em silêncio (o teste passa e escapa de `--exclude-group`);
+- data provider é `public static`;
+- `assertMatchesRegularExpression`, nunca `assertRegExp`.
+
+### O que NÃO fazer
+
+**1. Declarar um pacote sem conferir o nome** (histórico, `0ad7f85`).
+
+```json
+"hyperf/http-server": "^2.2",
+"hyperf/router": "^2.2"
+```
+
+```
+- Root composer.json requires hyperf/router, it could not be found in any version, there may be a typo in the package name.
+```
+
+Antes de pôr o nome no manifesto: `composer show hyperf/router --all` ou a página do pacote no Packagist.
+
+**2. Pedir uma major que não tem versão estável** (histórico, `0ad7f85`).
+
+```json
+"rubix/ml": "^3.0",
+"minimum-stability": "stable"
+```
+
+```
+- Root composer.json requires rubix/ml ^3.0, found rubix/ml[3.0.0-rc1, 3.0.0-rc2, 3.0.0-rc3, 3.1.x-dev] but it does not match your minimum-stability.
+```
+
+**3. Declarar uma versão de PHP que nada aplica** (histórico, `c7fc6e4`). `"php": "^7.4"` no `composer.json` e `FROM php:7.4-cli` no `Dockerfile`, com um `vendor/` que exigia `>=8.1`. A restrição só vale se alguém rodar `composer install` do zero no PHP declarado. Ninguém rodava. Hoje o CI roda `composer check-platform-reqs` em PHP 8.4.
+
+**4. Ignorar o lock numa aplicação** (histórico, `c7fc6e4`).
+
+```gitignore
+/vendor/
+composer.lock
+```
+
+Sem lock no git, o conjunto de versões instalado não aparece em nenhum diff, e seis meses depois não há como reconstruí-lo.
+
+**5. Não pinar a plataforma.** Sem `config.platform.php`, o mesmo `composer update` no PHP 8.5.2 faz 8 updates e 1 install a mais do que com o pin: os `symfony/*` que exigem `>=8.4.1` (demonstração na Solução 2). O lock passa a depender da máquina.
+
+**6. Instalar o `vendor/` furando a restrição de plataforma.** `--ignore-platform-reqs` (ou equivalente) instala pacotes que o PHP declarado não roda. Foi assim, por inferência, que um `vendor/` com `twig/twig 3.23` (`>=8.1`) conviveu com `"php": "^7.4"`.
+
+**7. Deixar código que estende uma classe do framework removido** (histórico, `6c1cddd` a `99e1f1d`).
+
+```php
+use Hyperf\Database\Migration\Migration;
+
+class CreateProductsTable extends Migration
+```
+
+O Hyperf (histórico) saiu do `composer.json` no mesmo commit em que essa migration entrou. Ela ficou seis meses no repositório sem consumidor, e só saiu quando o PHPStan (R7.6) acusou 11 erros nela.
+
+**8 a 11. Metadados da era PHPUnit 8 no PHPUnit 12.** O arquivo [`tests/Fixtures/Phpunit12/LegacyMetadataExample.php`](tests/Fixtures/Phpunit12/LegacyMetadataExample.php) tem os quatro erros, executáveis. Ele fica fora das suítes do `phpunit.xml` e só roda quando chamado de propósito:
+
+```php
+/** @dataProvider precos */                 // 8. docblock: ignorado
+public function test_docblock_data_provider(float $preco): void
+
+/** @group db */                            // 9. docblock: ignorado
+public function test_docblock_group_db(): void
+
+#[DataProvider('naoStatic')]                // 10. atributo certo, provider sem static
+public function test_non_static_data_provider(float $preco): void
+public function naoStatic(): array
+
+$this->assertRegExp('/^\d+ms$/', '12ms');    // 11. método removido
+```
+
+```bash
+vendor/bin/phpunit --no-configuration --bootstrap vendor/autoload.php \
+  tests/Fixtures/Phpunit12/LegacyMetadataExample.php
+```
+
+Saída real no PHPUnit 12.5.33 (PHP 8.5.2, 2026-09-24; o caminho absoluto do repositório foi trocado por `<repo>`, e as linhas de runtime, tempo e arquivo:linha foram omitidas). O `TestCase.php on line 1318` da mensagem do `ArgumentCountError` é específico do PHPUnit 12.5.33: outra versão do PHPUnit aponta outra linha, e por isso o teste de tooling só fixa o trecho até `0 passed`:
+
+```
+E.E                                                                 3 / 3 (100%)
+
+There was 1 PHPUnit error:
+
+1) Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_non_static_data_provider
+The data provider Tests\Fixtures\Phpunit12\LegacyMetadataExample::naoStatic specified for Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_non_static_data_provider is invalid
+Data Provider method Tests\Fixtures\Phpunit12\LegacyMetadataExample::naoStatic() is not static
+
+--
+
+There were 2 errors:
+
+1) Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_docblock_data_provider
+ArgumentCountError: Too few arguments to function Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_docblock_data_provider(), 0 passed in <repo>/vendor/phpunit/phpunit/src/Framework/TestCase.php on line 1318 and exactly 1 expected
+
+2) Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_removed_assert_reg_exp
+Error: Call to undefined method Tests\Fixtures\Phpunit12\LegacyMetadataExample::assertRegExp()
+
+ERRORS!
+Tests: 3, Assertions: 1, Errors: 3.
+```
+
+Como ler:
+
+- **8.** O `@dataProvider` em docblock é ignorado. O PHPUnit chama o teste sem argumentos: `ArgumentCountError`.
+- **9.** O `@group db` em docblock também é ignorado, mas em silêncio: o teste passa (é o `.` do meio). Com `--exclude-group db --filter test_docblock_group_db`, ele **roda**, porque o grupo `db` não existe. Saída real (mesmo ambiente e mesmas omissões):
+
+  ```
+  .                                                                   1 / 1 (100%)
+
+  There was 1 PHPUnit error:
+
+  1) Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_non_static_data_provider
+  The data provider Tests\Fixtures\Phpunit12\LegacyMetadataExample::naoStatic specified for Tests\Fixtures\Phpunit12\LegacyMetadataExample::test_non_static_data_provider is invalid
+  Data Provider method Tests\Fixtures\Phpunit12\LegacyMetadataExample::naoStatic() is not static
+
+  ERRORS!
+  Tests: 1, Assertions: 1, Errors: 1.
+  ```
+
+  O `.` e o `Assertions: 1` são o teste `@group db` rodando. O `Errors: 1` (e o exit 2) **não** vem dele: vem do provider não-static do item 10, que o PHPUnit valida ao carregar a classe, qualquer que seja o `--filter`. Isto importa aqui: o job de testes sem banco do CI depende de `--exclude-group db` (`.github/workflows/ci.yml:58`). Um teste de MySQL marcado do jeito antigo rodaria nesse job e falharia por falta de banco.
+- **10.** O provider sem `static` vira "PHPUnit error" e o teste nem entra na contagem: são 4 métodos de teste e `Tests: 3`. O erro aparece mesmo quando o `--filter` seleciona outro teste.
+- **11.** `assertRegExp` não existe: `Error`.
+
+O teste [`tests/Integration/Tooling/Phpunit12LegacyMetadataTest.php`](tests/Integration/Tooling/Phpunit12LegacyMetadataTest.php) roda o fixture e fixa essas mensagens, o grupo ignorado, a ausência do fixture em `vendor/bin/phpunit --list-tests` e a presença das mesmas mensagens neste journal.
+
+### Before / After
+
+| Aspecto | Before | After (hoje, `e8224f1`) | Fonte |
+|---|---|---|---|
+| Framework | Hyperf 2.2 sobre Swoole 4.8.12 (histórico, `0ad7f85` e `2b14dd7`) | nenhum: `Router` 46 linhas, `Container` 56, `ErrorHandler` 90 | commits linkados; `wc -l` |
+| Pacotes de produção | 68 com Hyperf (`814332a`, plataforma 7.4.33, histórico) | 26 | comandos da Solução 1 |
+| PHP declarado / container / vendor / local | `^7.4` / `7.4` / `>=8.1` / `8.5.2` (histórico, `c7fc6e4`) | `^8.4` / `8.4` / resolvido para `8.4.0` pelo pin / 8.5.2 | `composer.json`, `Dockerfile`, R1.1 |
+| `composer.lock` | ignorado no `.gitignore` | versionado ([`d0e3b75`](https://github.com/deboracastrodev/ec-hub/commit/d0e3b75bf61971541860dae88e1b092f324a46f9)) | `git ls-files composer.lock` |
+| Checagem de plataforma | nenhuma | `composer check-platform-reqs` no CI, em PHP 8.4 | `.github/workflows/ci.yml:28` |
+| PHPUnit | `^8.0`, schema 8.0, 6 `assertRegExp` | `^12.5` (12.5.33 no lock), schema 12.5, 0 `assertRegExp`, 3 `#[DataProvider]` com providers `static` (fora o fixture e o teste desta seção, que ficam fora da contagem) | `3a40a2e`; `git grep` com exclusão, acima |
+
+### O que aprendi
+
+- **Leia o erro antes de chamar de conflito.** "Could not be found in any version" e "does not match your minimum-stability" são erros de manifesto, cada um com conserto de uma linha. Chamá-los de "conflito com o Rubix" transformou dois typos numa decisão de arquitetura. A decisão acabou sendo boa, mas pelo motivo errado, e o ADR registrou o motivo errado.
+- **Guarde o log do erro que motiva uma decisão.** O ADR-001 guardou duas linhas transcritas. Seis meses depois, dá para reproduzir essas duas, mas não para saber se havia outras. Um arquivo com a saída completa, junto do ADR, teria custado nada.
+- **Restrição sem enforcement é comentário.** `"php": "^7.4"` e `FROM php:7.4-cli` (histórico, até `7ceea87`) estavam escritos, e não valiam nada: nenhum processo instalava do zero naquele PHP. O pin + lock versionado + `check-platform-reqs` no CI são três partes do mesmo enforcement. Sem qualquer uma delas, o drift volta.
+- **Conte antes de chamar de "maior risco".** O risco do PHPUnit estava descrito corretamente para uma suíte típica, e não para esta: 0 providers, 1 anotação, 6 asserções. Um `git grep` de 10 segundos teria dimensionado o risco, e também achado a anotação que a migração deixou passar. Um risco superestimado não é inofensivo: ele puxa atenção e plano B para o lugar errado.
+- **O custo de não ter framework chega depois.** A queda do Hyperf (histórico, 2026-02-03) economizou 45 pacotes de produção no dia (`814332a` → `6c1cddd`, 68 → 23; contra o lock de hoje, 68 → 26, a economia é 42). O preço veio em parcelas: `public/index.php` com 210 linhas sem teste até o R5.6, um container escrito à mão, migrations sem versão. É um preço aceitável para este porte, mas é um preço, e o ADR-001 não o listou.
+- **Remover a dependência não remove o código que dependia dela.** A migration que estendia uma classe do Hyperf (histórico) sobreviveu seis meses porque nada a carregava. Só uma ferramenta que lê o código sem executá-lo (PHPStan) a encontrou.
+
+### O que ainda não está resolvido
+
+| Pendência | Estado | Evidência |
+|---|---|---|
+| O pin `8.4.0` segura pacotes que exigem `>= 8.4.1` | aberto: hoje, 8 pacotes `symfony/*` de dev ficam em 8.0.x por causa disso. O container roda 8.4.25 (Desafio 2), então o pin é mais conservador do que o runtime. Subir o pin para a versão real da imagem resolve, mas precisa acompanhar a imagem | demonstração da Solução 2; `composer show symfony/console v8.1.7 --all` |
+| O PHP local (8.5.2) difere do alvo (8.4) | aberto: o pin alinha a **resolução**, não a **execução**. A suíte local roda em 8.5.2, e as 4 deprecations do Rubix no Desafio 2 só aparecem aqui, não no container nem no CI | `php -v`; Desafio 2, "O que ainda não está resolvido" |
+| O texto do ADR-001 diverge da evidência ("conflitos reais", "conflito direto de versão contra o rubix/ml", "~53 pacotes") | aberto, por decisão: o ADR não foi editado nesta story; a divergência está registrada aqui | [docs/architecture.md](docs/architecture.md), ADR-001; seções A e Solução 1 acima |
+| O ADR-002 diz "três versões", a R1.1 diz "quatro" | aberto, por decisão: nenhum dos dois foi editado; são quatro lugares e três versões | seção B acima |
+| A série 3.x do Rubix continua sem versão estável | aberto, fora do nosso controle: a maior é `3.0.0-rc3`. O projeto segue em `^2.5` (2.5.5 no lock). Já existe um `rubix/ml 2.6.0` estável, que o `composer update` com o pin traria; o Desafio 2 alerta que uma menor nova pode mexer nos métodos `@internal` usados | `composer show rubix/ml --all` (2026-09-24); demonstração da Solução 2 |
+| As regras para código novo (metadado só como atributo) não têm checagem automática | aberto: nada no CI procura `@dataProvider`, `@group`, `@runInSeparateProcess` e afins em docblock. Um `@group db` em docblock passaria pelo review e rodaria no job sem banco. É a mesma lição de "restrição sem enforcement", ainda não aplicada aqui | `.github/workflows/ci.yml`; item 9 de "O que NÃO fazer" |
+| As contagens de fevereiro (73, ~53) não se reproduzem | não resolvível: o lock da época não foi versionado | seção "O que se ganhou em pacotes" |
