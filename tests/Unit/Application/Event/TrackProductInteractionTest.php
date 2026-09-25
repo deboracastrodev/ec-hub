@@ -14,6 +14,7 @@ use App\Domain\Product\Repository\ProductRepositoryInterface;
 use App\Domain\Session\Repository\SessionRepositoryInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Tests\Support\InMemorySessionRepository as CasSessionRepository;
 
 final class TrackProductInteractionTest extends TestCase
 {
@@ -168,6 +169,8 @@ final class TrackProductInteractionTest extends TestCase
         $products = $this->createMock(ProductRepositoryInterface::class);
         $products->method('findById')->with(7)->willReturn($this->createMock(Product::class));
         $sessions = $this->createMock(SessionRepositoryInterface::class);
+        $sessions->method('get')->willThrowException(new \RuntimeException('Redis indisponível'));
+        $sessions->method('compareAndSwap')->willThrowException(new \RuntimeException('Redis indisponível'));
         $sessions->method('save')->willThrowException(new \RuntimeException('Redis indisponível'));
         $history = $this->createMock(EventHistoryRepositoryInterface::class);
         $history->expects(self::once())->method('append');
@@ -185,6 +188,161 @@ final class TrackProductInteractionTest extends TestCase
         self::assertSame(2, $event['quantity']);
         self::assertArrayHasKey('cart_item_count', $event);
         self::assertNull($event['cart_item_count']);
+    }
+
+    public function testCartAddOnEmptySessionWritesThroughCompareAndSwap(): void
+    {
+        $sessions = $this->createMock(SessionRepositoryInterface::class);
+        $sessions->method('get')->willReturn(null);
+        $sessions->expects(self::once())->method('compareAndSwap')
+            ->with('session', 'cart.items', null, ['7' => 2])
+            ->willReturn(true);
+        $sessions->expects(self::never())->method('save');
+
+        $event = $this->tracker($sessions)->track('cart', 'session', 7, null, 2);
+
+        self::assertSame(2, $event['cart_item_count']);
+    }
+
+    public function testCartAddRetriesALostCompareAndSwap(): void
+    {
+        $sessions = new CasSessionRepository();
+        $sessions->save('session', 'cart.items', ['3' => 1]);
+        $sessions->casConflicts = 1;
+
+        $event = $this->tracker($sessions)->track('cart', 'session', 7, null, 2);
+
+        self::assertSame(2, $sessions->casCalls);
+        self::assertSame(['3' => 1, '7' => 2], $sessions->get('session', 'cart.items'));
+        self::assertSame(3, $event['cart_item_count']);
+    }
+
+    public function testCartAddSucceedsOnTheLastAllowedAttempt(): void
+    {
+        $sessions = new CasSessionRepository();
+        $sessions->save('session', 'cart.items', ['3' => 1]);
+        $sessions->casConflicts = 4;
+
+        $event = $this->tracker($sessions)->track('cart', 'session', 7, null, 2);
+
+        self::assertSame(5, $sessions->casCalls);
+        self::assertSame(['3' => 1, '7' => 2], $sessions->get('session', 'cart.items'));
+        self::assertSame(3, $event['cart_item_count']);
+    }
+
+    public function testCartAddKeepsAWriteMadeBetweenReadAndCompareAndSwap(): void
+    {
+        $inner = new CasSessionRepository();
+        $inner->save('session', 'cart.items', ['3' => 1]);
+        $sessions = new class ($inner) implements SessionRepositoryInterface {
+            private bool $raced = false;
+
+            public function __construct(private readonly CasSessionRepository $inner)
+            {
+            }
+
+            public function save(string $sessionId, string $field, mixed $value): void
+            {
+                $this->inner->save($sessionId, $field, $value);
+            }
+
+            public function get(string $sessionId, string $field): mixed
+            {
+                return $this->inner->get($sessionId, $field);
+            }
+
+            public function compareAndSwap(string $sessionId, string $field, mixed $expected, mixed $value): bool
+            {
+                if (! $this->raced) {
+                    // Another writer (e.g. ManageCart update) lands after our read.
+                    $this->raced = true;
+                    $this->inner->save($sessionId, $field, ['3' => 5]);
+                }
+
+                return $this->inner->compareAndSwap($sessionId, $field, $expected, $value);
+            }
+        };
+
+        $event = $this->tracker($sessions)->track('cart', 'session', 7, null, 2);
+
+        self::assertSame(['3' => 5, '7' => 2], $inner->get('session', 'cart.items'));
+        self::assertSame(7, $event['cart_item_count']);
+        self::assertSame(2, $inner->casCalls);
+    }
+
+    public function testCartAddDegradesWhenCompareAndSwapKeepsLosing(): void
+    {
+        $sessions = new CasSessionRepository();
+        $sessions->save('session', 'cart.items', ['3' => 1]);
+        $sessions->casConflicts = 5;
+        $publisher = $this->createMock(EventPublisherInterface::class);
+        $publisher->expects(self::once())->method('publish')->with('cart.item_added', self::isArray());
+        $eventStore = $this->createMock(EventStoreInterface::class);
+        $eventStore->expects(self::once())->method('append');
+        $history = new InMemoryEventHistoryRepository();
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects(self::once())->method('error')
+            ->with('Não foi possível persistir o carrinho da sessão.', self::callback(
+                static fn (array $context): bool => $context['event'] === 'cart.item_added'
+                    && $context['error'] === 'Carrinho alterado concorrentemente.'
+            ));
+
+        $event = $this->tracker($sessions, $publisher, $eventStore, $history, $logger)
+            ->track('cart', 'session', 7, null, 2);
+
+        self::assertNull($event['cart_item_count']);
+        self::assertSame(5, $sessions->casCalls);
+        self::assertSame(['3' => 1], $sessions->get('session', 'cart.items'));
+        self::assertCount(1, $history->getBySession('session'));
+    }
+
+    public function testCartAddDegradesWhenRedisIsDown(): void
+    {
+        $sessions = new CasSessionRepository();
+        $sessions->failWith = new \RuntimeException('Redis indisponível');
+        $publisher = $this->createMock(EventPublisherInterface::class);
+        $publisher->expects(self::once())->method('publish')->with('cart.item_added', self::isArray());
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects(self::once())->method('error')
+            ->with('Não foi possível persistir o carrinho da sessão.', self::anything());
+
+        $event = $this->tracker($sessions, $publisher, null, null, $logger)->track('cart', 'session', 7, null, 2);
+
+        self::assertNull($event['cart_item_count']);
+    }
+
+    public function testCartAddDegradesWhenOnlyCompareAndSwapFails(): void
+    {
+        $sessions = new CasSessionRepository();
+        $sessions->casFailWith = new \RuntimeException('Redis indisponível');
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects(self::once())->method('error');
+
+        $event = $this->tracker($sessions, null, null, null, $logger)->track('cart', 'session', 7, null, 2);
+
+        self::assertNull($event['cart_item_count']);
+        self::assertNull($sessions->get('session', 'cart.items'));
+        self::assertSame(0, $sessions->writes);
+    }
+
+    private function tracker(
+        SessionRepositoryInterface $sessions,
+        ?EventPublisherInterface $publisher = null,
+        ?EventStoreInterface $eventStore = null,
+        ?EventHistoryRepositoryInterface $history = null,
+        ?\Psr\Log\LoggerInterface $logger = null
+    ): TrackProductInteraction {
+        $products = $this->createStub(ProductRepositoryInterface::class);
+        $products->method('findById')->willReturn($this->createStub(Product::class));
+
+        return new TrackProductInteraction(
+            $products,
+            $sessions,
+            $history ?? new InMemoryEventHistoryRepository(),
+            $eventStore ?? $this->createStub(EventStoreInterface::class),
+            $publisher ?? $this->createStub(EventPublisherInterface::class),
+            $logger ?? new NullLogger()
+        );
     }
 
     public function testRejectsUnknownProductBeforePublishing(): void

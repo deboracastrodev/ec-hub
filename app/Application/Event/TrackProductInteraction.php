@@ -19,6 +19,8 @@ final class TrackProductInteraction
 {
     private const EVENTS = ['view' => 'product.viewed', 'click' => 'product.clicked', 'cart' => 'cart.item_added'];
 
+    private const MAX_CART_ATTEMPTS = 5;
+
     public function __construct(
         private readonly ProductRepositoryInterface $products,
         private readonly SessionRepositoryInterface $sessions,
@@ -91,11 +93,19 @@ final class TrackProductInteraction
         try {
             // Story 8.6: the Cart model sanitizes the stored map and clamps the
             // quantity at Cart::MAX_QUANTITY; the session format is unchanged.
-            $cart = Cart::fromSession($this->sessions->get($sessionId, Cart::SESSION_FIELD))
-                ->add($productId, $quantity);
-            $this->sessions->save($sessionId, Cart::SESSION_FIELD, $cart->toSession());
+            // DW-16: read -> Cart::add -> compareAndSwap against the value read
+            // (same loop as ManageCart::mutate), so a concurrent add, update,
+            // remove or checkout claim never loses a write. Running out of
+            // attempts degrades like a Redis outage (caught below).
+            for ($attempt = 0; $attempt < self::MAX_CART_ATTEMPTS; $attempt++) {
+                $raw = $this->sessions->get($sessionId, Cart::SESSION_FIELD);
+                $cart = Cart::fromSession($raw)->add($productId, $quantity);
+                if ($this->sessions->compareAndSwap($sessionId, Cart::SESSION_FIELD, $raw, $cart->toSession())) {
+                    return $cart->itemCount();
+                }
+            }
 
-            return $cart->itemCount();
+            throw new \RuntimeException('Carrinho alterado concorrentemente.');
         } catch (\Throwable $exception) {
             $this->logger->error('Não foi possível persistir o carrinho da sessão.', [
                 'event' => self::EVENTS['cart'],

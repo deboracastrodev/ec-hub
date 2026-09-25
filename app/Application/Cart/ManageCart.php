@@ -15,10 +15,11 @@ use RuntimeException;
  * Cart page use case (Story 8.6): view, change a quantity, remove a line.
  *
  * Adding stays in TrackProductInteraction, where the canonical
- * cart.item_added event is born (with a plain get/save). Every write made
- * here -- update, remove, pruning -- is read -> Cart rule -> compareAndSwap
- * against the value read, so a double click on update/remove never loses an
- * update; adds do not get that guarantee.
+ * cart.item_added event is born. Every cart write -- the add there (DW-16)
+ * and update, remove, pruning here -- is read -> Cart rule -> compareAndSwap
+ * against the value read, retried up to 5 times, so concurrent adds, updates
+ * and removes never silently lose an update: a write either lands or reports
+ * failure (update/remove throw; the add degrades to a null item count).
  */
 final class ManageCart
 {
