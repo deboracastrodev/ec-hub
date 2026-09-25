@@ -53,6 +53,15 @@
     "label": "Officialize direct write; Pub/Sub best-effort",
     "resolution": ""
   },
+  "DW-34": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add an explicit accepted-risk note (history/personalization pollution via unauthenticated user_id) to docs/DEPLOYMENT.md limitations and epic-4-context.md.",
+    "key": "1",
+    "label": "Document as accepted risk",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
