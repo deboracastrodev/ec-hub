@@ -26,6 +26,15 @@
     "label": "Require JSON Content-Type + same-origin check",
     "resolution": ""
   },
+  "DW-21": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Render recommendations on views/product/detail.html.twig (server-side via GenerateRecommendations or a small JS fetch to /api/recommendations with the session), showing explanation and confidence, with E2E coverage so /metrics cold-start reflects real browsing.",
+    "key": "1",
+    "label": "Add a recommendations block to product detail",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
