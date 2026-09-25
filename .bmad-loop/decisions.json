@@ -1,4 +1,13 @@
 {
+  "DW-14": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "In CollaborativeFilteringService, ignore pairs below a configurable minimum number of shared sessions (default 2) or apply shrinkage (shared/(shared+k)) to the cosine, update tests and docs/ML.md accordingly.",
+    "key": "1",
+    "label": "Add minimum co-session support / shrinkage",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
