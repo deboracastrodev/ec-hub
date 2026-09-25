@@ -144,16 +144,19 @@ class KNNServiceTest extends TestCase
         $this->assertContainsOnlyInstancesOf(RecommendationResult::class, $recommendations);
     }
 
-    public function test_explanation_mentions_category_similarity(): void
+    public function test_explanation_is_left_to_explanation_generator(): void
     {
+        // DW-23: KNN no longer writes explanation text; GenerateRecommendations
+        // fills it (and the reasons) via ExplanationGenerator.
         $this->knnService->train($this->testProducts, 3);
 
         $targetProduct = $this->testProducts[0];
         $recommendations = $this->knnService->recommend($targetProduct);
 
-        if ($recommendations !== []) {
-            $firstRec = $recommendations[0]->toArray();
-            $this->assertNotEmpty($firstRec['explanation'] ?? null);
+        $this->assertNotEmpty($recommendations);
+        foreach ($recommendations as $recommendation) {
+            $this->assertSame('', $recommendation->getExplanation());
+            $this->assertSame([], $recommendation->getReasons());
         }
     }
 }

@@ -150,4 +150,45 @@ final class ExplanationGeneratorTest extends TestCase
             $this->generator->buildCollaborativeReasons($result, $target, 1)
         );
     }
+
+    public function testBuildFallbackReasonsForCategoryNamesTheCategory(): void
+    {
+        $this->assertSame(
+            [['type' => 'category', 'description' => 'Mesma categoria: Eletrônicos']],
+            $this->generator->buildFallbackReasons(['category' => 'Eletrônicos'], 'category')
+        );
+    }
+
+    public function testBuildFallbackReasonsTreatsCategoryAliasesAsCategory(): void
+    {
+        $expected = [['type' => 'category', 'description' => 'Mesma categoria: Eletrônicos']];
+
+        $this->assertSame($expected, $this->generator->buildFallbackReasons(['category' => 'Eletrônicos'], 'category_only'));
+        $this->assertSame($expected, $this->generator->buildFallbackReasons(['category' => 'Eletrônicos'], 'category_match'));
+    }
+
+    public function testBuildFallbackReasonsForPopularity(): void
+    {
+        $this->assertSame(
+            [['type' => 'popularity', 'description' => 'Produto popular entre os clientes']],
+            $this->generator->buildFallbackReasons(['category' => 'Eletrônicos'], 'popularity')
+        );
+    }
+
+    public function testBuildFallbackReasonsFallsBackToPopularityForUnknownStrategy(): void
+    {
+        // Mirrors generateForFallback(): any non-category strategy is a popularity reason.
+        $this->assertSame(
+            [['type' => 'popularity', 'description' => 'Produto popular entre os clientes']],
+            $this->generator->buildFallbackReasons(['category' => 'Eletrônicos'], 'hybrid')
+        );
+    }
+
+    public function testBuildFallbackReasonsToleratesMissingCategory(): void
+    {
+        $this->assertSame(
+            [['type' => 'category', 'description' => 'Mesma categoria: ']],
+            $this->generator->buildFallbackReasons([], 'category')
+        );
+    }
 }

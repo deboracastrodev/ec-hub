@@ -270,4 +270,60 @@ class RuleBasedFallbackTest extends TestCase
         // Assert - should have called both category and popularity (hybrid)
         $this->assertIsArray($recommendations);
     }
+
+    public function testCategoryStrategyItemsCarryExactCategoryReasons(): void
+    {
+        // DW-24: reasons come from ExplanationGenerator::buildFallbackReasons
+        // with the category strategy.
+        $categoryProducts = [
+            ['id' => 2, 'name' => 'Mouse Gamer', 'category' => 'Eletrônicos', 'price' => '150.00'],
+            ['id' => 3, 'name' => 'Teclado Mecânico', 'category' => 'Eletrônicos', 'price' => '300.00'],
+        ];
+
+        $this->mockRepository->expects($this->once())
+            ->method('findByCategory')
+            ->willReturn($this->productsFromRows($categoryProducts));
+
+        $recommendations = $this->fallback->getRecommendations(
+            $this->contextProduct,
+            2,
+            'category_only'
+        );
+
+        $this->assertCount(2, $recommendations);
+        foreach ($recommendations as $recommendation) {
+            $this->assertSame(
+                [['type' => 'category', 'description' => 'Mesma categoria: Eletrônicos']],
+                $recommendation['reasons']
+            );
+        }
+    }
+
+    public function testPopularityStrategyItemsCarryExactPopularityReasons(): void
+    {
+        // DW-24: reasons come from ExplanationGenerator::buildFallbackReasons
+        // with the popularity strategy.
+        $allProducts = [
+            ['id' => 2, 'name' => 'Camiseta', 'category' => 'Roupas', 'price' => '79.90'],
+            ['id' => 3, 'name' => 'Tênis', 'category' => 'Esportes', 'price' => '299.00'],
+        ];
+
+        $this->mockRepository->expects($this->once())
+            ->method('findAll')
+            ->willReturn($this->productsFromRows($allProducts));
+
+        $recommendations = $this->fallback->getRecommendations(
+            $this->contextProduct,
+            2,
+            'popularity_only'
+        );
+
+        $this->assertCount(2, $recommendations);
+        foreach ($recommendations as $recommendation) {
+            $this->assertSame(
+                [['type' => 'popularity', 'description' => 'Produto popular entre os clientes']],
+                $recommendation['reasons']
+            );
+        }
+    }
 }

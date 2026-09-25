@@ -13,9 +13,11 @@ use App\Domain\Recommendation\Model\RecommendationResult;
  *
  * Orchestrates item-to-item recommendations: asks a NeighborFinderInterface
  * (Rubix ML, in Infrastructure -- see R4.3) for the closest products by
- * category + price, then turns the result into scored, explained
- * RecommendationResult entries. Scoring and explanation text are business
- * rules and stay here in the Domain.
+ * category + price, then turns the result into scored
+ * RecommendationResult entries. Scoring is a business rule and stays here
+ * in the Domain; the explanation text and reasons shown to Ana are owned by
+ * ExplanationGenerator (applied in GenerateRecommendations), so results
+ * leave this service with an empty explanation and no reasons (DW-23).
  *
  * One of the RecommendationStrategy implementations (canonical name 'knn',
  * the default of RECOMMENDATION_ALGORITHM).
@@ -110,34 +112,11 @@ class KNNService implements RecommendationStrategy
                 $neighborProduct->getPrice()->getDecimal(),
                 $score,
                 ++$rank,
-                $this->generateExplanation($targetProduct, $neighborProduct)
+                ''
             );
         }
 
         return $recommendations;
-    }
-
-    /**
-     * Generate explanation for why product was recommended
-     */
-    private function generateExplanation(Product $target, Product $recommended): string
-    {
-        $targetCategory = $target->getCategory();
-        $recommendedCategory = $recommended->getCategory();
-
-        if ($targetCategory === $recommendedCategory) {
-            return sprintf(
-                "Recomendado porque você visualizou \"%s\" que também é da categoria %s",
-                $target->getName(),
-                $targetCategory
-            );
-        }
-
-        return sprintf(
-            "Recomendado porque você está interessado em %s e este produto é similar (%s)",
-            $targetCategory,
-            $recommendedCategory
-        );
     }
 
     /**

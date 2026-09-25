@@ -136,9 +136,7 @@ class RuleBasedFallback
             $item['explanation'] = $this->explanationGenerator->generateForFallback($item, 'category');
             $item['confidence_level'] = $this->confidenceCalculator->calculateConfidenceLevel($score);
             $item['score_label'] = $this->confidenceCalculator->calculateScoreLabel($score);
-            $item['reasons'] = [
-                ['type' => 'category', 'description' => sprintf('Mesma categoria: %s', $category)],
-            ];
+            $item['reasons'] = $this->explanationGenerator->buildFallbackReasons($item, 'category');
 
             $recommendations[] = $item;
 
@@ -176,9 +174,7 @@ class RuleBasedFallback
             $item['explanation'] = $this->explanationGenerator->generateForFallback($item, 'popularity');
             $item['confidence_level'] = $this->confidenceCalculator->calculateConfidenceLevel($score);
             $item['score_label'] = $this->confidenceCalculator->calculateScoreLabel($score);
-            $item['reasons'] = [
-                ['type' => 'popularity', 'description' => 'Produto popular entre os clientes'],
-            ];
+            $item['reasons'] = $this->explanationGenerator->buildFallbackReasons($item, 'popularity');
 
             $recommendations[] = $item;
         }

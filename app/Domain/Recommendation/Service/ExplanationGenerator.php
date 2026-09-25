@@ -29,6 +29,13 @@ class ExplanationGenerator
     private const MAX_REASONS = 3;
 
     /**
+     * Fallback strategy names that produce category-based text; shared by
+     * generateForFallback() and buildFallbackReasons() so explanation and
+     * reasons cannot drift apart. Any other strategy is popularity.
+     */
+    private const CATEGORY_STRATEGIES = ['category', 'category_only', 'category_match'];
+
+    /**
      * AC3: "Recomendado com base em [Produto X] que você visualizou
      * ([Score]% de similaridade)".
      */
@@ -57,10 +64,35 @@ class ExplanationGenerator
     {
         $category = (string) ($fallbackResult['category'] ?? '');
 
-        return match ($strategy) {
-            'category', 'category_only', 'category_match' => sprintf(self::CATEGORY_FALLBACK_TEMPLATE, $category),
-            default => self::POPULARITY_FALLBACK_TEMPLATE,
-        };
+        return $this->isCategoryStrategy($strategy)
+            ? sprintf(self::CATEGORY_FALLBACK_TEMPLATE, $category)
+            : self::POPULARITY_FALLBACK_TEMPLATE;
+    }
+
+    /**
+     * AC7: structured reasons behind a rule-based fallback recommendation
+     * (max 3). Same strategy mapping as generateForFallback() (via
+     * isCategoryStrategy()): category strategies name the category,
+     * anything else is a popularity reason.
+     *
+     * @param array<string, mixed> $fallbackResult Raw fallback recommendation
+     *        (as built by RuleBasedFallback): product_name, category, etc.
+     * @return list<array{type: string, description: string}>
+     */
+    public function buildFallbackReasons(array $fallbackResult, string $strategy): array
+    {
+        $category = (string) ($fallbackResult['category'] ?? '');
+
+        $reasons = $this->isCategoryStrategy($strategy)
+            ? [['type' => 'category', 'description' => sprintf('Mesma categoria: %s', $category)]]
+            : [['type' => 'popularity', 'description' => 'Produto popular entre os clientes']];
+
+        return array_slice($reasons, 0, self::MAX_REASONS);
+    }
+
+    private function isCategoryStrategy(string $strategy): bool
+    {
+        return in_array($strategy, self::CATEGORY_STRATEGIES, true);
     }
 
     /**
