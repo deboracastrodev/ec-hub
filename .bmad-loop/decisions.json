@@ -35,6 +35,15 @@
     "label": "Add a recommendations block to product detail",
     "resolution": ""
   },
+  "DW-25": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Change detectSource to return the source of the majority of items (ties to 'ml'), keeping the existing value set; add tests; per-item source remains authoritative.",
+    "key": "1",
+    "label": "Majority source, keep enum",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
