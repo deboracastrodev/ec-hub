@@ -44,6 +44,15 @@
     "label": "Majority source, keep enum",
     "resolution": ""
   },
+  "DW-29": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Update epic-4-context/architecture docs and docs/ML.md or DEPLOYMENT.md to declare direct write the source of truth and Pub/Sub best-effort; mark consume-events.php as a diagnostic tool.",
+    "key": "1",
+    "label": "Officialize direct write; Pub/Sub best-effort",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
