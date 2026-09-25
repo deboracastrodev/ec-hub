@@ -72,12 +72,12 @@
     "resolution": ""
   },
   "DW-4": {
-    "answered_at": "2026-09-24",
+    "answered_at": "2026-09-25",
     "bundle_name": "",
-    "effect": "build",
-    "intent": "Review the real-time event stream display from story 5-5 (controller, view and JS) against its spec and fix confirmed defects with tests.",
-    "key": "1",
-    "label": "Run a focused review and fix findings",
+    "effect": "keep-open",
+    "intent": "",
+    "key": "3",
+    "label": "Keep open",
     "resolution": ""
   },
   "DW-6": {
