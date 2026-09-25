@@ -7,5 +7,14 @@
     "key": "1",
     "label": "Run a focused review and fix findings",
     "resolution": ""
+  },
+  "DW-6": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "In ExplanationGenerator::generateForML, use a neutral template (e.g. 'Semelhante a %s (%d%% de similaridade)') when the recommendation is not backed by the session's browsing history, keeping the AC3 text when it is; update docs/ML.md and tests.",
+    "key": "1",
+    "label": "Neutral wording when no history",
+    "resolution": ""
   }
 }
