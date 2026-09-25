@@ -17,6 +17,15 @@
     "label": "Adopt RFC 7807, keep legacy fields",
     "resolution": ""
   },
+  "DW-17": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "In public/index.php's API POST branch, reject (415/403) requests whose Content-Type is not application/json or whose Origin/Sec-Fetch-Site header indicates a cross-site request; update the storefront JS, E2E and integration tests.",
+    "key": "1",
+    "label": "Require JSON Content-Type + same-origin check",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
