@@ -9,6 +9,7 @@ jobs:
   static-checks:
     name: Composer + style
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +43,7 @@ jobs:
   test-no-db:
     name: Tests (no database)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,6 +64,7 @@ jobs:
   docker-compose-integration:
     name: Docker Compose integration
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       SESSION_COOKIE_SECRET: ci-docker-compose-session-cookie-secret-32
     steps:
@@ -79,6 +82,7 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       SESSION_COOKIE_SECRET: ci-docker-compose-session-cookie-secret-32
     steps:
@@ -131,6 +135,7 @@ jobs:
   performance:
     name: Performance
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       SESSION_COOKIE_SECRET: ci-docker-compose-session-cookie-secret-32
     steps:
@@ -147,7 +152,10 @@ jobs:
       - name: Wait for app HTTP
         run: curl -fsS -o /dev/null --retry 15 --retry-all-errors --retry-delay 2 http://localhost:9501/health
 
+      # Timeout no passo (e não só no job): o passo falha em vez de o job ser
+      # cancelado, então "Dump stack logs" ainda roda. Leva ~6 s quando passa.
       - name: Performance tests
+        timeout-minutes: 5
         run: make test-performance
 
       - name: KNN benchmark
@@ -164,6 +172,7 @@ jobs:
   test-full:
     name: Tests (with MySQL) + coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       mysql:
         image: mysql:8.0
