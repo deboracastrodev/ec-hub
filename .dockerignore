@@ -4,10 +4,11 @@ vendor/
 
 # Build context noise
 .git/
-.env*
+**/.env*
+# Só o .env.example da raiz volta: `!**/` reabriria cópias em vendor/, .claude/ etc.
 !.env.example
-coverage.xml
-coverage.txt
+**/coverage.xml
+**/coverage.txt
 coverage/
 
 # Node / Playwright (E2E) -- tooling de host, fora da imagem
@@ -20,6 +21,8 @@ blob-report/
 # build (algumas regras são mais amplas, como o .bmad-loop/ inteiro).
 # Padrões do .dockerignore são ancorados na raiz; `**/` vale em qualquer
 # nível, como os padrões sem `/` inicial do .gitignore.
+# tests/docker/DockerignoreMirrorsGitignoreTest.php (DW-38) falha no CI se o
+# .gitignore ganhar padrão sem equivalente aqui.
 
 # Ferramentas / agentes (inclui o .bmad-loop/ inteiro: a imagem não usa nada dele)
 **/.claude/

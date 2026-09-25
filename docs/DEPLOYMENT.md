@@ -39,7 +39,7 @@ Não há consumidor de eventos de longa duração para subir: `bin/consume-event
 
 Use o SHA do commit como tag. Assim cada imagem é imutável e o rollback vira "voltar para a tag anterior".
 
-O `COPY . .` copia tudo o que está no contexto de build. O `.dockerignore` espelha o `.gitignore`: diretórios de ferramentas e agentes (`.claude/`, `.bmad-loop/`, `_bmad/`, `_bmad-output/`, `.codex/`, `.agents/` etc.), IDE (`.vscode/`, `.idea/`), caches de PHPUnit/PHPStan/php-cs-fixer e arquivos de runtime (`var/`, `runtime/`, `*.log`) ficam fora do contexto. Por isso `docker build .` no clone de desenvolvimento é seguro:
+O `COPY . .` copia tudo o que está no contexto de build. O `.dockerignore` espelha o `.gitignore`: diretórios de ferramentas e agentes (`.claude/`, `.bmad-loop/`, `_bmad/`, `_bmad-output/`, `.codex/`, `.agents/` etc.), IDE (`.vscode/`, `.idea/`), caches de PHPUnit/PHPStan/php-cs-fixer e arquivos de runtime (`var/`, `runtime/`, `*.log`) ficam fora do contexto; o teste `tests/docker/DockerignoreMirrorsGitignoreTest.php` falha no CI se o `.gitignore` ganhar um padrão sem equivalente no `.dockerignore`. Por isso `docker build .` no clone de desenvolvimento é seguro:
 
 ```bash
 SHA=$(git rev-parse --short HEAD)
