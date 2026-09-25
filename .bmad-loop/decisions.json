@@ -62,6 +62,15 @@
     "label": "Document as accepted risk",
     "resolution": ""
   },
+  "DW-35": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "",
+    "key": "3",
+    "label": "Keep open",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
