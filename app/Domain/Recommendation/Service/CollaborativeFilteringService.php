@@ -21,6 +21,12 @@ use App\Domain\Recommendation\Model\RecommendationResult;
  * Plain co-occurrence algebra -- no ML library, pure Domain. Identity is the
  * session_id (always present), never user_id, so identities are not mixed.
  * A session counts once per product regardless of how many events it sent.
+ *
+ * Limite de custo (DW-13): cada sessão contribui com no máximo
+ * $maxProductsPerSession produtos distintos (padrão 50), então a
+ * co-ocorrência de uma sessão fica em no máximo 50² pares. Ao atingir o
+ * teto, novos produtos daquela sessão são ignorados (a sessão é truncada,
+ * não descartada).
  */
 final class CollaborativeFilteringService implements RecommendationStrategy
 {
@@ -28,6 +34,9 @@ final class CollaborativeFilteringService implements RecommendationStrategy
 
     /** Interaction events that count as "interest" in a product. */
     public const INTERACTION_EVENTS = ['product.viewed', 'product.clicked', 'cart.item_added'];
+
+    /** Teto padrão de produtos distintos contados por sessão no train(). */
+    public const DEFAULT_MAX_PRODUCTS_PER_SESSION = 50;
 
     /** @var array<int, Product> */
     private array $productsById = [];
@@ -43,7 +52,11 @@ final class CollaborativeFilteringService implements RecommendationStrategy
     public function __construct(
         private readonly EventStoreInterface $eventStore,
         private readonly ExplanationGenerator $explanationGenerator,
+        private readonly int $maxProductsPerSession = self::DEFAULT_MAX_PRODUCTS_PER_SESSION,
     ) {
+        if ($maxProductsPerSession < 1) {
+            throw new \InvalidArgumentException('Max products per session must be at least 1.');
+        }
     }
 
     public function getName(): string
@@ -63,6 +76,11 @@ final class CollaborativeFilteringService implements RecommendationStrategy
      * (the use case turns it into the ml_error fallback) and leaves the
      * model untrained.
      *
+     * Cada sessão conta em no máximo $maxProductsPerSession produtos
+     * distintos, na ordem de leitura (product.viewed, depois product.clicked,
+     * depois cart.item_added, cada um na ordem gravada). Um produto além do
+     * teto não conta a sessão nem em |S_p| nem em nenhum par.
+     *
      * @param Product[] $products
      */
     public function train(array $products): void
@@ -78,13 +96,24 @@ final class CollaborativeFilteringService implements RecommendationStrategy
         }
 
         $sessionsByProduct = [];
+        /** @var array<string, int> session id => produtos distintos já contados */
+        $productCountBySession = [];
         foreach (self::INTERACTION_EVENTS as $eventName) {
             foreach ($this->eventStore->getByEvent($eventName) as $envelope) {
                 $interaction = $this->parseInteraction($envelope['data']);
                 if ($interaction === null || ! isset($productsById[$interaction['product_id']])) {
                     continue;
                 }
-                $sessionsByProduct[$interaction['product_id']][$interaction['session_id']] = true;
+                $productId = $interaction['product_id'];
+                $sessionId = $interaction['session_id'];
+                if (isset($sessionsByProduct[$productId][$sessionId])) {
+                    continue;
+                }
+                if (($productCountBySession[$sessionId] ?? 0) >= $this->maxProductsPerSession) {
+                    continue;
+                }
+                $productCountBySession[$sessionId] = ($productCountBySession[$sessionId] ?? 0) + 1;
+                $sessionsByProduct[$productId][$sessionId] = true;
             }
         }
 

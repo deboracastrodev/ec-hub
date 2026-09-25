@@ -16,7 +16,11 @@ if (($argv[1] ?? null) !== '--once' || ! isset($argv[2]) || isset($argv[3])) {
 
 /** @var array{host: string, port: int} $config */
 $config = require dirname(__DIR__) . '/config/redis.php';
-$store = new RedisEventStore(new Client(['scheme' => 'tcp', ...$config]));
+// DW-13: este consumidor é quem grava no event store, então aplica a mesma retenção do bootstrap.
+$store = new RedisEventStore(
+    new Client(['scheme' => 'tcp', ...$config]),
+    (require dirname(__DIR__) . '/config/event_store.php')['max_events_per_list']
+);
 $subscriber = new RedisEventSubscriber($store, $config);
 
 try {

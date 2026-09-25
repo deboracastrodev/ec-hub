@@ -16,8 +16,20 @@ final class RedisEventStore implements EventStoreInterface
     private const KEY_PREFIX = 'ec-hub:event-store:';
     private const JSON_MAX_DEPTH = 100;
 
-    public function __construct(private readonly ClientInterface $client)
-    {
+    /** Retenção padrão: envelopes mais recentes mantidos por lista de evento. */
+    public const DEFAULT_MAX_EVENTS_PER_LIST = 5000;
+
+    /**
+     * @param int $maxEventsPerList Quantos envelopes mais recentes cada lista de evento guarda;
+     *                              os mais antigos são descartados a cada append (>= 1).
+     */
+    public function __construct(
+        private readonly ClientInterface $client,
+        private readonly int $maxEventsPerList = self::DEFAULT_MAX_EVENTS_PER_LIST,
+    ) {
+        if ($maxEventsPerList < 1) {
+            throw new InvalidArgumentException('Event store retention must be at least 1 event per list.');
+        }
     }
 
     public function append(array $envelope): void
@@ -30,7 +42,11 @@ final class RedisEventStore implements EventStoreInterface
             throw new InvalidArgumentException('Event envelope cannot be encoded as JSON.', 0, $exception);
         }
 
-        $this->client->rpush($this->key($envelope['event']), [$encoded]);
+        $key = $this->key($envelope['event']);
+        $this->client->rpush($key, [$encoded]);
+        // Retenção: mantém só os N envelopes mais recentes (ordem cronológica preservada).
+        // rpush + ltrim não são atômicos juntos, mas o ltrim é idempotente e cada append converge para <= N.
+        $this->client->ltrim($key, -$this->maxEventsPerList, -1);
     }
 
     public function getByEvent(string $event): array

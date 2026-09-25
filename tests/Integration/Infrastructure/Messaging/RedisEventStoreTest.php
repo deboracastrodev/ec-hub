@@ -88,6 +88,75 @@ final class RedisEventStoreTest extends TestCase
         ]);
     }
 
+    public function test_it_keeps_only_the_most_recent_envelopes_in_order(): void
+    {
+        $event = $this->eventName();
+        $this->track($event);
+        $store = new RedisEventStore($this->client, 3);
+        $envelopes = array_map(fn (int $i): array => $this->envelope($event, $i), range(1, 5));
+
+        foreach ($envelopes as $envelope) {
+            $store->append($envelope);
+        }
+
+        self::assertSame(array_slice($envelopes, 2), $store->getByEvent($event));
+    }
+
+    public function test_it_keeps_every_envelope_below_the_retention(): void
+    {
+        $event = $this->eventName();
+        $this->track($event);
+        $store = new RedisEventStore($this->client, 3);
+        $envelopes = [$this->envelope($event, 1), $this->envelope($event, 2)];
+
+        foreach ($envelopes as $envelope) {
+            $store->append($envelope);
+        }
+
+        self::assertSame($envelopes, $store->getByEvent($event));
+    }
+
+    public function test_retention_applies_to_each_event_list_independently(): void
+    {
+        $eventA = $this->eventName();
+        $eventB = $this->eventName();
+        $this->track($eventA);
+        $this->track($eventB);
+        $store = new RedisEventStore($this->client, 2);
+        $a = array_map(fn (int $i): array => $this->envelope($eventA, $i), range(1, 3));
+        $b = $this->envelope($eventB, 1);
+
+        foreach ($a as $envelope) {
+            $store->append($envelope);
+        }
+        $store->append($b);
+
+        self::assertSame(array_slice($a, 1), $store->getByEvent($eventA));
+        self::assertSame([$b], $store->getByEvent($eventB));
+    }
+
+    public function test_it_rejects_a_retention_below_one(): void
+    {
+        foreach ([0, -1] as $invalid) {
+            try {
+                new RedisEventStore($this->client, $invalid);
+                self::fail("Retenção {$invalid} deveria ser rejeitada.");
+            } catch (\InvalidArgumentException) {
+                self::addToAssertionCount(1);
+            }
+        }
+    }
+
+    /** @return array{event: string, data: array{product_id: int}, timestamp: string} */
+    private function envelope(string $event, int $productId): array
+    {
+        return [
+            'event' => $event,
+            'data' => ['product_id' => $productId],
+            'timestamp' => sprintf('2026-08-21T12:00:%02d+00:00', $productId),
+        ];
+    }
+
     private function track(string $event): void
     {
         $this->keys[] = 'ec-hub:event-store:' . $event;

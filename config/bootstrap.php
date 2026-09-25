@@ -195,8 +195,10 @@ return new Container([
         $c->get(Client::class)
     ),
 
+    // DW-13: retenção por lista lida de EVENT_STORE_MAX_EVENTS_PER_LIST (config/event_store.php).
     EventStoreInterface::class => fn (ContainerInterface $c) => new RedisEventStore(
-        $c->get(Client::class)
+        $c->get(Client::class),
+        (require __DIR__ . '/event_store.php')['max_events_per_list']
     ),
 
     // Story 5.4: mesmo RedisEventBus, consultado pelo MetricsController como status observável.

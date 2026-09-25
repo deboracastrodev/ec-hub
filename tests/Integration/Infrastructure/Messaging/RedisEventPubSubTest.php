@@ -75,6 +75,27 @@ final class RedisEventPubSubTest extends TestCase
         }
     }
 
+    public function test_the_consumer_applies_the_configured_event_store_retention(): void
+    {
+        $process = proc_open(
+            [PHP_BINARY, dirname(__DIR__, 4) . '/bin/consume-events.php', '--once', $this->eventName()],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            dirname(__DIR__, 4),
+            [...getenv(), 'EVENT_STORE_MAX_EVENTS_PER_LIST' => '0']
+        );
+        self::assertIsResource($process);
+
+        fclose($pipes[0]);
+        $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        // Retenção inválida falha rápido no consumidor (o escritor real do event store).
+        self::assertNotSame(0, proc_close($process));
+        self::assertStringContainsString('EVENT_STORE_MAX_EVENTS_PER_LIST', $output);
+    }
+
     public function test_a_once_subscriber_does_not_persist_a_payload_for_a_different_event(): void
     {
         $event = $this->eventName();

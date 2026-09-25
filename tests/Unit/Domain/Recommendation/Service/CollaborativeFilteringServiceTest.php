@@ -210,6 +210,94 @@ final class CollaborativeFilteringServiceTest extends TestCase
         );
     }
 
+    public function testBotSessionOnlyCountsItsFirstDistinctProductsUpToTheCap(): void
+    {
+        $service = new CollaborativeFilteringService($this->store, new ExplanationGenerator(), 2);
+        foreach ([1, 2, 3, 4] as $productId) {
+            $this->store->interaction('product.viewed', 'bot', $productId);
+        }
+        foreach ([1, 3] as $productId) {
+            $this->store->interaction('product.viewed', 's1', $productId);
+        }
+
+        $service->train(array_values($this->catalog));
+
+        self::assertSame(
+            [1],
+            array_map(static fn ($r) => $r->getProductId(), $service->recommend($this->catalog[3], 10))
+        );
+        self::assertSame([], $service->recommend($this->catalog[4], 10));
+        $fromOne = $service->recommend($this->catalog[1], 10);
+        self::assertEqualsCanonicalizing([2, 3], array_map(static fn ($r) => $r->getProductId(), $fromOne));
+        // |S_1| = 2 (bot, s1), |S_2| = 1 (bot), |S_3| = 1 (s1): o bot não conta em 3.
+        foreach ($fromOne as $result) {
+            self::assertEqualsWithDelta(100 / sqrt(2), $result->getScore(), 1e-9);
+        }
+    }
+
+    public function testRepeatedProductInASessionCountsOnceTowardsTheCap(): void
+    {
+        $service = new CollaborativeFilteringService($this->store, new ExplanationGenerator(), 2);
+        foreach ([1, 1, 2] as $productId) {
+            $this->store->interaction('product.viewed', 's1', $productId);
+        }
+
+        $service->train(array_values($this->catalog));
+
+        self::assertSame(
+            [2],
+            array_map(static fn ($r) => $r->getProductId(), $service->recommend($this->catalog[1], 10))
+        );
+        self::assertSame(
+            [1],
+            array_map(static fn ($r) => $r->getProductId(), $service->recommend($this->catalog[2], 10))
+        );
+    }
+
+    public function testRejectsAProductsPerSessionCapBelowOne(): void
+    {
+        foreach ([0, -1] as $invalid) {
+            try {
+                new CollaborativeFilteringService($this->store, new ExplanationGenerator(), $invalid);
+                self::fail("Teto {$invalid} deveria ser rejeitado.");
+            } catch (\InvalidArgumentException) {
+                self::addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function testDefaultCapStopsCountingASessionAfterFiftyDistinctProducts(): void
+    {
+        $catalog = [];
+        foreach (range(1, CollaborativeFilteringService::DEFAULT_MAX_PRODUCTS_PER_SESSION + 1) as $id) {
+            $catalog[$id] = $this->product($id, "Produto {$id}", 'Casa', 10.0 + $id);
+            $this->store->interaction('product.viewed', 'bot', $id);
+        }
+
+        $this->service->train(array_values($catalog));
+
+        self::assertSame(50, CollaborativeFilteringService::DEFAULT_MAX_PRODUCTS_PER_SESSION);
+        self::assertSame([], $this->service->recommend($catalog[51], 10));
+        self::assertCount(49, $this->service->recommend($catalog[1], 100));
+    }
+
+    public function testCapFollowsTheReadOrderAcrossInteractionEvents(): void
+    {
+        $service = new CollaborativeFilteringService($this->store, new ExplanationGenerator(), 2);
+        $this->store->interaction('cart.item_added', 'bot', 3);
+        $this->store->interaction('product.viewed', 'bot', 1);
+        $this->store->interaction('product.viewed', 'bot', 2);
+
+        $service->train(array_values($this->catalog));
+
+        // product.viewed é lido antes de cart.item_added: o teto já foi ocupado por 1 e 2.
+        self::assertSame(
+            [2],
+            array_map(static fn ($r) => $r->getProductId(), $service->recommend($this->catalog[1], 10))
+        );
+        self::assertSame([], $service->recommend($this->catalog[3], 10));
+    }
+
     /** Spec matrix: s1 {1,2,3}, s2 {1,2}, s3 {1,3}, s4 {2}. */
     private function seedMatrix(): void
     {
