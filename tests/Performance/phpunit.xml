@@ -12,5 +12,11 @@
   </testsuites>
   <php>
     <env name="SESSION_COOKIE_SECRET" value="phpunit-only-session-cookie-secret-32" force="true"/>
+    <!--
+      Igual à phpunit.xml raiz. Sem isso o MemoryGrowthTest (processo isolado)
+      loga cada recomendação em JSON no stderr do filho; o PHPUnit só drena o
+      stderr depois do stdout, o pipe enche (64 KiB) e o job trava sem timeout.
+    -->
+    <env name="LOG_LEVEL" value="none" force="true"/>
   </php>
 </phpunit>
