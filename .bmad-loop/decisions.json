@@ -8,6 +8,15 @@
     "label": "Add minimum co-session support / shrinkage",
     "resolution": ""
   },
+  "DW-15": {
+    "answered_at": "2026-09-24",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Make ErrorHandler emit application/problem+json with type/title/status/detail while keeping 'error' and 'code' for backward compatibility; update tests and API docs.",
+    "key": "1",
+    "label": "Adopt RFC 7807, keep legacy fields",
+    "resolution": ""
+  },
   "DW-4": {
     "answered_at": "2026-09-24",
     "bundle_name": "",
